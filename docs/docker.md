@@ -65,7 +65,11 @@ deletes them).
   `NEXT_PUBLIC_SUPABASE_URL` to the public https URLs, and rebuild. Don't
   publish Postgres. Rotating `JWT_SECRET` invalidates every session and API
   key; rotating `ENCRYPTION_KEY` orphans stored WhatsApp tokens.
-- **Not included:** Studio, Edge Functions, Analytics and the pooler. The
+- **Studio:** open <http://supabase.localtest.me:8000> and sign in with
+  `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` from `.env.local` (Kong's
+  basic auth). Studio and postgres-meta run as the `studio` and `meta`
+  services.
+- **Not included:** Edge Functions, Analytics and the pooler. The
   stack is trimmed from the
   [official self-hosting compose](https://github.com/supabase/supabase/tree/master/docker);
   diff against it when bumping image tags.

@@ -99,6 +99,11 @@ curl -s -o /dev/null -w "%{http_code}\n" -H "apikey: $(grep ^ANON_KEY= .env.loca
 ```
 Porta do app: `HOST_PORT` (padrão 3000). Gateway: `SUPABASE_HTTP_PORT` (padrão 8000).
 
+Studio (painel do Supabase): `http://supabase.localtest.me:8000`, com o basic auth do
+Kong — usuário `DASHBOARD_USERNAME`, senha `DASHBOARD_PASSWORD` do `.env.local` (não
+imprimir a senha). Se o Kong responder 503 nessa URL logo depois de subir o Studio,
+`$FULL restart kong` (ele resolveu o DNS do `studio` antes de existir).
+
 ### Shell no banco
 `$FULL exec db psql -U postgres` (interativo; peça ao usuário para rodar com `!` se
 precisar de TTY).
