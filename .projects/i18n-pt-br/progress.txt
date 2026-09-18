@@ -103,3 +103,12 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - Use `DateTimeFormatOptions`/`NumberFormatOptions` types from 'next-intl', not Intl.* (typecheck fails on timeZoneName). `createFormatter` from 'next-intl' works in vitest for preset tests.
   - Presets are used by name: format.dateTime(d, 'date'), format.number(n, 'compact'). Plain format.number(n) uses locale defaults.
 ---
+
+## 2026-09-18 - US-020
+- Added BrowserTimeZoneProvider (nested NextIntlClientProvider with the browser time zone) inside the root layout provider; pure `pickBrowserTimeZone` in src/lib/i18n/browser-time-zone.ts with unit tests.
+- Files: src/components/i18n/browser-time-zone-provider.tsx, src/lib/i18n/browser-time-zone.{ts,test.ts}, src/app/layout.tsx, notes.md, prd.json
+- **Learnings for future iterations:**
+  - The client NextIntlClientProvider requires `locale` explicitly but inherits messages/formats/now/onError from the parent context (use-intl IntlProvider uses prevContext).
+  - useFormatter() in client components now uses the BROWSER zone after hydration; SSR html uses the server zone. Verified with server TZ=UTC: 14:30Z -> 11:30 in browser, no hydration warnings.
+  - Never `pkill -f "next dev"` inside a Bash command whose own text contains that string (kills the shell); start the server with `setsid nohup`.
+---

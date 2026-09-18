@@ -181,7 +181,7 @@
         "Lint passes"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "História inserida pelo orquestrador após a US-010: o provider herda o fuso do servidor (ver notes.md), o que contradiz a suposição do Design Doc (R3/RNF-04). Deve rodar antes das migrações US-013 a US-015."
     },
     {

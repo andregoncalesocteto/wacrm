@@ -19,3 +19,16 @@ do **servidor/contêiner** (`Intl.DateTimeFormat().resolvedOptions().timeZone`),
 saiu como `11:30` (fuso da máquina, -03). Ou seja, `useFormatter()` no cliente formatará no fuso do servidor, contrariando a
 premissa do Design Doc ("sem timeZone mantém o fuso do navegador"). Para o navegador mandar, as stories de migração devem
 passar `timeZone` do navegador ao formatar (ou o provider deve receber `timeZone` do cliente). Decidir antes de migrar os pontos.
+
+## US-020 · Fuso do navegador no `useFormatter()`
+
+**Resultado: resolvido com `BrowserTimeZoneProvider`** (`src/components/i18n/browser-time-zone-provider.tsx`), dentro do
+provider do layout raiz. O `IntlProvider` aninhado herda `messages`, `formats`, `now` e `onError` do contexto pai
+(use-intl `IntlProvider` usa `prevContext`), mas `locale` é obrigatório no `NextIntlClientProvider` de cliente, então
+vem de `useLocale()`. O fuso vem de `useSyncExternalStore` (snapshot de servidor `undefined`, então SSR e hidratação usam o
+fuso do servidor; o do navegador entra logo após a hidratação). A escolha é a função pura `pickBrowserTimeZone`.
+
+Verificação com servidor `TZ=UTC` e navegador `America/Sao_Paulo`, página temporária (removida) formatando
+`2026-09-18T14:30:00Z` com o preset `time`: HTML do servidor `14:30 | UTC`; no navegador após a montagem `11:30 | America/Sao_Paulo`.
+Console sem avisos de hidratação. Consequência: o SSR mostra o fuso do servidor e troca após a hidratação (breve troca visível
+só em componentes cliente que formatam datas no SSR). Servidor de dev restaurado sem `TZ`.
