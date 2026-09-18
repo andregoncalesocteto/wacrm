@@ -167,6 +167,24 @@
       "notes": ""
     },
     {
+      "id": "US-020",
+      "title": "Fazer o formatador do next-intl usar o fuso do navegador",
+      "description": "Como operador, quero que horários e datas continuem no meu fuso local depois de passarem pelo `useFormatter()`, como já acontece hoje.",
+      "acceptanceCriteria": [
+        "Um componente cliente (ex.: `src/components/i18n/browser-time-zone-provider.tsx`) é renderizado dentro do `NextIntlClientProvider` do layout raiz, lê o fuso do navegador (`Intl.DateTimeFormat().resolvedOptions().timeZone`) depois da montagem e o repassa como `timeZone` a um `NextIntlClientProvider` aninhado, que herda `locale`, `messages` e `formats`",
+        "Antes da montagem, ou se o fuso do navegador não estiver disponível, vale o fuso do servidor, sem erro de hidratação no console",
+        "A escolha do fuso fica numa função pura com teste unitário (fuso do navegador válido, inválido e ausente)",
+        "Verificado com o servidor de dev em outro fuso que o navegador (`TZ=UTC` no servidor, navegador em `America/Sao_Paulo`): um componente cliente que formata `2026-09-18T14:30:00Z` com o preset de hora mostra `11:30`, o horário do navegador, e não `14:30`. Registrar o resultado em `.projects/i18n-pt-br/notes.md`. Restaurar o servidor de dev depois",
+        "Com `en` ativo, a saída de datas e horas fica igual à anterior",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "História inserida pelo orquestrador após a US-010: o provider herda o fuso do servidor (ver notes.md), o que contradiz a suposição do Design Doc (R3/RNF-04). Deve rodar antes das migrações US-013 a US-015."
+    },
+    {
       "id": "US-011",
       "title": "Passar o locale às funções de moeda e número compacto",
       "description": "Como operador, quero valores monetários com separadores brasileiros quando o app está em `pt`, sem mudar a moeda da conta.",
@@ -180,7 +198,7 @@
         "Lint passes",
         "Verify in browser using dev-browser skill (valores de negócios em pipelines e no dashboard)"
       ],
-      "priority": 11,
+      "priority": 12,
       "passes": false,
       "notes": ""
     },
@@ -197,7 +215,7 @@
         "Lint passes",
         "Verify in browser using dev-browser skill (lista de automações)"
       ],
-      "priority": 12,
+      "priority": 13,
       "passes": false,
       "notes": ""
     },
@@ -214,7 +232,7 @@
         "Lint passes",
         "Verify in browser using dev-browser skill (deal card, detalhe do contato, membros, perfil e chaves de API com `pt` ativo)"
       ],
-      "priority": 13,
+      "priority": 14,
       "passes": false,
       "notes": ""
     },
@@ -231,7 +249,7 @@
         "Lint passes",
         "Verify in browser using dev-browser skill (dashboard, broadcasts, contatos, notificações, flows, automações e convite com `pt` ativo; console do navegador sem erro de hidratação)"
       ],
-      "priority": 14,
+      "priority": 15,
       "passes": false,
       "notes": ""
     },
@@ -249,7 +267,7 @@
         "Lint passes",
         "Verify in browser using dev-browser skill (inbox, lista de conversas, notificações e runs de flows com `pt` ativo)"
       ],
-      "priority": 15,
+      "priority": 16,
       "passes": false,
       "notes": ""
     },
@@ -264,7 +282,7 @@
         "Introduzir de propósito um `new Date().toLocaleDateString()` em um componente faz o lint falhar, e a mensagem indica `useFormatter()` (verificar e reverter)",
         "Typecheck passes"
       ],
-      "priority": 16,
+      "priority": 17,
       "passes": false,
       "notes": ""
     },
@@ -281,7 +299,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 17,
+      "priority": 18,
       "passes": false,
       "notes": ""
     },
@@ -295,7 +313,7 @@
         "Nenhuma outra seção do `CLAUDE.md` é alterada",
         "Typecheck passes"
       ],
-      "priority": 18,
+      "priority": 19,
       "passes": false,
       "notes": ""
     },
@@ -313,7 +331,7 @@
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
-      "priority": 19,
+      "priority": 20,
       "passes": false,
       "notes": ""
     }

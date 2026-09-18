@@ -158,6 +158,19 @@ sem repetir padrões. (ADR-003)
 - [ ] `npm test` passa
 - [ ] Typecheck/lint passes
 
+### US-020: Fazer o formatador do next-intl usar o fuso do navegador
+**Description:** Como operador, quero que horários e datas continuem no meu fuso local depois de passarem pelo `useFormatter()`, como já acontece hoje.
+
+> Adicionada após a US-010 (executada antes da US-011). A US-010 mostrou que o `NextIntlClientProvider` herda o fuso do servidor e que o `request.ts` não define nenhum, então o `useFormatter()` formataria no fuso do contêiner. Isso corrige a suposição do Design Doc (R3/RNF-04).
+
+**Acceptance Criteria:**
+- [ ] Um componente cliente lê o fuso do navegador depois da montagem e o repassa como `timeZone` a um `NextIntlClientProvider` aninhado
+- [ ] Antes da montagem, ou sem fuso disponível, vale o fuso do servidor, sem erro de hidratação
+- [ ] A escolha do fuso é uma função pura com teste unitário
+- [ ] Com o servidor em `TZ=UTC` e o navegador em `America/Sao_Paulo`, `2026-09-18T14:30:00Z` com o preset de hora aparece como `11:30`
+- [ ] Com `en` ativo, a saída de datas e horas fica igual à anterior
+- [ ] Tests pass, typecheck/lint passes
+
 ### US-011: Passar o locale às funções de moeda e número compacto
 **Description:** Como operador, quero valores monetários com separadores brasileiros quando o app está em
 `pt`, sem mudar a moeda da conta.
