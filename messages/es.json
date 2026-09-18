@@ -598,6 +598,7 @@
       "toastDeleted": "Negocio eliminado"
     },
     "settings": {
+      "pickColor": "Elegir el color {color}",
       "managePipeline": "Administrar pipeline",
       "deletePipeline": "Eliminar pipeline",
       "deletePipelineDesc": "Esto archivará todos los negocios de este pipeline. No se puede deshacer.",
@@ -670,6 +671,8 @@
       "unknown": "Desconocido"
     },
     "detail": {
+      "unknownRecipient": "Desconocido",
+      "unknownError": "Error desconocido",
       "backToBroadcasts": "Volver a difusiones",
       "notFound": "Difusión no encontrada",
       "template": "Plantilla: {name}",
@@ -718,6 +721,7 @@
       "toastResumeFailed": "No se pudo reanudar: {error}"
     },
     "new": {
+      "failed": "Falló el envío masivo",
       "title": "Nueva difusión",
       "subtitle": "Crea y envía un mensaje masivo a tus contactos.",
       "steps": {
@@ -778,6 +782,8 @@
         "errorCsvParse": "No se pudo leer el archivo CSV.",
         "errorCsvMissingPhone": "El CSV debe tener una columna 'phone'.",
         "audienceSummary": "Resumen de la audiencia",
+        "estimatedRecipients": "destinatarios estimados",
+        "selectTypeForEstimate": "Selecciona un tipo de audiencia para ver la estimación.",
         "calculating": "Calculando…"
       },
       "personalize": {
@@ -1270,6 +1276,12 @@
       "jumpToNode": "Ir al nodo {key}"
     },
     "editorState": {
+      "saveFailed": "Error al guardar",
+      "saveFailedStatus": "Error al guardar: {status}",
+      "statusFailed": "Error al actualizar el estado",
+      "statusFailedStatus": "Error al actualizar el estado: {status}",
+      "deleteFailed": "Error al eliminar",
+      "deleteFailedStatus": "Error al eliminar: {status}",
       "saved": "Guardado.",
       "fixIssues": "Corrige los problemas de abajo antes de activar.",
       "statusActivated": "Flujo activado.",

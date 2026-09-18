@@ -152,7 +152,7 @@ export function Step4ScheduleSend({
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
               <p className="text-sm font-medium text-foreground">{t('scheduleSend.sending')}</p>
             </div>
-            <span className="text-xs font-medium text-primary">{progress}%</span>
+            <span className="text-xs font-medium text-primary">{`${progress}%`}</span>
           </div>
           <div className="h-1.5 w-full rounded-full bg-muted">
             <div

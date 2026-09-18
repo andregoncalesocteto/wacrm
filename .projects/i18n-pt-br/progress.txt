@@ -76,3 +76,12 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - lib constants (themes.ts names/taglines, date-utils DOW_SHORT_MON_FIRST) hold English; translate at the call site with t(`x.${id}`).
   - Left as-is on purpose: example placeholders (Ada Lovelace, en_US, sk-...), theme proper names.
 ---
+## 2026-09-18 - US-008
+- Zero jsx-no-literals warnings left in src (lint back to 41 = old baseline). Real text translated: audience estimate texts (step2), Funnel heading, automation "Tag" label; punctuation/percent literals wrapped as template expressions in broadcasts/automations/flows/contacts page.
+- Beyond the rule: 'Unknown' recipient, 'Unknown error', 'Broadcast failed', flow save/status/delete failure messages (incl. thrown "X failed: {status}"), pipeline color-swatch aria-label. New keys in 4 catalogues (Broadcasts.wizard.selectAudience, Broadcasts.detail, Broadcasts.new, Flows.editorState, Pipelines.settings).
+- Files changed: src/app/(dashboard)/{broadcasts,contacts}, src/components/{automations,broadcasts,flows,pipelines}, messages/*.json, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Some keys already existed unused (Broadcasts.detail.funnel, Automations.builder.config.tagLabel): grep catalogues first.
+  - Left: en_US language fallbacks (data codes), interactive-preview English defaults (callers pass translated labels), flows/shared.tsx slugSeed (slug seeds, not UI), lib constants.
+  - Browser: pt pages render; deep states not exercised.
+---

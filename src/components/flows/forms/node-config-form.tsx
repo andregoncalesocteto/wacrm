@@ -161,7 +161,7 @@ export function NodeConfigForm({
                 {(cfg as { var_key?: string }).var_key || "name"}
                 {"}}"}
               </code>
-              .
+              {"."}
             </p>
           </div>
           <NextNodeRow
@@ -677,10 +677,10 @@ function ConditionForm({
                 <SelectValue placeholder={t("pickField")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="name">name</SelectItem>
-                <SelectItem value="email">email</SelectItem>
-                <SelectItem value="phone">phone</SelectItem>
-                <SelectItem value="company">company</SelectItem>
+                <SelectItem value="name">{"name"}</SelectItem>
+                <SelectItem value="email">{"email"}</SelectItem>
+                <SelectItem value="phone">{"phone"}</SelectItem>
+                <SelectItem value="company">{"company"}</SelectItem>
               </SelectContent>
             </Select>
           ) : (

@@ -598,6 +598,7 @@
       "toastDeleted": "Negócio excluído"
     },
     "settings": {
+      "pickColor": "Escolher a cor {color}",
       "managePipeline": "Gerenciar pipeline",
       "deletePipeline": "Excluir pipeline",
       "deletePipelineDesc": "Isso arquivará todos os negócios deste pipeline. Não é possível desfazer.",
@@ -670,6 +671,8 @@
       "unknown": "Desconhecido"
     },
     "detail": {
+      "unknownRecipient": "Desconhecido",
+      "unknownError": "Erro desconhecido",
       "backToBroadcasts": "Voltar aos disparos",
       "notFound": "Disparo não encontrado",
       "template": "Modelo: {name}",
@@ -718,6 +721,7 @@
       "toastResumeFailed": "Não foi possível retomar: {error}"
     },
     "new": {
+      "failed": "Falha no disparo",
       "title": "Novo disparo",
       "subtitle": "Crie e envie uma mensagem em massa para seus contatos.",
       "steps": {
@@ -778,6 +782,8 @@
         "errorCsvParse": "Não foi possível ler o arquivo CSV.",
         "errorCsvMissingPhone": "O CSV deve ter uma coluna 'phone'.",
         "audienceSummary": "Resumo do público",
+        "estimatedRecipients": "destinatários estimados",
+        "selectTypeForEstimate": "Selecione um tipo de público para ver a estimativa.",
         "calculating": "Calculando…"
       },
       "personalize": {
@@ -1270,6 +1276,12 @@
       "jumpToNode": "Ir para o nó {key}"
     },
     "editorState": {
+      "saveFailed": "Falha ao salvar",
+      "saveFailedStatus": "Falha ao salvar: {status}",
+      "statusFailed": "Falha ao atualizar o status",
+      "statusFailedStatus": "Falha ao atualizar o status: {status}",
+      "deleteFailed": "Falha ao excluir",
+      "deleteFailedStatus": "Falha ao excluir: {status}",
       "saved": "Salvo.",
       "fixIssues": "Corrija os problemas abaixo antes de ativar.",
       "statusActivated": "Fluxo ativado.",

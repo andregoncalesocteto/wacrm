@@ -598,6 +598,7 @@
       "toastDeleted": "Deal deleted"
     },
     "settings": {
+      "pickColor": "Pick color {color}",
       "managePipeline": "Manage Pipeline",
       "deletePipeline": "Delete Pipeline",
       "deletePipelineDesc": "This will archive all deals in this pipeline. This cannot be undone.",
@@ -670,6 +671,8 @@
       "unknown": "Unknown"
     },
     "detail": {
+      "unknownRecipient": "Unknown",
+      "unknownError": "Unknown error",
       "backToBroadcasts": "Back to Broadcasts",
       "notFound": "Broadcast not found",
       "template": "Template: {name}",
@@ -718,6 +721,7 @@
       "toastResumeFailed": "Could not resume: {error}"
     },
     "new": {
+      "failed": "Broadcast failed",
       "title": "New Broadcast",
       "subtitle": "Create and send a broadcast message to your contacts.",
       "steps": {
@@ -778,6 +782,8 @@
         "errorCsvParse": "Could not parse CSV file.",
         "errorCsvMissingPhone": "CSV must have a 'phone' column.",
         "audienceSummary": "Audience Summary",
+        "estimatedRecipients": "estimated recipients",
+        "selectTypeForEstimate": "Select an audience type to see the estimate.",
         "calculating": "Calculating…"
       },
       "personalize": {
@@ -1270,6 +1276,12 @@
       "jumpToNode": "Jump to node {key}"
     },
     "editorState": {
+      "saveFailed": "Save failed",
+      "saveFailedStatus": "Save failed: {status}",
+      "statusFailed": "Status update failed",
+      "statusFailedStatus": "Status update failed: {status}",
+      "deleteFailed": "Delete failed",
+      "deleteFailedStatus": "Delete failed: {status}",
       "saved": "Saved.",
       "fixIssues": "Fix the issues below before activating.",
       "statusActivated": "Flow activated.",

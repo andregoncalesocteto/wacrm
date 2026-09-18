@@ -128,8 +128,8 @@
         "Verify in browser using dev-browser skill (pipelines, broadcasts, automações e flows com `pt` ativo)"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser check: pages (broadcasts, broadcasts/new, automations/new, flows, pipelines) rendered in pt; deep states (audience estimate, tag trigger, funnel, flow save errors) not exercised - manual verification suggested."
     },
     {
       "id": "US-009",

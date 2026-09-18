@@ -614,7 +614,7 @@ function SendTemplateFields({
           const lang = tmpl.language ?? "en_US"
           return (
             <option key={tmpl.id} value={toValue(tmpl.name, lang)}>
-              {tmpl.name} ({lang})
+              {`${tmpl.name} (${lang})`}
             </option>
           )
         })}
@@ -861,7 +861,7 @@ function TriggerCard({
             {type === "tag_added" && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Tag
+                  {t("config.tagLabel")}
                 </label>
                 <TagSelect
                   value={(config.tag_id as string) ?? ""}

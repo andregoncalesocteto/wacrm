@@ -598,6 +598,7 @@
       "toastDeleted": "딜이 삭제되었습니다"
     },
     "settings": {
+      "pickColor": "색상 선택 {color}",
       "managePipeline": "파이프라인 관리",
       "deletePipeline": "파이프라인 삭제",
       "deletePipelineDesc": "이 파이프라인의 모든 딜이 보관 처리됩니다. 되돌릴 수 없습니다.",
@@ -670,6 +671,8 @@
       "unknown": "알 수 없음"
     },
     "detail": {
+      "unknownRecipient": "알 수 없음",
+      "unknownError": "알 수 없는 오류",
       "backToBroadcasts": "브로드캐스트로 돌아가기",
       "notFound": "브로드캐스트를 찾을 수 없습니다",
       "template": "템플릿: {name}",
@@ -718,6 +721,7 @@
       "toastResumeFailed": "이어서 발송할 수 없습니다: {error}"
     },
     "new": {
+      "failed": "브로드캐스트 실패",
       "title": "새 브로드캐스트",
       "subtitle": "연락처에 보낼 브로드캐스트 메시지를 만듭니다.",
       "steps": {
@@ -778,6 +782,8 @@
         "errorCsvParse": "CSV 파일을 파싱할 수 없습니다.",
         "errorCsvMissingPhone": "CSV에 'phone' 열이 있어야 합니다.",
         "audienceSummary": "대상 요약",
+        "estimatedRecipients": "예상 수신자",
+        "selectTypeForEstimate": "예상치를 보려면 대상 유형을 선택하세요.",
         "calculating": "계산 중…"
       },
       "personalize": {
@@ -1270,6 +1276,12 @@
       "jumpToNode": "{key} 노드로 이동"
     },
     "editorState": {
+      "saveFailed": "저장 실패",
+      "saveFailedStatus": "저장 실패: {status}",
+      "statusFailed": "상태 업데이트 실패",
+      "statusFailedStatus": "상태 업데이트 실패: {status}",
+      "deleteFailed": "삭제 실패",
+      "deleteFailedStatus": "삭제 실패: {status}",
       "saved": "저장되었습니다.",
       "fixIssues": "활성화하기 전에 아래 문제를 해결하세요.",
       "statusActivated": "플로우가 활성화되었습니다.",
