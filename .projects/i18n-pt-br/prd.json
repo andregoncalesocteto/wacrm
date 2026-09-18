@@ -1,0 +1,321 @@
+{
+  "project": "wacrm",
+  "branchName": "ralph/i18n-pt-br",
+  "description": "Idioma pt-BR completo — fechar as chaves faltantes, mover textos fixos para tradução, formatar datas e números pelo locale do app, aplicar glossário e barrar regressões no CI.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Completar as 6 chaves faltantes em `pt` e `es`",
+      "description": "Como mantenedor, quero o teste de paridade de chaves passando para que o CI da `main` volte a ficar verde.",
+      "acceptanceCriteria": [
+        "`messages/pt.json` contém `Contacts.importModal.resultInvalidPhone`, `resultInvalidPhone_plural`, `failedRowsHeading`, `unknownReason`, `toastInvalidPhone` e `toastInvalidPhone_plural`, traduzidas para português do Brasil e com os mesmos argumentos ICU do `en.json` (`{count}` etc.)",
+        "`messages/es.json` contém as mesmas 6 chaves, traduzidas para espanhol",
+        "`npx vitest run src/i18n` passa: 11 de 11 testes",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Traduzir o `quick-replies-manager.tsx`",
+      "description": "Como operador brasileiro, quero a tela de respostas rápidas em português para não ver inglês nas configurações.",
+      "acceptanceCriteria": [
+        "`quick-replies-manager.tsx` usa `useTranslations` para todo texto visível: títulos, botões, rótulos (ex.: \"Name\"), estado vazio (\"No quick replies yet…\"), placeholders e os toasts de erro",
+        "As chaves novas existem em `en.json`, `pt.json`, `es.json` e `ko.json` (o teste de paridade exige os quatro), com o mesmo conjunto de argumentos ICU",
+        "O texto de `en` fica idêntico ao atual",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Verify in browser using dev-browser skill (Configurações → Respostas rápidas, com `pt` ativo)"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Traduzir o toast de falha de envio de template",
+      "description": "Como operador, quero o erro de envio de template em português, com o motivo incluído.",
+      "acceptanceCriteria": [
+        "O toast `Failed to send template: ${reason}` em `contact-detail-view.tsx` usa uma chave com argumento ICU `{reason}`",
+        "A chave existe nos quatro catálogos e o texto de `en` fica idêntico ao atual",
+        "`npm test` passa (paridade e ICU)",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Traduzir os textos dos componentes compartilhados `ui/*`",
+      "description": "Como operador, quero que botões como \"Fechar\" dos diálogos e painéis apareçam em português em todas as telas.",
+      "acceptanceCriteria": [
+        "`ui/sheet.tsx`, `ui/dialog.tsx` e `ui/gated-button.tsx` não têm texto de interface fixo (incluindo texto para leitores de tela, como o `sr-only` \"Close\")",
+        "O texto vem de chaves de tradução nos quatro catálogos, e `en` fica idêntico ao atual",
+        "Os componentes continuam funcionando quando usados dentro e fora de um provider do `next-intl` que já esteja na árvore (o layout raiz já o fornece)",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Verify in browser using dev-browser skill (abrir um diálogo e um painel lateral com `pt` ativo)"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Ativar `react/jsx-no-literals` em `warn` e registrar a linha de base",
+      "description": "Como mantenedor, quero que texto literal novo em JSX seja sinalizado, e conhecer o volume atual de avisos para planejar a limpeza. (ADR-001)",
+      "acceptanceCriteria": [
+        "`eslint.config.mjs` ativa `react/jsx-no-literals` em nível `warn` apenas para `src/components/**` e `src/app/**`, com `allowedStrings` para símbolos (`·`, `/`, `—`, `•`)",
+        "Testes (`*.test.ts(x)`) não são afetados pela regra",
+        "A contagem total de avisos, por diretório de primeiro nível em `src/components/` e para `src/app/`, fica registrada em `.projects/i18n-pt-br/lint-baseline.md`",
+        "`npm run lint` termina sem **erros** (só avisos) e o CI continua verde",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Resolver avisos de `jsx-no-literals` em inbox e contatos",
+      "description": "Como operador, quero inbox e contatos sem texto fixo em inglês.",
+      "acceptanceCriteria": [
+        "Zero avisos de `react/jsx-no-literals` em `src/components/inbox/**` e `src/components/contacts/**`",
+        "Toda chave nova existe nos quatro catálogos e `en` fica idêntico ao atual",
+        "Textos que forem só nome de exemplo (ex.: `Ada Lovelace`) ficam como estão e são justificados no código com um comentário",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Verify in browser using dev-browser skill (inbox e contatos com `pt` ativo)"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Resolver avisos de `jsx-no-literals` em configurações, agents, dashboard e layout",
+      "description": "Como operador, quero configurações, agents, dashboard e o layout sem texto fixo em inglês.",
+      "acceptanceCriteria": [
+        "Zero avisos de `react/jsx-no-literals` em `src/components/settings/**`, `src/components/agents/**`, `src/components/dashboard/**`, `src/components/layout/**`, `src/components/notifications/**`, `src/components/presence/**` e `src/components/auth/**`",
+        "Toda chave nova existe nos quatro catálogos e `en` fica idêntico ao atual",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Verify in browser using dev-browser skill (configurações, agents, dashboard e login com `pt` ativo)"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Resolver avisos de `jsx-no-literals` em pipelines, broadcasts, automações, flows e interativo",
+      "description": "Como operador, quero pipelines, broadcasts, automações e flows sem texto fixo em inglês.",
+      "acceptanceCriteria": [
+        "Zero avisos de `react/jsx-no-literals` em `src/components/pipelines/**`, `broadcasts/**`, `automations/**`, `flows/**` e `interactive/**` (e demais diretórios de `src/components/` que ainda tiverem avisos, exceto `ui/`, já tratado na US-004)",
+        "Toda chave nova existe nos quatro catálogos e `en` fica idêntico ao atual",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Verify in browser using dev-browser skill (pipelines, broadcasts, automações e flows com `pt` ativo)"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Resolver avisos de `jsx-no-literals` nas páginas de `src/app`",
+      "description": "Como operador, quero as páginas (login, cadastro, convite e páginas do dashboard) sem texto fixo em inglês.",
+      "acceptanceCriteria": [
+        "Zero avisos de `react/jsx-no-literals` em `src/app/**`",
+        "Toda chave nova existe nos quatro catálogos e `en` fica idêntico ao atual",
+        "`npm run lint` mostra **zero avisos** de `react/jsx-no-literals` no repositório",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Verify in browser using dev-browser skill (login, cadastro, página de convite e notificações com `pt` ativo)"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Criar os presets de formatação e o mapa de locale do `date-fns`",
+      "description": "Como desenvolvedor, quero uma fonte única de formatação por locale para migrar os pontos sem repetir padrões. (ADR-003)",
+      "acceptanceCriteria": [
+        "`src/i18n/formats.ts` exporta presets nomeados de data (`date`, `dateTime`, `time`, `dayMonth`) e de número (`integer`, `compact`) por locale (`en`, `pt`, `es`, `ko`): `pt` em formato numérico (`dd/mm/aaaa`, 24h), os demais com `dateStyle: 'medium'`",
+        "`src/i18n/request.ts` devolve `formats` junto com `locale` e `messages`",
+        "`src/lib/i18n/date-fns-locale.ts` exporta `getDateFnsLocale(locale)`: `pt`→`ptBR`, `es`→`es`, `ko`→`ko`, qualquer outro→`enUS`",
+        "Teste unitário confirma que `pt` formata `2026-09-18` como `18/09/2026` e que `en` continua \"Sep 18, 2026\"",
+        "Ficou validado que o `NextIntlClientProvider` do layout raiz herda `formats` do `request.ts`; se não herdar, `formats` é passado explicitamente no provider (registrar o resultado em `.projects/i18n-pt-br/notes.md`)",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Passar o locale às funções de moeda e número compacto",
+      "description": "Como operador, quero valores monetários com separadores brasileiros quando o app está em `pt`, sem mudar a moeda da conta.",
+      "acceptanceCriteria": [
+        "`formatCurrency`, `formatCurrencyShort` e `formatCompactNumber` em `src/lib/currency.ts` recebem um parâmetro `locale` opcional no fim (padrão `'en'`) e o repassam ao `Intl.NumberFormat`, sem usar `undefined`",
+        "Os 7 arquivos que as chamam passam o locale obtido com `useLocale()`",
+        "A moeda continua sendo a da conta ou do negócio: uma conta em `USD` com `pt` ativo mostra `US$ 1.234`",
+        "Testes unitários cobrem `pt` (`R$ 1.234`) e `en` (saída inalterada) para os três formatadores",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Verify in browser using dev-browser skill (valores de negócios em pipelines e no dashboard)"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Passar o locale ao `formatRelative` de `trigger-meta.ts`",
+      "description": "Como operador, quero que a data de \"última execução\" das automações use o formato do app.",
+      "acceptanceCriteria": [
+        "`formatRelative` em `src/lib/automations/trigger-meta.ts` recebe `locale` e, no ramo que hoje chama `new Date(iso).toLocaleDateString()`, usa o formato de data do app",
+        "Os chamadores passam o locale",
+        "Teste unitário cobre o ramo de data absoluta para `pt` e `en`",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Verify in browser using dev-browser skill (lista de automações)"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Migrar `toLocale*` dos componentes para `useFormatter`",
+      "description": "Como operador, quero datas e números dos componentes no formato do app.",
+      "acceptanceCriteria": [
+        "Nenhum `toLocaleString`, `toLocaleDateString` ou `toLocaleTimeString` em `src/components/**` (inclui os `en-US` fixos de `pipelines/deal-card.tsx` e `contacts/contact-detail-view.tsx`, e os `undefined` de `settings/members-tab.tsx`, `settings/profile-form.tsx` e `settings/api-keys-settings.tsx`)",
+        "As datas usam `useFormatter().dateTime(..., '<preset>')` e os números `useFormatter().number(...)`",
+        "Com `en` ativo, a saída de cada ponto migrado fica igual à anterior",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Verify in browser using dev-browser skill (deal card, detalhe do contato, membros, perfil e chaves de API com `pt` ativo)"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Migrar `toLocale*` das páginas de `src/app` para `useFormatter`",
+      "description": "Como operador, quero datas e números das páginas no formato do app.",
+      "acceptanceCriteria": [
+        "Nenhum `toLocaleString`, `toLocaleDateString` ou `toLocaleTimeString` em `src/app/**` (inclui `contacts/page.tsx` com `en-US` fixo, `join/[token]/page.tsx`, `broadcasts/**`, `dashboard/page.tsx`, `notifications`, `flows/[id]/runs`, `automations` e `automations/[id]/logs`)",
+        "Onde a página renderiza no servidor, a data é formatada somente depois da montagem no cliente, para evitar diferença de fuso entre servidor e navegador (risco R3 do Design Doc)",
+        "Com `en` ativo, a saída de cada ponto migrado fica igual à anterior",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Verify in browser using dev-browser skill (dashboard, broadcasts, contatos, notificações, flows, automações e convite com `pt` ativo; console do navegador sem erro de hidratação)"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Passar `locale` ao `date-fns` e trocar padrões em ordem inglesa",
+      "description": "Como operador, quero tempo relativo e datas de mensagens em português.",
+      "acceptanceCriteria": [
+        "Todo `formatDistanceToNow`, `isToday`/`isYesterday`-baseado e `format` de `date-fns` que aparece na interface recebe `{ locale: getDateFnsLocale(locale) }` (`conversation-list.tsx`, `notifications/page.tsx`, `flows/[id]/runs/page.tsx`)",
+        "Datas absolutas com padrão em ordem inglesa (`\"MMM d, yyyy HH:mm\"`, `\"MMMM d, yyyy\"`, `\"MMM d\"`, `\"PP p\"`) em `message-thread.tsx`, `contact-sidebar.tsx`, `media-lightbox.tsx`, `ai-usage.tsx` e `flows/[id]/runs/page.tsx` passam a usar os presets de `useFormatter()`",
+        "Ficam como estão, por serem neutros de locale: `\"HH:mm\"` e `\"HH:mm:ss\"`, chaves de agrupamento (`\"yyyy-MM-dd\"`) e o nome de arquivo de `lib/media/filename.ts` (`\"yyyyMMdd-HHmmss\"`)",
+        "Com `pt` ativo, o tempo relativo aparece como \"há 3 horas\" e a data absoluta como `18/09/2026`; com `en` ativo, a saída é igual à atual",
+        "`npm test` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Verify in browser using dev-browser skill (inbox, lista de conversas, notificações e runs de flows com `pt` ativo)"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Ativar a regra de formatação direta em `error`",
+      "description": "Como mantenedor, quero que o CI reprove `toLocale*String()` e `Intl.*Format` diretos. (ADR-002)",
+      "acceptanceCriteria": [
+        "`eslint.config.mjs` ativa, em nível `error`, `no-restricted-properties` para `toLocaleString`, `toLocaleDateString` e `toLocaleTimeString`, e `no-restricted-syntax` para `new Intl.DateTimeFormat` e `new Intl.NumberFormat`, em `src/**/*.{ts,tsx}`",
+        "Testes e `src/lib/currency.ts` ficam de fora, com um comentário no config explicando a exceção de `currency.ts`",
+        "`npm run lint` passa sem erros no estado atual do repositório",
+        "Introduzir de propósito um `new Date().toLocaleDateString()` em um componente faz o lint falhar, e a mensagem indica `useFormatter()` (verificar e reverter)",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Passada de consistência de terminologia no `pt.json`",
+      "description": "Como operador, quero termos consistentes no app para não achar que são coisas diferentes.",
+      "acceptanceCriteria": [
+        "O glossário está registrado em `.projects/i18n-pt-br/glossary.md`: *pipeline*, *broadcast*, *inbox* e *template* ficam em inglês; *deal* vira \"negócio\" e *flow* vira \"fluxo\"",
+        "`messages/pt.json` aplica o glossário: nenhuma ocorrência de \"Deal\" ou de \"Flow\" como termo isolado da interface, e \"Template\"/\"Modelo\" seguem a regra definida no glossário",
+        "Nomes próprios e termos oficiais da Meta (como \"template\" de WhatsApp) não são alterados",
+        "O tratamento \"você\" é mantido e o restante da tradução não é reescrito",
+        "`npm test` passa (incluindo paridade de placeholders ICU)",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Documentar as convenções de i18n no `CLAUDE.md`",
+      "description": "Como quem mantém o repositório, quero que futuras sessões saibam as regras de i18n.",
+      "acceptanceCriteria": [
+        "A seção i18n do `CLAUDE.md` registra: todo texto de interface usa `useTranslations`; datas e números usam `useFormatter()` (nunca `toLocale*`/`Intl` direto); chaves novas entram nos quatro catálogos; o idioma é definido por `NEXT_PUBLIC_APP_LOCALE` no build",
+        "A seção cita a regra `error` de formatação e a regra `warn` de texto literal",
+        "Nenhuma outra seção do `CLAUDE.md` é alterada",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Verificar tudo em português na stack Docker",
+      "description": "Como operador, quero confirmar que o app inteiro está em português no ambiente real.",
+      "acceptanceCriteria": [
+        "O `.env.local` define `NEXT_PUBLIC_APP_LOCALE=pt` (os templates versionados continuam em `en`) e a stack sobe com `docker compose -f docker-compose.yml -f docker-compose.supabase.yml --env-file .env.local up --build -d --wait`, com todos os serviços saudáveis",
+        "Com uma conta criada por signup, as 13 telas foram percorridas: dashboard, inbox, contatos, pipelines, broadcasts, automações, flows, agents, notificações, configurações, login, cadastro e convite",
+        "O resultado por tela está em `.projects/i18n-pt-br/verification.md`: texto em inglês encontrado (se houver), data ou número fora do formato brasileiro (se houver) e erros de i18n no console",
+        "Toda sobra encontrada foi corrigida, e a tela afetada foi verificada de novo",
+        "`docs/docker.md` menciona que o idioma é escolhido no `.env.local` e exige rebuild (sem mudar o padrão dos templates)",
+        "`npm run lint`, `npm run typecheck`, `npm test` e `npm run build` passam",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
