@@ -40,7 +40,7 @@ import {
   DollarSign,
   LayoutTemplate,
 } from 'lucide-react';
-import { useLocale, useTranslations } from 'next-intl';
+import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { contactHandle } from '@/lib/whatsapp/wa-identity';
 
 interface ContactDetailViewProps {
@@ -57,6 +57,7 @@ export function ContactDetailView({
   onUpdated,
 }: ContactDetailViewProps) {
   const t = useTranslations('Contacts.detailView');
+  const format = useFormatter();
   const locale = useLocale();
   const supabase = createClient();
   const { accountId, defaultCurrency } = useAuth();
@@ -629,13 +630,7 @@ export function ContactDetailView({
                           </button>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1.5">
-                          {new Date(note.created_at).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          {format.dateTime(new Date(note.created_at), 'dateTimeShort')}
                         </p>
                       </div>
                     ))

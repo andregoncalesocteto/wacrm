@@ -62,7 +62,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
 import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
 import { usePresence } from '@/hooks/use-presence';
@@ -105,14 +105,8 @@ const EDITABLE_ROLES: { value: AccountRole }[] = [
 // drift. The colour scale runs amber (owner — scarce, immutable) →
 // primary (admin) → muted (agent / viewer).
 
-function fmtDate(iso: string): string {
-  // Match the rest of the dashboard's locale-light formatting.
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+function fmtDate(iso: string, format: ReturnType<typeof useFormatter>): string {
+  return format.dateTime(new Date(iso), 'date');
 }
 
 function fmtExpiresIn(iso: string, t: (key: string, values?: Record<string, string | number>) => string): string {
@@ -126,6 +120,7 @@ function fmtExpiresIn(iso: string, t: (key: string, values?: Record<string, stri
 
 export function MembersTab() {
   const t = useTranslations('Settings.members');
+  const format = useFormatter();
   const tRoles = useTranslations('Settings.roles');
   const { user, canManageMembers } = useAuth();
   const { getPresence, getRow, now } = usePresence();
@@ -402,7 +397,7 @@ export function MembersTab() {
                   {/* Joined date stays desktop-only. The mobile row's
                       vertical density makes the joined date noise. */}
                   <div className="hidden sm:block text-right text-xs text-muted-foreground">
-                    {t('joined', { date: fmtDate(member.joined_at) })}
+                    {t('joined', { date: fmtDate(member.joined_at, format) })}
                   </div>
 
                   {/* Actions cluster. On mobile this is its own row
@@ -533,7 +528,7 @@ export function MembersTab() {
                           </span>
                         </div>
                         <p className="mt-0.5 text-xs text-muted-foreground">
-                          {t('created', { date: fmtDate(inv.created_at) })} · {fmtExpiresIn(inv.expires_at, t)}
+                          {t('created', { date: fmtDate(inv.created_at, format) })} · {fmtExpiresIn(inv.expires_at, t)}
                         </p>
                       </div>
 

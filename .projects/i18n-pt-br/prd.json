@@ -233,7 +233,7 @@
         "Verify in browser using dev-browser skill (deal card, detalhe do contato, membros, perfil e chaves de API com `pt` ativo)"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

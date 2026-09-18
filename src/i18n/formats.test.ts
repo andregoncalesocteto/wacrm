@@ -24,10 +24,41 @@ describe('FORMATS', () => {
     expect(f.number(1234.5)).toBe('1,234.5');
   });
 
+  it('en reproduces the old toLocale*String output', () => {
+    const f = fmt('en');
+    const local = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...o });
+    expect(f.dateTime(d, 'date')).toBe(local({ year: 'numeric', month: 'short', day: 'numeric' }).format(d));
+    expect(f.dateTime(d, 'dateLong')).toBe('September 18, 2026');
+    expect(f.dateTime(d, 'dateShort')).toBe('9/18/2026');
+    expect(f.dateTime(d, 'weekdayDayMonth')).toBe('Fri, Sep 18');
+    expect(f.dateTime(d, 'dateTimeShort')).toBe(
+      local({ month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d),
+    );
+    expect(f.dateTime(d, 'dateTimeSeconds')).toBe('9/18/2026, 2:30:00 PM');
+  });
+
+  it('pt uses Brazilian forms for the added presets', () => {
+    const f = fmt('pt');
+    expect(f.dateTime(d, 'dateShort')).toBe('18/09/2026');
+    expect(f.dateTime(d, 'dateTimeShort')).toMatch(/^18\/09\/2026,? 14:30$/);
+    expect(f.dateTime(d, 'dateTimeSeconds')).toMatch(/^18\/09\/2026,? 14:30:00$/);
+    expect(f.dateTime(d, 'dateLong')).toBe('18 de setembro de 2026');
+  });
+
   it('defines every preset for every locale', () => {
     for (const locale of ['en', 'pt', 'es', 'ko'] as const) {
       const f = fmt(locale);
-      for (const name of ['date', 'dateTime', 'time', 'dayMonth']) {
+      for (const name of [
+        'date',
+        'dateTime',
+        'time',
+        'dayMonth',
+        'dateLong',
+        'dateShort',
+        'dateTimeShort',
+        'dateTimeSeconds',
+        'weekdayDayMonth',
+      ]) {
         expect(() => f.dateTime(d, name)).not.toThrow();
       }
       expect(() => f.number(12345, 'compact')).not.toThrow();
