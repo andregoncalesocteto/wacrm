@@ -300,8 +300,8 @@
         "Lint passes"
       ],
       "priority": 18,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser spot-check (pipelines board / flows list in pt) not run: not required by the criteria; text-only change verified by tests."
     },
     {
       "id": "US-018",

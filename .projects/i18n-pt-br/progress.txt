@@ -165,3 +165,11 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - Negative case verified (toLocaleDateString in a component fails lint with the message), then reverted.
   - `Intl.DateTimeFormat()` called WITHOUT `new` (browser-time-zone-provider.tsx, reads resolvedOptions().timeZone) is not caught by the rule; left as is.
 ---
+## 2026-09-18 - US-017
+- Glossary written to glossary.md and applied to messages/pt.json values (106 values): modelo->template (except AI model: aiConfig.model/missingModel, Agents.usage.byModel), disparo->broadcast, CRM "caixa de entrada"->"inbox" ("no inbox"). Deal->negocio and Flow->fluxo were already applied (0 leftovers; only the DB identifier flow_runs.vars mentions "flow"). Email "caixa de entrada" (Signup/ForgotPassword) kept.
+- Files changed: messages/pt.json, glossary.md, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - pt.json round-trips byte-identically with json.dump(ensure_ascii=False, indent=2)+"\n", so a value-only json rewrite is safe there (not for en/ko).
+  - Checks: TZ=UTC npm test 1021 passed, typecheck clean, lint 0 errors / 41 warnings.
+  - Browser spot-check skipped (text-only change).
+---
