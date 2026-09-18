@@ -189,3 +189,11 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - Intl.DisplayNames(locale,{type:'currency'}) para nomes de moeda (en mantem o label curado).
   - Seeds: messages.sender_type in customer|agent|bot; flows.trigger_type in keyword|first_inbound_message|manual.
 ---
+## 2026-09-18 - US-019 (conclusao)
+- ValidationIssue ganhou `code` (54 codigos) e `params` opcional (aditivo); `message` ingles inalterado (rota /activate devolve igual). IssueLine (validation-panel.tsx, usado tambem por flow-builder) traduz `Flows.validation.issues.<code>` com fallback em `message` (tIssue.has). Chaves nos 4 catalogos, inseridas textualmente (en/ko nao fazem round-trip json.dump).
+- Testes novos (validate.codes.test.ts): todo code de validate.ts tem chave nos 4 catalogos, en renderizado com params == message (IntlMessageFormat), params ICU iguais em pt/es/ko.
+- Docker (pt) com fluxo semeado: painel em portugues; seed removido. Checks: lint 0 erros/41 avisos, typecheck, TZ=UTC npm test 1025, build ok.
+- **Learnings for future iterations:**
+  - Numeros grandes (limites) como params viram string para o ICU nao formatar "1.024"; plural com gramatica de verbo deve estar dentro do plural inteiro.
+  - `pkill -f "next dev"` mata o proprio shell da ferramenta; use kill pelo pid do ss.
+---

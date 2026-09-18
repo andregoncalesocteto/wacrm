@@ -332,8 +332,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 20,
-      "passes": false,
-      "notes": "Partial: verificacao Docker feita e sobras corrigidas (ver verification.md). Falta traduzir as mensagens de validacao de fluxos (src/lib/flows/validate.ts, ~60 msgs, painel validation-panel.tsx e rota activate). Depois disso, marcar passes:true."
+      "passes": true,
+      "notes": "Concluida: mensagens de validacao de fluxos traduzidas via code+params (UI), API de ativacao inalterada."
     }
   ]
 }
