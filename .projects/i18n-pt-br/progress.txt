@@ -121,3 +121,11 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - Intl output uses NBSP (U+00A0) between currency and number in pt; normalize in tests.
   - QA account now has a contact "Maria QA" and a USD 1234 deal "Deal QA" in pipeline QA. The deal form's contact/currency/stage are native <select>s; dev-browser fill/click on Sheet buttons may need force:true.
 ---
+## 2026-09-18 - US-012
+- formatRelative(iso, t, locale = 'en'): final branch now uses Intl.DateTimeFormat(locale, options) without hooks. Non-en locales use getFormats(locale).dateTime.date (pt = 05/01/2026); en keeps the numeric "1/5/2026" the branch rendered before (RNF-02), NOT the 'medium' preset ("Jan 5, 2026"). Callers (automations/page.tsx, automations/[id]/logs/page.tsx) pass useLocale().
+- Files changed: src/lib/automations/trigger-meta.ts, trigger-meta.test.ts (new), the two pages, prd.json, progress.txt
+- Browser check done in pt: seeded an automation with last_executed_at 2026-01-05 -> "última 05/01/2026"; seed row deleted afterwards.
+- **Learnings for future iterations:**
+  - US-016 (no-restricted-syntax on `new Intl.DateTimeFormat`): trigger-meta.ts uses it on purpose (pure function, explicit locale) -> add it to the rule's exceptions/ignores in eslint.config.mjs, like currency.ts.
+  - Seeding: automations.user_id must be the auth.users id; account_id comes from profiles.account_id (they differ for the QA account). DB: `docker exec wacrm-db-1 psql -U postgres`.
+---

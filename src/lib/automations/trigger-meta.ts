@@ -1,3 +1,5 @@
+import type { DateTimeFormatOptions } from 'next-intl'
+import { getFormats } from '@/i18n/formats'
 import type { AutomationTriggerType } from '@/types'
 
 export interface TriggerMeta {
@@ -58,9 +60,12 @@ export type RelativeTimeKey = 'never' | 'justNow' | 'minutesAgo' | 'hoursAgo' | 
  */
 export type RelativeTimeTranslator = (key: RelativeTimeKey, values?: { n: number }) => string
 
+const EN_NUMERIC_DATE: DateTimeFormatOptions = { year: 'numeric', month: 'numeric', day: 'numeric' }
+
 export function formatRelative(
   iso: string | null | undefined,
   t: RelativeTimeTranslator,
+  locale = 'en',
 ): string {
   if (!iso) return t('never')
   const then = new Date(iso).getTime()
@@ -70,5 +75,8 @@ export function formatRelative(
   if (diffSec < 3600) return t('minutesAgo', { n: Math.floor(diffSec / 60) })
   if (diffSec < 86400) return t('hoursAgo', { n: Math.floor(diffSec / 3600) })
   if (diffSec < 2_592_000) return t('daysAgo', { n: Math.floor(diffSec / 86400) })
-  return new Date(iso).toLocaleDateString()
+  // Pure function (no hooks): app date preset + explicit locale. `en` keeps the
+  // numeric "9/18/2026" this branch rendered before (RNF-02), not the "medium" preset.
+  const options = locale === 'en' ? EN_NUMERIC_DATE : getFormats(locale).dateTime.date
+  return new Intl.DateTimeFormat(locale, options).format(new Date(iso))
 }

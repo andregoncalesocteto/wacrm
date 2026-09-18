@@ -20,7 +20,7 @@ import {
 
 import { createClient } from "@/lib/supabase/client"
 import { useCan } from "@/hooks/use-can"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import type { Automation } from "@/types"
 import { Button } from "@/components/ui/button"
 import { GatedButton } from "@/components/ui/gated-button"
@@ -280,6 +280,7 @@ function AutomationCard({
 }) {
   const tTriggers = useTranslations("Automations.builder.triggers")
   const tRelative = useTranslations("Automations.relative")
+  const locale = useLocale()
   const meta = triggerMeta(automation.trigger_type)
   const triggerLabel = isKnownTrigger(automation.trigger_type)
     ? tTriggers(`${automation.trigger_type}.label`)
@@ -328,7 +329,7 @@ function AutomationCard({
                 : t("runsPlural", { count: automation.execution_count })}
             </span>
             <span aria-hidden>·</span>
-            <span>{t("lastRun", { time: formatRelative(automation.last_executed_at, tRelative) })}</span>
+            <span>{t("lastRun", { time: formatRelative(automation.last_executed_at, tRelative, locale) })}</span>
           </div>
         </button>
 

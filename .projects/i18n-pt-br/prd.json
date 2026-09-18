@@ -216,7 +216,7 @@
         "Verify in browser using dev-browser skill (lista de automações)"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
