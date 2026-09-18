@@ -50,7 +50,10 @@ Tests are colocated (`foo.ts` + `foo.test.ts`), run in the `node` environment, w
 
 **Frontend.** `src/app/(dashboard)/*` pages with feature components in `src/components/<feature>/`; shadcn/base-ui primitives in `components/ui`. Realtime via `hooks/use-realtime.ts`; permission checks via `hooks/use-can.ts`.
 
-**i18n.** `next-intl`; the locale is a deployment-wide env var (`NEXT_PUBLIC_APP_LOCALE`, default `en`), not per-user. Dictionaries are `messages/{en,es,pt,ko}.json`; `src/i18n/*.test.ts` enforce key parity and ICU-safety, so adding a key to `en.json` means adding it to every locale.
+**i18n.** `next-intl`; the locale is a deployment-wide env var (`NEXT_PUBLIC_APP_LOCALE`, default `en`), not per-user. Dictionaries are `messages/{en,es,pt,ko}.json`; `src/i18n/*.test.ts` enforce key parity and ICU-safety, so adding a key to `en.json` means adding it to every locale. The locale is fixed at build time (client bundles inline it), so changing it needs a rebuild. Rules:
+  - All UI text goes through `useTranslations` (no hardcoded English in JSX, attributes such as `placeholder`/`aria-label`, or toasts). `react/jsx-no-literals` is a `warn` rule in `src/components` and `src/app`; it does not see attributes or expressions, so check those by hand. New keys go in all four catalogues, and Portuguese wording follows `.projects/i18n-pt-br/glossary.md`.
+  - Dates and numbers go through `useFormatter()` with the named presets in `src/i18n/formats.ts` (`format.dateTime(d, 'date')`, `format.number(n, 'compact')`). Never call `toLocale*String`, `new Intl.DateTimeFormat` or `new Intl.NumberFormat` directly: that is an `error` rule (`no-restricted-syntax`). Pure non-React functions take a `locale` parameter (and pass it to `date-fns`); `currency.ts` and `trigger-meta.ts` are the only exceptions.
+  - The client `NextIntlClientProvider` uses the browser time zone (`src/components/i18n/browser-time-zone-provider.tsx`), while SSR uses the server zone.
 
 ## Conventions
 

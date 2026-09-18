@@ -173,3 +173,9 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - Checks: TZ=UTC npm test 1021 passed, typecheck clean, lint 0 errors / 41 warnings.
   - Browser spot-check skipped (text-only change).
 ---
+## 2026-09-18 - US-018
+- CLAUDE.md `**i18n.**` paragraph extended (only that paragraph): build-time locale, useTranslations rule + jsx-no-literals warn, useFormatter presets + no-restricted-syntax error (currency.ts/trigger-meta.ts exceptions, locale param for pure functions), four-catalogue rule, glossary pointer, browser vs server time zone.
+- Files changed: CLAUDE.md, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Docs-only story; typecheck run, browser check not applicable.
+---
