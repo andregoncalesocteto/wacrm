@@ -156,3 +156,12 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - Intl date+time presets insert a comma ("Sep 18, 2026, 11:30"), old date-fns patterns had none; formatDateAndTime composes date + space + time to keep en identical.
   - date-fns pt-BR without addSuffix reads "cerca de 3 horas" (with suffix "há cerca de 3 horas").
 ---
+
+## 2026-09-18 - US-016
+- ESLint `error` rule in eslint.config.mjs for src/**/*.{ts,tsx}: no-restricted-properties (toLocale*String) + no-restricted-syntax (new Intl.DateTimeFormat/NumberFormat); messages point to useFormatter().
+- Exceptions (scoped override, each commented): *.test.ts(x), src/lib/currency.ts, src/lib/automations/trigger-meta.ts (explicit locale param), src/lib/i18n/browser-time-zone.ts (time zone validity probe).
+- Files changed: eslint.config.mjs, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Negative case verified (toLocaleDateString in a component fails lint with the message), then reverted.
+  - `Intl.DateTimeFormat()` called WITHOUT `new` (browser-time-zone-provider.tsx, reads resolvedOptions().timeZone) is not caught by the rule; left as is.
+---
