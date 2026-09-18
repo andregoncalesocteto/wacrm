@@ -25,3 +25,12 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - Keys are inserted in the same position as en.json (parity test only checks presence + ICU args, not order).
   - After this, `TZ=UTC npm test` is fully green (86 files / 1001 tests); lint stays at 41 warnings.
 ---
+## 2026-09-18 - US-002
+- quick-replies-manager.tsx now uses useTranslations("Settings.quickReplies") for all visible text (title, description, buttons, empty state, dialog, placeholders, confirm, toasts); 17 keys added to en/pt/es/ko.
+- Files changed: src/components/settings/quick-replies-manager.tsx, messages/{en,pt,es,ko}.json, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Settings sections deep-link via `/settings?tab=<id>` (e.g. tab=quick-replies), not `section`.
+  - en.json/ko.json have quirky whitespace; do NOT rewrite them via json.dump (huge diff) - insert the block textually.
+  - Include `t` in useCallback deps when translating inside callbacks.
+  - Browser check done in pt (list, empty state, dialog, validation toast). The nested InteractiveBuilder is a separate component (not this story).
+---

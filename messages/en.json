@@ -1890,6 +1890,27 @@
       "editDoc": "Edit",
       "deleteDoc": "Delete",
       "loading": "Loading…"
+    },
+    "quickReplies": {
+      "title": "Quick replies",
+      "description": "Reusable snippets — plain text or a saved interactive message — that agents can insert from the inbox composer.",
+      "newButton": "New quick reply",
+      "empty": "No quick replies yet. Create one to reuse it across conversations.",
+      "editTitle": "Edit quick reply",
+      "newTitle": "New quick reply",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Business hours",
+      "kindText": "Text",
+      "kindInteractive": "Interactive",
+      "contentPlaceholder": "The message text to insert",
+      "cancel": "Cancel",
+      "save": "Save",
+      "confirmDelete": "Delete this quick reply?",
+      "toastNameRequired": "Give the quick reply a name.",
+      "toastSaveFailed": "Couldn't save the quick reply.",
+      "toastUpdated": "Quick reply updated.",
+      "toastCreated": "Quick reply created.",
+      "toastDeleteFailed": "Couldn't delete the quick reply."
     }
   },
   "SignupPage": {

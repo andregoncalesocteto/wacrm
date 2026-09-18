@@ -1878,6 +1878,27 @@
       "editDoc": "Editar",
       "deleteDoc": "Excluir",
       "loading": "Carregando…"
+    },
+    "quickReplies": {
+      "title": "Respostas rápidas",
+      "description": "Trechos reutilizáveis — texto simples ou uma mensagem interativa salva — que os atendentes podem inserir no campo de mensagem da caixa de entrada.",
+      "newButton": "Nova resposta rápida",
+      "empty": "Nenhuma resposta rápida ainda. Crie uma para reutilizá-la em várias conversas.",
+      "editTitle": "Editar resposta rápida",
+      "newTitle": "Nova resposta rápida",
+      "nameLabel": "Nome",
+      "namePlaceholder": "ex.: Horário de atendimento",
+      "kindText": "Texto",
+      "kindInteractive": "Interativa",
+      "contentPlaceholder": "O texto da mensagem a inserir",
+      "cancel": "Cancelar",
+      "save": "Salvar",
+      "confirmDelete": "Excluir esta resposta rápida?",
+      "toastNameRequired": "Dê um nome à resposta rápida.",
+      "toastSaveFailed": "Não foi possível salvar a resposta rápida.",
+      "toastUpdated": "Resposta rápida atualizada.",
+      "toastCreated": "Resposta rápida criada.",
+      "toastDeleteFailed": "Não foi possível excluir a resposta rápida."
     }
   },
   "SignupPage": {

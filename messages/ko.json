@@ -1890,6 +1890,27 @@
       "editDoc": "수정",
       "deleteDoc": "삭제",
       "loading": "불러오는 중…"
+    },
+    "quickReplies": {
+      "title": "빠른 답장",
+      "description": "재사용 가능한 문구(일반 텍스트 또는 저장된 인터랙티브 메시지)로, 상담원이 받은편지함 작성창에서 삽입할 수 있습니다.",
+      "newButton": "새 빠른 답장",
+      "empty": "아직 빠른 답장이 없습니다. 하나를 만들어 여러 대화에서 재사용하세요.",
+      "editTitle": "빠른 답장 편집",
+      "newTitle": "새 빠른 답장",
+      "nameLabel": "이름",
+      "namePlaceholder": "예: 영업 시간",
+      "kindText": "텍스트",
+      "kindInteractive": "인터랙티브",
+      "contentPlaceholder": "삽입할 메시지 텍스트",
+      "cancel": "취소",
+      "save": "저장",
+      "confirmDelete": "이 빠른 답장을 삭제할까요?",
+      "toastNameRequired": "빠른 답장의 이름을 입력하세요.",
+      "toastSaveFailed": "빠른 답장을 저장하지 못했습니다.",
+      "toastUpdated": "빠른 답장이 업데이트되었습니다.",
+      "toastCreated": "빠른 답장이 생성되었습니다.",
+      "toastDeleteFailed": "빠른 답장을 삭제하지 못했습니다."
     }
   },
   "SignupPage": {
