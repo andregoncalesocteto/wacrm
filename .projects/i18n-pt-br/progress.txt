@@ -18,3 +18,10 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   Test account created via signup (email autoconfirm is on).
 
 ---
+## 2026-09-18 - US-001
+- Added the 6 missing Contacts.importModal keys (resultInvalidPhone[_plural], failedRowsHeading, unknownReason, toastInvalidPhone[_plural]) to messages/pt.json and messages/es.json.
+- Files changed: messages/pt.json, messages/es.json, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Keys are inserted in the same position as en.json (parity test only checks presence + ICU args, not order).
+  - After this, `TZ=UTC npm test` is fully green (86 files / 1001 tests); lint stays at 41 warnings.
+---
