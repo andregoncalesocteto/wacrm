@@ -498,7 +498,7 @@ export function ContactDetailView({
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-muted-foreground text-xs">
-                      {t('phone')} <span className="text-red-400">*</span>
+                      {t('phone')} <span className="text-red-400">{"*"}</span>
                     </Label>
                     <Input
                       value={editPhone}

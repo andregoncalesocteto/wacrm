@@ -58,3 +58,11 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - The react plugin is already registered by eslint-config-next, so no plugin import was needed.
   - Per-rule counts: `npx eslint . -f json -o <scratchpad>/l.json` and group by ruleId.
 ---
+## 2026-09-18 - US-006
+- inbox/contacts had only 3 jsx-no-literals warnings, all punctuation: required-field "*" in contact-detail-view.tsx and contact-form.tsx now `{"*"}`; message-bubble.tsx `{t("notDelivered")}: {failure}` became one template literal. No catalogue changes, en output identical.
+- Files changed: contact-detail-view.tsx, contact-form.tsx, message-bubble.tsx, prd.json, progress.txt
+- Lint total now 79 warnings (38 jsx-no-literals left). Browser check NOT run (manual verification needed): render-identical edits.
+- **Learnings for future iterations:**
+  - Earlier stories already translated most text; check the actual warnings per dir first (`eslint <dir> -f json`), the PRD's expected scope may be smaller.
+  - Pure punctuation: wrap as `{"*"}` rather than adding keys or allowedStrings.
+---

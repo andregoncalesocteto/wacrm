@@ -321,7 +321,7 @@ export function MessageBubble({
           className="mt-0.5 px-1 text-[10px] leading-tight text-muted-foreground"
           title={failure}
         >
-          {t("notDelivered")}: {failure}
+          {`${t("notDelivered")}: ${failure}`}
         </p>
       )}
       {reactions && reactions.length > 0 && onToggleReaction && (
