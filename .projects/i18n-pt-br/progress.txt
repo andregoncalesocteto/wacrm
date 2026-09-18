@@ -1,0 +1,20 @@
+# Ralph Progress Log — ralph/i18n-pt-br
+Started: 2026-09-18
+PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (acceptanceCriteria are the bar).
+
+## Codebase Patterns
+- Run project commands from the repo root (cwd can drift into .projects/…).
+- Quality checks: `npm run typecheck`, `npm run lint`, `TZ=UTC npm test` (CI runs in UTC).
+  `src/lib/dashboard/date-utils.test.ts` (mondayIndex, 2 tests) fails on machines with a non-UTC TZ
+  (e.g. -03) because it builds `new Date("2026-05-18")` (UTC midnight). That is a pre-existing
+  env issue, NOT part of this feature — do not edit that test; use TZ=UTC.
+- Baseline before US-001: typecheck clean; lint 0 errors / 41 warnings (none from react/jsx-no-literals yet);
+  `TZ=UTC npm test` fails only messages.test.ts pt/es "covers every en.json key" (6 keys each).
+- i18n: next-intl v4.13.5; locale = NEXT_PUBLIC_APP_LOCALE (default en); catalogues in messages/{en,pt,es,ko}.json.
+  Every new key must exist in all four catalogues (src/i18n/messages.test.ts parity + ICU args).
+- Browser verification: a dev server in pt is expected at http://localhost:3100
+  (`NEXT_PUBLIC_APP_LOCALE=pt npx next dev -p 3100`, started outside the stories, Supabase stack at
+  http://supabase.localtest.me:8000 is up via docker compose). The docker app on :3000 is the pre-change `en` build.
+  Test account created via signup (email autoconfirm is on).
+
+---
