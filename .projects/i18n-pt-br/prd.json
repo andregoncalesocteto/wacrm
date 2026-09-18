@@ -250,7 +250,7 @@
         "Verify in browser using dev-browser skill (dashboard, broadcasts, contatos, notificações, flows, automações e convite com `pt` ativo; console do navegador sem erro de hidratação)"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

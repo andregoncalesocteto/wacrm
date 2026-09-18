@@ -139,3 +139,12 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - The existing 'dateTime' preset (24h) is not what old en printed (12h); use 'dateTimeShort' for that site. Contact detail is opened from the /contacts list (no /contacts/[id] route).
   - Deal expected_close_date (date-only) is parsed with new Date(str) -> UTC midnight, shows 24/12 in a -03 browser for 2026-12-25; pre-existing behaviour, identical in en.
 ---
+## 2026-09-18 - US-014
+- No toLocale*String left in src/app. dashboard (metric values + deltaLabel now take the formatter), broadcasts list/detail (dateShort, dateTimeSeconds, format.number in StatCard/FunnelChart), contacts (en-US hard-code -> 'date' preset, follows app locale), join/[token] ('date'). No new presets: en output identical (list/detail "9/18/2026", recipients "9/18/2026, 11:30:45 AM", contacts/join "Sep 18, 2026").
+- R3: all five files are 'use client' pages that render dates only after client-side fetches (supabase / peek fetch), so no SSR date rendering; no post-mount workaround needed. notifications, flows/[id]/runs, automations (+logs) had no toLocale* left (earlier stories/formatRelative).
+- Files: 5 pages under src/app, prd.json, progress.txt
+- Browser (pt, :3100, browser tz -03): dashboard, broadcasts list "18/09/2026", detail "Criado em 18/09/2026" + recipient "18/09/2026, 11:30:45", contacts "18/09/2026", join "Link válido até 25/12/2026", notifications empty state; no hydration warnings. Not exercised: notifications with items, flows runs, automation logs (no date formatting from this story there). Seeded broadcast/recipient/invitation removed.
+- **Learnings for future iterations:**
+  - broadcasts.status check allows draft|scheduled|sending|sent|failed; invitation role enum owner|admin|agent|viewer; token_hash = sha256 hex of the token (peek: /api/invitations/<token>/peek).
+  - Contacts date column is hidden below the lg breakpoint: setViewportSize 1600 before checking. dev-browser waitForTimeout 5s per page; keep scripts under 30s.
+---
