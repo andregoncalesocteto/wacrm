@@ -64,7 +64,7 @@
         "Verify in browser using dev-browser skill (abrir um diálogo e um painel lateral com `pt` ativo)"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

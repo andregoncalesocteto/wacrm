@@ -2055,5 +2055,9 @@
   },
   "DashboardShell": {
     "loading": "Loading..."
+  },
+  "Ui": {
+    "close": "Close",
+    "gatedReadOnly": "Read-only — your role can't {reason}"
   }
 }

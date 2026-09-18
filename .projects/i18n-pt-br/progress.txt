@@ -41,3 +41,12 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - Before adding a key, grep the catalogues: earlier work may already have the key and only the call site is missed.
   - The fallback `'network error'` reason string in that catch is still a hardcoded English literal (not in scope of this story).
 ---
+## 2026-09-18 - US-004
+- dialog.tsx, sheet.tsx (sr-only "Close" and DialogFooter "Close") and gated-button.tsx (read-only tooltip) now use useTranslations("Ui"); new namespace Ui {close, gatedReadOnly({reason})} appended at the end of en/pt/es/ko (en text identical to before).
+- Files changed: src/components/ui/{dialog,sheet,gated-button}.tsx, messages/{en,pt,es,ko}.json, prd.json, progress.txt
+- Browser check done in pt: quick-replies dialog and pipeline deal Sheet both show "Fechar".
+- **Learnings for future iterations:**
+  - Shared ui/* components can call useTranslations("Ui") directly (root layout provides NextIntlClientProvider).
+  - GatedButton's `gateReason` is still an English verb phrase passed by callers ("create broadcasts"); the pt sentence is "Somente leitura — seu perfil não pode {reason}", so callers' gateReason must be translated in their own stories or it reads mixed.
+  - dev-browser: a scripts timeout is 30s; split steps into small scripts. /pipelines needs a pipeline before "Adicionar negócio" opens the deal Sheet (I created one "QA" pipeline in the QA account).
+---

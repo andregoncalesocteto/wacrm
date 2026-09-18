@@ -2043,5 +2043,9 @@
   },
   "DashboardShell": {
     "loading": "Carregando..."
+  },
+  "Ui": {
+    "close": "Fechar",
+    "gatedReadOnly": "Somente leitura — seu perfil não pode {reason}"
   }
 }
