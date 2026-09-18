@@ -18,8 +18,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { format } from "date-fns";
 import { useFormatter, useTranslations } from "next-intl";
+import { formatDateAndTime } from "@/lib/i18n/format-date-time";
 import { contactHandle } from "@/lib/whatsapp/wa-identity";
 
 interface ContactSidebarProps {
@@ -296,7 +296,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                       {note.note_text}
                     </p>
                     <p className="mt-1 text-[10px] text-muted-foreground">
-                      {format(new Date(note.created_at), "MMM d, yyyy HH:mm")}
+                      {formatDateAndTime(intlFormat, new Date(note.created_at))}
                     </p>
                   </div>
                 ))}

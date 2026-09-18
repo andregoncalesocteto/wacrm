@@ -9,6 +9,7 @@ export type FormatPresets = {
     | 'date'
     | 'dateTime'
     | 'time'
+    | 'timeShort'
     | 'dayMonth'
     | 'dateLong'
     | 'dateShort'
@@ -26,6 +27,9 @@ const time24: DateTimeFormatOptions = {
   hourCycle: 'h23',
 };
 
+// 12h clock without seconds: what date-fns "p" printed in en ("11:30 AM").
+const time12: DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+
 const numbers: FormatPresets['number'] = {
   integer: { maximumFractionDigits: 0 },
   compact: { notation: 'compact', maximumFractionDigits: 1 },
@@ -41,6 +45,7 @@ const medium = (dayMonth: DateTimeFormatOptions): FormatPresets['dateTime'] => (
   date: { dateStyle: 'medium' },
   dateTime: { dateStyle: 'medium', ...time24 },
   time: time24,
+  timeShort: time12,
   dayMonth,
   dateLong: { dateStyle: 'long' },
   dateShort: numericDate,
@@ -69,6 +74,7 @@ export const FORMATS: Record<'en' | 'pt' | 'es' | 'ko', FormatPresets> = {
       date: { day: '2-digit', month: '2-digit', year: 'numeric' },
       dateTime: { day: '2-digit', month: '2-digit', year: 'numeric', ...time24 },
       time: time24,
+      timeShort: time24,
       dayMonth: { day: '2-digit', month: '2-digit' },
       dateLong: { day: 'numeric', month: 'long', year: 'numeric' },
       dateShort: { day: '2-digit', month: '2-digit', year: 'numeric' },

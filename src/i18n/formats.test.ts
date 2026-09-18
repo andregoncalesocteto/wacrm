@@ -1,5 +1,6 @@
 import { createFormatter } from 'next-intl';
 import { describe, expect, it } from 'vitest';
+import { formatDateAndTime } from '@/lib/i18n/format-date-time';
 import { FORMATS, getFormats } from './formats';
 
 const d = new Date('2026-09-18T14:30:00Z');
@@ -37,6 +38,20 @@ describe('FORMATS', () => {
     expect(f.dateTime(d, 'dateTimeSeconds')).toBe('9/18/2026, 2:30:00 PM');
   });
 
+  it('en composes the old date-fns patterns (no comma, 24h / AM-PM)', () => {
+    const f = fmt('en');
+    expect(formatDateAndTime(f, d)).toBe('Sep 18, 2026 14:30');
+    expect(formatDateAndTime(f, d, 'timeShort')).toBe('Sep 18, 2026 2:30 PM');
+    expect(f.dateTime(d, 'dateLong')).toBe('September 18, 2026');
+    expect(f.dateTime(d, 'dayMonth')).toBe('Sep 18');
+  });
+
+  it('pt composes Brazilian date and 24h time', () => {
+    const f = fmt('pt');
+    expect(formatDateAndTime(f, d)).toBe('18/09/2026 14:30');
+    expect(formatDateAndTime(f, d, 'timeShort')).toBe('18/09/2026 14:30');
+  });
+
   it('pt uses Brazilian forms for the added presets', () => {
     const f = fmt('pt');
     expect(f.dateTime(d, 'dateShort')).toBe('18/09/2026');
@@ -52,6 +67,7 @@ describe('FORMATS', () => {
         'date',
         'dateTime',
         'time',
+        'timeShort',
         'dayMonth',
         'dateLong',
         'dateShort',

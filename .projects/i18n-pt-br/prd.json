@@ -268,8 +268,8 @@
         "Verify in browser using dev-browser skill (inbox, lista de conversas, notificações e runs de flows com `pt` ativo)"
       ],
       "priority": 16,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser (pt): inbox list, thread separators, notifications, flow runs verified. Not exercised in browser: media-lightbox timestamp, contact-sidebar note date, ai-usage chart labels (same helpers, covered by unit tests)."
     },
     {
       "id": "US-016",

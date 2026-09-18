@@ -148,3 +148,11 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - broadcasts.status check allows draft|scheduled|sending|sent|failed; invitation role enum owner|admin|agent|viewer; token_hash = sha256 hex of the token (peek: /api/invitations/<token>/peek).
   - Contacts date column is hidden below the lg breakpoint: setViewportSize 1600 before checking. dev-browser waitForTimeout 5s per page; keep scripts under 30s.
 ---
+## 2026-09-18 - US-015
+- date-fns relative time now gets { locale: getDateFnsLocale(useLocale()) } (conversation-list, notifications, flows runs). English-order absolute dates moved to useFormatter: message-thread separator "MMMM d, yyyy" -> 'dateLong' (formatter passed as param to formatDateSeparator), ai-usage "MMM d" -> 'dayMonth', contact-sidebar/media-lightbox "MMM d, yyyy HH:mm" and runs "PP p" -> new helper formatDateAndTime(formatter, date, 'time'|'timeShort'). New preset 'timeShort' (en 12h "2:30 PM", others 24h/locale). Left: HH:mm, HH:mm:ss, yyyy-MM-dd, filename.ts.
+- Files: src/lib/i18n/format-date-time.ts (new), src/i18n/formats{,.test}.ts, 7 components/pages, prd.json, progress.txt
+- Browser (pt): list "cerca de 3 horas", notifications "há cerca de 3 horas", thread separators "13 de setembro de 2026"/Ontem/Hoje, runs "Iniciada 18/09/2026 13:28 · durou cerca de 3 horas". Seeds removed.
+- **Learnings for future iterations:**
+  - Intl date+time presets insert a comma ("Sep 18, 2026, 11:30"), old date-fns patterns had none; formatDateAndTime composes date + space + time to keep en identical.
+  - date-fns pt-BR without addSuffix reads "cerca de 3 horas" (with suffix "há cerca de 3 horas").
+---
