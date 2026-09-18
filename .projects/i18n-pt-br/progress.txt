@@ -94,3 +94,12 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - Logged-in sessions redirect /login,/signup: clear cookies (page.context().clearCookies()) in dev-browser before checking them.
   - Left: thrown Errors only console-logged (flows), server `{error}` strings, static root metadata description (not locale-aware).
 ---
+## 2026-09-18 - US-010
+- Added src/i18n/formats.ts (FORMATS + getFormats: presets date/dateTime/time/dayMonth and integer/compact per locale; pt numeric dd/mm/aaaa 24h, others dateStyle medium), wired `formats` in src/i18n/request.ts, added src/lib/i18n/date-fns-locale.ts (getDateFnsLocale) with tests for both. No call sites migrated.
+- Files changed: src/i18n/{formats,formats.test,request}.ts, src/lib/i18n/date-fns-locale{,.test}.ts, notes.md, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - The layout's NextIntlClientProvider DOES inherit `formats` (server variant resolves undefined props from request config); validated on :3100 with a temp client page (SSR HTML showed pt presets, no FORMATTING_ERROR). No change to layout.tsx. See notes.md.
+  - WARNING (R3): the provider also inherits `timeZone` = server/container tz (request.ts sets none), so client useFormatter formats in the SERVER tz, not the browser's (14:30Z rendered 11:30 on a -03 host). Decide before migrating call sites (pass browser timeZone / set it explicitly).
+  - Use `DateTimeFormatOptions`/`NumberFormatOptions` types from 'next-intl', not Intl.* (typecheck fails on timeZoneName). `createFormatter` from 'next-intl' works in vitest for preset tests.
+  - Presets are used by name: format.dateTime(d, 'date'), format.number(n, 'compact'). Plain format.number(n) uses locale defaults.
+---
