@@ -15,6 +15,17 @@ const eslintConfig = defineConfig([
     // Vendored minified opus-recorder encoder worker (served statically).
     "public/opus/**",
   ]),
+  // i18n: flag hardcoded text in JSX (ADR-001). Warn only; promote to error at zero warnings.
+  {
+    files: ["src/components/**/*.{ts,tsx}", "src/app/**/*.{ts,tsx}"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "react/jsx-no-literals": [
+        "warn",
+        { noStrings: false, allowedStrings: ["·", "/", "—", "•"] },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

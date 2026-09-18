@@ -50,3 +50,11 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - GatedButton's `gateReason` is still an English verb phrase passed by callers ("create broadcasts"); the pt sentence is "Somente leitura — seu perfil não pode {reason}", so callers' gateReason must be translated in their own stories or it reads mixed.
   - dev-browser: a scripts timeout is 30s; split steps into small scripts. /pipelines needs a pipeline before "Adicionar negócio" opens the deal Sheet (I created one "QA" pipeline in the QA account).
 ---
+## 2026-09-18 - US-005
+- eslint.config.mjs: new block enabling react/jsx-no-literals as warn for src/components/** and src/app/** (tests ignored), allowedStrings ["·","/","—","•"]. Baseline recorded in .projects/i18n-pt-br/lint-baseline.md (41 new warnings: app 10, settings 13, agents 2, automations 3, broadcasts 5, contacts 2, flows 5, inbox 1).
+- Files changed: eslint.config.mjs, lint-baseline.md, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Lint total is now 82 warnings (41 old + 41 jsx-no-literals), 0 errors. Later stories should reduce only the jsx-no-literals half.
+  - The react plugin is already registered by eslint-config-next, so no plugin import was needed.
+  - Per-rule counts: `npx eslint . -f json -o <scratchpad>/l.json` and group by ruleId.
+---
