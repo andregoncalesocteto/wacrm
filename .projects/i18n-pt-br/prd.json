@@ -333,7 +333,7 @@
       ],
       "priority": 20,
       "passes": false,
-      "notes": ""
+      "notes": "Partial: verificacao Docker feita e sobras corrigidas (ver verification.md). Falta traduzir as mensagens de validacao de fluxos (src/lib/flows/validate.ts, ~60 msgs, painel validation-panel.tsx e rota activate). Depois disso, marcar passes:true."
     }
   ]
 }

@@ -85,6 +85,11 @@ deletes them).
   `docker compose --env-file .env.local up --build -d`. This includes
   `NEXT_PUBLIC_APP_LOCALE` (`en | ko | pt | es`), so the UI language is
   fixed per image.
+- The UI language is chosen by `NEXT_PUBLIC_APP_LOCALE` in `.env.local`
+  (e.g. `NEXT_PUBLIC_APP_LOCALE=pt`). After changing it, run
+  `up --build` again so the new language is baked into the image. The
+  templates (`.env.docker.example`, `.env.local.example`) keep `en` as the
+  default.
 - Everything else (`SUPABASE_SERVICE_ROLE_KEY`, `ENCRYPTION_KEY`,
   `META_APP_SECRET`, …) is read at **runtime** from `.env.local` via
   `env_file` and is never baked into the image — safe to change with

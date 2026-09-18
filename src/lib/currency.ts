@@ -46,6 +46,20 @@ export const CURRENCIES: CurrencyOption[] = [
 ];
 
 /**
+ * Localised currency name for pickers ("Dólar americano" in pt). `en` keeps
+ * the curated `label` so its output stays unchanged; other locales use
+ * Intl.DisplayNames and fall back to the label.
+ */
+export function currencyName(option: CurrencyOption, locale = "en"): string {
+  if (locale === "en") return option.label;
+  try {
+    return new Intl.DisplayNames(locale, { type: "currency" }).of(option.code) ?? option.label;
+  } catch {
+    return option.label;
+  }
+}
+
+/**
  * Format a deal value as a currency string. Whole-number output
  * (no minor units) — deal values are tracked to the dollar across
  * the app. `currency` defaults to USD so callers with nothing better

@@ -540,6 +540,13 @@
       "pipelineName": "Nombre del pipeline",
       "pipelineNamePlaceholder": "p. ej. Ventas corporativas",
       "defaultStagesDesc": "Las etapas predeterminadas (Nuevo lead → Ganado) se crearán automáticamente.",
+      "defaultStages": {
+        "newLead": "Nuevo lead",
+        "qualified": "Calificado",
+        "proposalSent": "Propuesta enviada",
+        "negotiation": "Negociación",
+        "won": "Ganado"
+      },
       "cancel": "Cancelar",
       "creating": "Creando...",
       "createPipelineBtn": "Crear pipeline",
@@ -858,6 +865,24 @@
       "create": "Crear automatización",
       "retry": "Reintentar",
       "templatesTitle": "Plantillas de inicio rápido",
+      "templates": {
+        "welcome_message": {
+          "name": "Mensaje de bienvenida",
+          "description": "Responde automáticamente a los contactos nuevos con un saludo."
+        },
+        "out_of_office": {
+          "name": "Fuera de horario",
+          "description": "Responde automáticamente fuera del horario para que nadie quede esperando."
+        },
+        "lead_qualifier": {
+          "name": "Calificación de leads",
+          "description": "Haz preguntas de calificación para filtrar los leads entrantes."
+        },
+        "follow_up_reminder": {
+          "name": "Recordatorio de seguimiento",
+          "description": "Envía un recordatorio si el contacto no responde en 24 horas."
+        }
+      },
       "emptyTitle": "Aún no hay automatizaciones",
       "emptyDesc": "Elige una plantilla de arriba o crea una desde cero.",
       "runs": "{count} ejecución",
@@ -1030,6 +1055,13 @@
       "kindCondition": "Condición",
       "kindWait": "Espera",
       "kindAction": "Acción",
+      "preview": {
+        "noText": "aún sin texto",
+        "noBody": "aún sin cuerpo",
+        "pickTemplate": "elige una plantilla",
+        "noUrl": "sin URL",
+        "when": "cuando {subject}"
+      },
       "delete": "Eliminar",
       "config": {
         "messageText": "Texto del mensaje",
@@ -1794,8 +1826,17 @@
     },
     "apiKeys": {
       "title": "Claves de API",
-      "description": "Las claves autentican la API REST pública (<apiCode>/api/v1</apiCode>) para que construyas tus propias automatizaciones. Envíalas como <headerCode>Authorization: Bearer &lt;key&gt;</headerCode>.",
+      "description": "Las claves autentican la API REST pública (<apiCode>/api/v1</apiCode>) para que construyas tus propias automatizaciones. Envíalas como <headerCode>Authorization: Bearer '<'key'>'</headerCode>.",
       "newApiKey": "Nueva clave de API",
+      "scopeDescriptions": {
+        "messages:send": "Enviar mensajes de WhatsApp",
+        "messages:read": "Leer mensajes y su estado de entrega",
+        "contacts:read": "Listar y leer contactos",
+        "contacts:write": "Crear y actualizar contactos",
+        "conversations:read": "Listar y leer conversaciones",
+        "broadcasts:send": "Lanzar campañas de difusión",
+        "webhooks:manage": "Registrar y administrar webhooks de eventos salientes"
+      },
       "noApiKeys": "Aún no hay claves de API.",
       "createOneHint": "Haz clic en <bold>Nueva clave de API</bold> para crear una.",
       "askAdminHint": "Pide a un administrador que cree una.",

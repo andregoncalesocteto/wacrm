@@ -179,3 +179,13 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
 - **Learnings for future iterations:**
   - Docs-only story; typecheck run, browser check not applicable.
 ---
+## 2026-09-18 - US-019 (partial)
+- .env.local em pt, stack Docker reconstruida e saudavel; 13 telas percorridas, resultado em verification.md. Corrigido: templates de automacao (lista/novo), preview dos passos do builder, etapas padrao de pipeline, modo/moeda na rail e overview (currencyName), descricoes de escopos de API key, "none" do Cabecalho no dialog de template, `&lt;key&gt;` (escape ICU `'<'key'>'`). docs/docker.md ganhou a nota do idioma via .env.local + rebuild.
+- Restante (passes segue false): mensagens de validacao de fluxos em ingles (src/lib/flows/validate.ts, ~60 msgs, usadas tambem pela rota de ativacao).
+- Checks: lint 0 erros/41 avisos, typecheck ok, TZ=UTC npm test 1021 ok, npm run build ok.
+- **Learnings for future iterations:**
+  - base-ui SelectValue mostra o value cru: passe o label como children (`<SelectValue>{label}</SelectValue>`).
+  - Em ICU, `&lt;` nao e decodificado; escape com apostrofo (`'<'`).
+  - Intl.DisplayNames(locale,{type:'currency'}) para nomes de moeda (en mantem o label curado).
+  - Seeds: messages.sender_type in customer|agent|bot; flows.trigger_type in keyword|first_inbound_message|manual.
+---
