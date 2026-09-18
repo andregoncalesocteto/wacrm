@@ -318,6 +318,9 @@
   },
   "Contacts": {
     "page": {
+      "filterByTag": "Filtrar por {name}",
+      "removeTagFilter": "Remover filtro {name}",
+      "selectContact": "Selecionar {name}",
       "title": "Contatos",
       "subtitle": "Gerencie sua lista de contatos. {count} contatos no total.",
       "subtitleZero": "Gerencie sua lista de contatos.",
@@ -849,6 +852,7 @@
   },
   "Automations": {
     "list": {
+      "loadError": "Falha ao carregar automações",
       "title": "Automações",
       "subtitle": "Crie fluxos de trabalho que reagem automaticamente a eventos do WhatsApp®.",
       "create": "Criar automação",

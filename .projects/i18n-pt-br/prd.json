@@ -145,8 +145,8 @@
         "Verify in browser using dev-browser skill (login, cadastro, página de convite e notificações com `pt` ativo)"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser check in pt done for login, signup, forgot-password, /join/<invalid token> (not-found state) and notifications (empty state). Not checked: /join with a VALID token (needs a real invite) and the notification list with items."
     },
     {
       "id": "US-010",

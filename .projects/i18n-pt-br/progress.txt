@@ -85,3 +85,12 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - Left: en_US language fallbacks (data codes), interactive-preview English defaults (callers pass translated labels), flows/shared.tsx slugSeed (slug seeds, not UI), lib constants.
   - Browser: pt pages render; deep states not exercised.
 ---
+## 2026-09-18 - US-009
+- Confirmed zero react/jsx-no-literals warnings in the whole repo (lint total 41 = old baseline). src/app already had no literal JSX text; audited attributes/expressions: contacts page aria-labels (Filter by / Remove filter / Select contact) and automations list load-error fallback translated. New keys Contacts.page.{filterByTag,removeTagFilter,selectContact}, Automations.list.loadError in all 4 catalogues.
+- Files changed: src/app/(dashboard)/{contacts,automations}/page.tsx, messages/{en,pt,es,ko}.json, prd.json, progress.txt
+- Browser (pt): login, signup, forgot-password, /join/<invalid> ("Convite não encontrado"), notifications empty state OK. Manual check needed: /join with a valid token; notification list with items.
+- **Learnings for future iterations:**
+  - Adding `t` use inside a component-level function (e.g. load()) makes react-hooks/exhaustive-deps warn; keep the translation at render time (store "" and render `error || t(...)`).
+  - Logged-in sessions redirect /login,/signup: clear cookies (page.context().clearCookies()) in dev-browser before checking them.
+  - Left: thrown Errors only console-logged (flows), server `{error}` strings, static root metadata description (not locale-aware).
+---

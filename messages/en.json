@@ -318,6 +318,9 @@
   },
   "Contacts": {
     "page": {
+      "filterByTag": "Filter by {name}",
+      "removeTagFilter": "Remove {name} filter",
+      "selectContact": "Select {name}",
       "title": "Contacts",
       "subtitle": "Manage your contact list. {count} total contacts.",
       "subtitleZero": "Manage your contact list.",
@@ -849,6 +852,7 @@
   },
   "Automations": {
     "list": {
+      "loadError": "Failed to load automations",
       "title": "Automations",
       "subtitle": "Build workflows that react to WhatsApp® events automatically.",
       "create": "Create Automation",

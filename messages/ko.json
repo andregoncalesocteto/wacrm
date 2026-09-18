@@ -318,6 +318,9 @@
   },
   "Contacts": {
     "page": {
+      "filterByTag": "{name}(으)로 필터",
+      "removeTagFilter": "{name} 필터 제거",
+      "selectContact": "{name} 선택",
       "title": "연락처",
       "subtitle": "연락처 목록을 관리하세요. 전체 연락처 {count}개.",
       "subtitleZero": "연락처 목록을 관리하세요.",
@@ -849,6 +852,7 @@
   },
   "Automations": {
     "list": {
+      "loadError": "자동화를 불러오지 못했습니다",
       "title": "자동화",
       "subtitle": "WhatsApp® 이벤트에 자동으로 반응하는 워크플로를 만드세요.",
       "create": "자동화 만들기",
