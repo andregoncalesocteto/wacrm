@@ -31,6 +31,48 @@ is included.
 > the healthcheck don't target. Compose pins it to 3000 for that
 > reason.
 
+## All-in-one: app + self-hosted Supabase
+
+If you don't want a hosted Supabase project, `docker-compose.supabase.yml`
+adds the Supabase services next to the app: Postgres, Auth, PostgREST,
+Realtime, Storage (+ imgproxy) and the Kong gateway. A one-shot `migrate`
+service applies `supabase/migrations/*.sql` on first boot (and any new
+ones on later boots, tracked in `public.wacrm_migrations`).
+
+```bash
+./docker/supabase/generate-env.sh     # writes .env.local with fresh secrets
+# edit .env.local: set META_APP_SECRET (and SMTP_* if you turn off auto-confirm)
+
+docker compose -f docker-compose.yml -f docker-compose.supabase.yml \
+  --env-file .env.local up --build -d
+```
+
+The app is on <http://localhost:3000>, the Supabase API gateway on
+<http://supabase.localtest.me:8000>. Data lives in the `db-data` and
+`storage-data` volumes (`docker compose ... down` keeps them; `down -v`
+deletes them).
+
+- **Why `supabase.localtest.me`?** `NEXT_PUBLIC_SUPABASE_URL` is a single
+  value used by both the browser and the Next.js server. `localhost` would
+  point the server at its own container. `localtest.me` resolves to
+  `127.0.0.1` for the browser, and a network alias on the gateway makes the
+  app container resolve it to Kong. It needs public DNS on your machine; if
+  that's a problem, add `127.0.0.1 supabase.local` to `/etc/hosts` and set
+  `SUPABASE_HOST`, `SUPABASE_PUBLIC_URL` and `NEXT_PUBLIC_SUPABASE_URL`
+  accordingly.
+- **Production:** put a TLS-terminating reverse proxy in front of both
+  ports, set `NEXT_PUBLIC_SITE_URL`, `SUPABASE_PUBLIC_URL` and
+  `NEXT_PUBLIC_SUPABASE_URL` to the public https URLs, and rebuild. Don't
+  publish Postgres. Rotating `JWT_SECRET` invalidates every session and API
+  key; rotating `ENCRYPTION_KEY` orphans stored WhatsApp tokens.
+- **Not included:** Studio, Edge Functions, Analytics and the pooler. The
+  stack is trimmed from the
+  [official self-hosting compose](https://github.com/supabase/supabase/tree/master/docker);
+  diff against it when bumping image tags.
+- **Auth email:** `ENABLE_EMAIL_AUTOCONFIRM=true` (default) lets accounts
+  sign in without SMTP. Set it to `false` and fill `SMTP_*` to require
+  confirmation.
+
 ## Build-time vs runtime variables
 
 - `NEXT_PUBLIC_*` variables are **inlined into the client bundle at

@@ -95,7 +95,14 @@ The UI ships in English, Korean, Brazilian Portuguese and Spanish — set
 (catalogues live in `messages/`).
 
 Prefer containers? See [docs/docker.md](./docs/docker.md) for the
-Dockerfile + Docker Compose setup.
+Dockerfile + Docker Compose setup. To run the app **and** a self-hosted
+Supabase (Postgres, Auth, Realtime, Storage) with no hosted project:
+
+```bash
+./docker/supabase/generate-env.sh   # writes .env.local with fresh secrets
+docker compose -f docker-compose.yml -f docker-compose.supabase.yml \
+  --env-file .env.local up --build -d
+```
 
 ## 🚀 Deploy on Hostinger (recommended)
 
