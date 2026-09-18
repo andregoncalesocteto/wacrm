@@ -34,3 +34,10 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - Include `t` in useCallback deps when translating inside callbacks.
   - Browser check done in pt (list, empty state, dialog, validation toast). The nested InteractiveBuilder is a separate component (not this story).
 ---
+## 2026-09-18 - US-003
+- The catch-branch toast in contact-detail-view.tsx now reuses the existing key Contacts.detailView.toastTemplateFailed ({reason}); it already existed in all four catalogues with en text identical to the old literal (the HTTP-error branch used it already). No catalogue changes.
+- Files changed: src/components/contacts/contact-detail-view.tsx, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Before adding a key, grep the catalogues: earlier work may already have the key and only the call site is missed.
+  - The fallback `'network error'` reason string in that catch is still a hardcoded English literal (not in scope of this story).
+---
