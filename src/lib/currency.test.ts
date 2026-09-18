@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CURRENCIES,
   DEFAULT_CURRENCY,
+  formatCompactNumber,
   formatCurrency,
   formatCurrencyShort,
 } from "./currency";
@@ -61,5 +62,48 @@ describe("formatCurrencyShort", () => {
 
   it("falls back to the code prefix for unknown currencies (no throw)", () => {
     expect(formatCurrencyShort(1_000, "ZZZ")).toBe("ZZZ 1.0k");
+  });
+});
+
+describe("locale (pt vs en)", () => {
+  const nbsp = (s: string) => s.replace(/[\u00a0\u202f]/g, " ");
+
+  it("formatCurrency: pt uses Brazilian separators, en is unchanged", () => {
+    expect(nbsp(formatCurrency(1234, "BRL", "pt"))).toBe("R$ 1.234");
+    expect(nbsp(formatCurrency(1234, "BRL", "en"))).toBe("R$1,234");
+    expect(formatCurrency(1234, "USD", "en")).toBe("$1,234");
+    expect(formatCurrency(1234, "USD")).toBe("$1,234");
+  });
+
+  it("formatCurrency: the currency stays the deal's (USD in pt)", () => {
+    expect(nbsp(formatCurrency(1234, "USD", "pt"))).toBe("US$ 1.234");
+  });
+
+  it("formatCurrency: invalid code fallback follows the locale", () => {
+    expect(nbsp(formatCurrency(1234, "United States", "pt"))).toBe("United States 1.234");
+    expect(formatCurrency(1234, "United States", "en")).toBe("United States 1,234");
+  });
+
+  it("formatCurrencyShort: pt uses a decimal comma, en is unchanged", () => {
+    expect(formatCurrencyShort(2_500_000, "USD", "pt")).toBe("$2,5M");
+    expect(formatCurrencyShort(3_400, "BRL", "pt")).toBe("R$3,4k");
+    expect(formatCurrencyShort(2_500_000, "USD", "en")).toBe("$2.5M");
+    expect(formatCurrencyShort(900, "USD", "en")).toBe("$900");
+  });
+
+  it("formatCompactNumber: pt uses a decimal comma, en matches the toFixed output", () => {
+    expect(formatCompactNumber(1_234, "pt")).toBe("1,2k");
+    expect(formatCompactNumber(1_200_000, "pt")).toBe("1,2M");
+    expect(formatCompactNumber(900, "pt")).toBe("900");
+    for (const v of [0, 5, 900, 999, 1_000, 1_234, 12_345, 999_999, 1_200_000, 2_500_000_000]) {
+      const legacy =
+        v >= 1_000_000
+          ? `${(v / 1_000_000).toFixed(1)}M`
+          : v >= 1_000
+            ? `${(v / 1_000).toFixed(1)}k`
+            : v.toFixed(0);
+      expect(formatCompactNumber(v, "en")).toBe(legacy);
+      expect(formatCompactNumber(v)).toBe(legacy);
+    }
   });
 });

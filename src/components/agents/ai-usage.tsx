@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { BarChart3, Bot, PencilLine } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
@@ -56,6 +56,7 @@ const WINDOWS = [7, 30, 90] as const;
  */
 export function AiUsageCard() {
   const t = useTranslations('Agents.usage');
+  const locale = useLocale();
   const { accountId, accountRole, profileLoading } = useAuth();
   const canView = accountRole ? canEditSettings(accountRole) : false;
 
@@ -149,16 +150,16 @@ export function AiUsageCard() {
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Stat label={t('totalTokens')} value={formatCompactNumber(data.totals.total_tokens)} />
+              <Stat label={t('totalTokens')} value={formatCompactNumber(data.totals.total_tokens, locale)} />
               <Stat label={t('llmCalls')} value={String(data.totals.calls)} />
               <Stat
                 label={t('autoReply')}
-                value={formatCompactNumber(data.by_mode.auto_reply.tokens)}
+                value={formatCompactNumber(data.by_mode.auto_reply.tokens, locale)}
                 icon={Bot}
               />
               <Stat
                 label={t('drafts')}
-                value={formatCompactNumber(data.by_mode.draft.tokens)}
+                value={formatCompactNumber(data.by_mode.draft.tokens, locale)}
                 icon={PencilLine}
               />
             </div>
@@ -172,7 +173,7 @@ export function AiUsageCard() {
                 index="day"
                 categories={[tokensLabel]}
                 colors={['violet']}
-                valueFormatter={(v) => formatCompactNumber(v)}
+                valueFormatter={(v) => formatCompactNumber(v, locale)}
                 showLegend={false}
                 yAxisWidth={48}
                 className="h-[200px]"
@@ -200,7 +201,7 @@ export function AiUsageCard() {
                       </span>
                       <span className="flex-shrink-0 tabular-nums text-muted-foreground">
                         {t('modelCalls', {
-                          tokens: formatCompactNumber(m.tokens),
+                          tokens: formatCompactNumber(m.tokens, locale),
                           count: m.calls,
                         })}
                       </span>

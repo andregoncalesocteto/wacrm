@@ -13,10 +13,11 @@ interface PipelineDonutProps {
   currency: string
 }
 
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 
 export function PipelineDonut({ data, loading, currency }: PipelineDonutProps) {
   const t = useTranslations('Dashboard.pipelineDonut')
+  const locale = useLocale()
   return (
     <section className="flex h-full flex-col rounded-xl border border-border bg-card">
       <header className="border-b border-border px-5 py-4">
@@ -51,7 +52,7 @@ export function PipelineDonut({ data, loading, currency }: PipelineDonutProps) {
                     {t('dealCount', { count: s.dealCount })}
                   </span>
                   <span className="w-20 text-right text-muted-foreground tabular-nums">
-                    {formatCurrencyShort(s.totalValue, currency)}
+                    {formatCurrencyShort(s.totalValue, currency, locale)}
                   </span>
                 </li>
               ))}
@@ -71,6 +72,7 @@ export function PipelineDonut({ data, loading, currency }: PipelineDonutProps) {
 // ------------------------------------------------------------
 function Donut({ data, currency }: { data: PipelineDonutData; currency: string }) {
   const t = useTranslations('Dashboard.pipelineDonut')
+  const locale = useLocale()
   const size = 200
   const r = 80
   const ringWidth = 18
@@ -128,7 +130,7 @@ function Donut({ data, currency }: { data: PipelineDonutData; currency: string }
           textAnchor="middle"
           className="fill-foreground text-[18px] font-semibold tabular-nums"
         >
-          {formatCurrencyShort(data.totalValue, currency)}
+          {formatCurrencyShort(data.totalValue, currency, locale)}
         </text>
       </svg>
     </div>

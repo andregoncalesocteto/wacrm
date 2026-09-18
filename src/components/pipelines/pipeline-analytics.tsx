@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { formatCurrency } from "@/lib/currency";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 interface PipelineAnalyticsProps {
   stages: PipelineStage[];
@@ -48,6 +48,7 @@ function computeStageProbability(
 
 export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
   const t = useTranslations("Pipelines.analytics");
+  const locale = useLocale();
   const { defaultCurrency } = useAuth();
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
@@ -106,21 +107,21 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
         <Metric
           icon={<DollarSign className="h-4 w-4 text-primary" />}
           label={t("pipelineValue")}
-          value={formatCurrency(stats.totalValue, defaultCurrency)}
+          value={formatCurrency(stats.totalValue, defaultCurrency, locale)}
           tooltip={t("pipelineValueTooltip")}
           t={t}
         />
         <Metric
           icon={<Target className="h-4 w-4 text-blue-400" />}
           label={t("avgDealSize")}
-          value={formatCurrency(stats.avgValue, defaultCurrency)}
+          value={formatCurrency(stats.avgValue, defaultCurrency, locale)}
           tooltip={t("avgDealSizeTooltip")}
           t={t}
         />
         <Metric
           icon={<TrendingUp className="h-4 w-4 text-purple-400" />}
           label={t("weightedValue")}
-          value={formatCurrency(stats.weightedValue, defaultCurrency)}
+          value={formatCurrency(stats.weightedValue, defaultCurrency, locale)}
           tooltip={t("weightedValueTooltip")}
           t={t}
         />

@@ -34,12 +34,13 @@ import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
 import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 
 type RangeDays = 7 | 30 | 90
 
 export default function DashboardPage() {
   const t = useTranslations('Dashboard.page')
+  const locale = useLocale()
   const { defaultCurrency } = useAuth()
   const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
@@ -166,7 +167,7 @@ export default function DashboardPage() {
             />
             <MetricCard
               title={t('openDealsValue')}
-              value={formatCurrency(metrics.openDealsValue, defaultCurrency)}
+              value={formatCurrency(metrics.openDealsValue, defaultCurrency, locale)}
               icon={DollarSign}
               subtitle={t('openDeals', { count: metrics.openDealsCount })}
             />

@@ -112,3 +112,12 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - useFormatter() in client components now uses the BROWSER zone after hydration; SSR html uses the server zone. Verified with server TZ=UTC: 14:30Z -> 11:30 in browser, no hydration warnings.
   - Never `pkill -f "next dev"` inside a Bash command whose own text contains that string (kills the shell); start the server with `setsid nohup`.
 ---
+## 2026-09-18 - US-011
+- currency.ts: formatCurrency, formatCurrencyShort, formatCompactNumber take a trailing `locale` (default 'en') passed to Intl.NumberFormat (no more `undefined`). formatCompactNumber now uses Intl.NumberFormat(locale, fixed digits, useGrouping:false) instead of toFixed; en output verified identical to the old toFixed for a range of values. The 7 callers (dashboard page, pipeline-donut x2, pipeline-analytics, pipeline-board, deal-card, contact-detail-view, ai-usage) use useLocale().
+- Files changed: src/lib/currency.ts, currency.test.ts, the 7 callers, prd.json, progress.txt
+- Browser check done in pt: USD deal shows "US$ 1.234" in board/cards/stats and dashboard; dashboard donut shows "$1,2k" (compact keeps the symbol from CURRENCIES, decimal comma).
+- **Learnings for future iterations:**
+  - The Intl.NumberFormat calls in currency.ts are the ONE allowed exception to the future no-restricted-syntax rule (US-016): they receive an explicit locale.
+  - Intl output uses NBSP (U+00A0) between currency and number in pt; normalize in tests.
+  - QA account now has a contact "Maria QA" and a USD 1234 deal "Deal QA" in pipeline QA. The deal form's contact/currency/stage are native <select>s; dev-browser fill/click on Sheet buttons may need force:true.
+---
