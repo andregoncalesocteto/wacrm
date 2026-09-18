@@ -193,7 +193,9 @@ export function AiUsageCard() {
                       <span className="min-w-0 truncate">
                         <span className="text-foreground">{m.model}</span>{' '}
                         <span className="text-xs text-muted-foreground">
-                          ({m.provider})
+                          {'('}
+                          {m.provider}
+                          {')'}
                         </span>
                       </span>
                       <span className="flex-shrink-0 tabular-nums text-muted-foreground">

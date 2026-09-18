@@ -337,7 +337,7 @@ export function WhatsAppConfig() {
       //                         is human-readable from Meta.
       if (data.registered === false && data.registration_error) {
         setSaveFailure({
-          message: `Saved, but Meta couldn't register the number: ${data.registration_error}`,
+          message: t('savedButRegistrationFailed', { error: data.registration_error }),
           meta: data.meta ?? null,
         });
         toast.error(
@@ -498,11 +498,11 @@ export function WhatsAppConfig() {
   const renderMetaDetails = (meta: MetaErrorMeta) => (
     <div className="mt-2 space-y-0.5 text-[11px] leading-relaxed text-muted-foreground break-all">
       <p>
-        {t('metaErrorStep')}: <code>{meta.step}</code>
+        {t('metaErrorStep')}{':'} <code>{meta.step}</code>
         {meta.code !== null && meta.code !== undefined && (
           <>
             {' · '}
-            {t('metaErrorCode')}:{' '}
+            {t('metaErrorCode')}{':'}{' '}
             <code>
               {meta.code}
               {meta.subcode !== null && meta.subcode !== undefined ? `/${meta.subcode}` : ''}
@@ -512,13 +512,13 @@ export function WhatsAppConfig() {
         {meta.fbtrace_id && (
           <>
             {' · '}
-            {t('metaErrorTrace')}: <code>{meta.fbtrace_id}</code>
+            {t('metaErrorTrace')}{':'} <code>{meta.fbtrace_id}</code>
           </>
         )}
       </p>
       {meta.message && (
         <p>
-          {t('metaErrorMessage')}: {meta.message}
+          {t('metaErrorMessage')}{':'} {meta.message}
         </p>
       )}
       <p>{t('metaErrorDetailsHint')}</p>
@@ -682,9 +682,9 @@ export function WhatsAppConfig() {
                 <>
                   {t('lastAttemptFailed')}
                   <span className="text-red-300">
-                    &quot;{lastRegistrationError}&quot;
+                    {'"'}{lastRegistrationError}{'"'}
                   </span>
-                  . {t('retryHint')}
+                  {'.'} {t('retryHint')}
                 </>
               ) : (
                 <>{t('noRegistrationHint')}</>
@@ -962,7 +962,7 @@ export function WhatsAppConfig() {
               <AccordionItem className="border-border">
                 <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
                   <span className="flex items-center gap-2">
-                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">1</span>
+                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{'1'}</span>
                     {t('step1')}
                   </span>
                 </AccordionTrigger>
@@ -979,7 +979,7 @@ export function WhatsAppConfig() {
               <AccordionItem className="border-border">
                 <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
                   <span className="flex items-center gap-2">
-                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">2</span>
+                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{'2'}</span>
                     {t('step2')}
                   </span>
                 </AccordionTrigger>
@@ -995,7 +995,7 @@ export function WhatsAppConfig() {
               <AccordionItem className="border-border">
                 <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
                   <span className="flex items-center gap-2">
-                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">3</span>
+                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{'3'}</span>
                     {t('step3')}
                   </span>
                 </AccordionTrigger>
@@ -1012,7 +1012,7 @@ export function WhatsAppConfig() {
               <AccordionItem className="border-border">
                 <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
                   <span className="flex items-center gap-2">
-                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">4</span>
+                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{'4'}</span>
                     {t('step4')}
                   </span>
                 </AccordionTrigger>

@@ -121,6 +121,7 @@
       "ariaLabel": "Pipeline value by stage"
     },
     "responseTimeChart": {
+      "avgMinutes": "Avg minutes",
       "title": "Average First Response Time",
       "description": "Minutes to reply to a customer's first unreplied message, by weekday",
       "target": "target {minutes}m",
@@ -1369,6 +1370,7 @@
       "removeBtn": "Remove member"
     },
     "invite": {
+      "createFailed": "Failed to create invitation",
       "inviteCreated": "Invite created",
       "inviteCreatedDesc": "Share this link with your new teammate. They'll be able to sign up (or sign in) and join the account as <bold>{role}</bold>. The link is valid for <bold>{days} {days, plural, =1 {day} other {days}}</bold>.",
       "inviteLink": "Invite link",
@@ -1434,6 +1436,7 @@
       }
     },
     "templates": {
+      "headerSampleAlt": "Header sample",
       "title": "Message templates",
       "description": "Create templates and submit them to Meta for approval. Use \"Sync from Meta\" to pull templates approved elsewhere.",
       "syncFromMeta": "Sync from Meta",
@@ -1681,6 +1684,7 @@
       "workspace": "Workspace"
     },
     "profile": {
+      "avatarAlt": "Avatar",
       "title": "Your profile",
       "description": "How you show up across the app. Your avatar and name appear in the header, sidebar, and anywhere your teammates see you.",
       "changePhoto": "Change photo",
@@ -1742,7 +1746,19 @@
       "useMode": "Use {mode} mode",
       "active": "Active",
       "accentColor": "Accent color",
-      "useTheme": "Use {name} theme"
+      "useTheme": "Use {name} theme",
+      "themeId": "Theme id: {id}",
+      "modes": {
+        "light": "light",
+        "dark": "dark"
+      },
+      "taglines": {
+        "violet": "The default — confident, slightly playful.",
+        "emerald": "Growth-coded, nods at messaging without copying WhatsApp green.",
+        "cobalt": "Clean B2B-SaaS blue — calm and product-y.",
+        "amber": "Warm and friendly — feels good for SMB teams.",
+        "rose": "Bold and modern — D2C, creator-economy, lifestyle."
+      }
     },
     "security": {
       "title": "Login & security",

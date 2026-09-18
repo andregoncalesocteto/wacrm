@@ -112,8 +112,8 @@
         "Verify in browser using dev-browser skill (configurações, agents, dashboard e login com `pt` ativo)"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser check done for dashboard, settings (appearance, whatsapp) and agents in pt. Login page not re-checked here (login is src/app, US-009). Remaining English seen: theme names (Violet, Emerald...) kept as proper names; deal value shows $0 (currency locale is US-011)."
     },
     {
       "id": "US-008",

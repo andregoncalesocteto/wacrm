@@ -211,7 +211,8 @@ export function ApiKeysSettings() {
                         )}
                       </div>
                       <p className="text-muted-foreground mt-0.5 font-mono text-xs">
-                        {k.key_prefix}…
+                        {k.key_prefix}
+                        {'…'}
                       </p>
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {k.scopes.length === 0 ? (

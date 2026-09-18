@@ -121,6 +121,7 @@
       "ariaLabel": "단계별 파이프라인 금액"
     },
     "responseTimeChart": {
+      "avgMinutes": "평균 분",
       "title": "평균 첫 응답 시간",
       "description": "요일별, 고객의 첫 미응답 메시지에 답변하기까지 걸린 시간(분)",
       "target": "목표 {minutes}분",
@@ -1369,6 +1370,7 @@
       "removeBtn": "멤버 제거"
     },
     "invite": {
+      "createFailed": "초대를 만들지 못했습니다",
       "inviteCreated": "초대가 생성되었습니다",
       "inviteCreatedDesc": "이 링크를 새 팀원과 공유하세요. <bold>{role}</bold> 역할로 가입(또는 로그인)해 계정에 합류할 수 있습니다. 링크는 <bold>{days}일</bold> 동안 유효합니다.",
       "inviteLink": "초대 링크",
@@ -1434,6 +1436,7 @@
       }
     },
     "templates": {
+      "headerSampleAlt": "헤더 샘플",
       "title": "메시지 템플릿",
       "description": "템플릿을 만들어 Meta에 승인을 요청하세요. 다른 곳에서 승인된 템플릿을 가져오려면 \"Meta에서 동기화\"를 사용하세요.",
       "syncFromMeta": "Meta에서 동기화",
@@ -1681,6 +1684,7 @@
       "workspace": "워크스페이스"
     },
     "profile": {
+      "avatarAlt": "아바타",
       "title": "내 프로필",
       "description": "앱 전체에서 나를 어떻게 보여줄지 설정합니다. 아바타와 이름은 헤더, 사이드바, 팀원이 보는 모든 곳에 표시됩니다.",
       "changePhoto": "사진 변경",
@@ -1742,7 +1746,19 @@
       "useMode": "{mode} 모드 사용",
       "active": "사용 중",
       "accentColor": "강조 색상",
-      "useTheme": "{name} 테마 사용"
+      "useTheme": "{name} 테마 사용",
+      "themeId": "테마 ID: {id}",
+      "modes": {
+        "light": "라이트",
+        "dark": "다크"
+      },
+      "taglines": {
+        "violet": "기본 테마 — 자신감 있고 약간 장난기 있는 느낌.",
+        "emerald": "성장을 떠올리게 하며, WhatsApp 녹색을 따라 하지 않고 메시징을 연상시킵니다.",
+        "cobalt": "깔끔한 B2B SaaS 블루 — 차분하고 제품다운 느낌.",
+        "amber": "따뜻하고 친근한 느낌 — 중소기업 팀에 잘 어울립니다.",
+        "rose": "대담하고 현대적인 느낌 — D2C, 크리에이터 이코노미, 라이프스타일."
+      }
     },
     "security": {
       "title": "로그인 & 보안",

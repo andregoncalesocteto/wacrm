@@ -66,3 +66,13 @@ PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (accepta
   - Earlier stories already translated most text; check the actual warnings per dir first (`eslint <dir> -f json`), the PRD's expected scope may be smaller.
   - Pure punctuation: wrap as `{"*"}` rather than adding keys or allowedStrings.
 ---
+## 2026-09-18 - US-007
+- Zero jsx-no-literals in settings/agents/dashboard/layout/notifications/presence/auth (15 warnings: symbol literals wrapped as {':'} etc.; appearance-panel 'Theme id:' translated).
+- Beyond the rule (attributes/expressions): Unknown error (password-form, sessions-card), invite 'Failed to create invitation', profile avatar alt, template header sample alt, whatsapp saveFailure message (reused savedButRegistrationFailed), dashboard chart category 'Avg minutes' and weekday names (now format.dateTime weekday short), appearance mode names and theme taglines. New keys in all 4 catalogues.
+- Files changed: settings/{appearance-panel,whatsapp-config,api-keys-settings,password-form,sessions-card,invite-member-dialog,profile-form,template-manager}.tsx, agents/ai-usage.tsx, dashboard/response-time-chart.tsx, messages/*.json, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - jsx-no-literals ignores attributes/expressions: also grep placeholder=, alt=, aria-label=, `?? 'English'`, toast strings, and const label arrays.
+  - Insert keys textually right after the namespace opening line; use a python index() on '    "ns": {\n'.
+  - lib constants (themes.ts names/taglines, date-utils DOW_SHORT_MON_FIRST) hold English; translate at the call site with t(`x.${id}`).
+  - Left as-is on purpose: example placeholders (Ada Lovelace, en_US, sk-...), theme proper names.
+---

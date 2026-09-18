@@ -121,6 +121,7 @@
       "ariaLabel": "Valor del pipeline por etapa"
     },
     "responseTimeChart": {
+      "avgMinutes": "Promedio en minutos",
       "title": "Tiempo promedio de primera respuesta",
       "description": "Minutos para responder al primer mensaje sin respuesta de un cliente, por día de la semana",
       "target": "objetivo {minutes}min",
@@ -1369,6 +1370,7 @@
       "removeBtn": "Quitar miembro"
     },
     "invite": {
+      "createFailed": "No se pudo crear la invitación",
       "inviteCreated": "Invitación creada",
       "inviteCreatedDesc": "Comparte este enlace con tu nuevo compañero. Podrá registrarse (o iniciar sesión) y unirse a la cuenta como <bold>{role}</bold>. El enlace es válido por <bold>{days} {days, plural, =1 {día} other {días}}</bold>.",
       "inviteLink": "Enlace de invitación",
@@ -1434,6 +1436,7 @@
       }
     },
     "templates": {
+      "headerSampleAlt": "Ejemplo de encabezado",
       "title": "Plantillas de mensaje",
       "description": "Crea plantillas y envíalas a Meta para su aprobación. Usa \"Sincronizar desde Meta\" para traer plantillas aprobadas en otro lugar.",
       "syncFromMeta": "Sincronizar desde Meta",
@@ -1671,6 +1674,7 @@
       "workspace": "Espacio de trabajo"
     },
     "profile": {
+      "avatarAlt": "Avatar",
       "title": "Tu perfil",
       "description": "Cómo te ves en la app. Tu avatar y nombre aparecen en el encabezado, la barra lateral y en cualquier lugar donde tus compañeros te vean.",
       "changePhoto": "Cambiar foto",
@@ -1730,7 +1734,19 @@
       "useMode": "Usar el modo {mode}",
       "active": "Activo",
       "accentColor": "Color de acento",
-      "useTheme": "Usar el tema {name}"
+      "useTheme": "Usar el tema {name}",
+      "themeId": "ID del tema: {id}",
+      "modes": {
+        "light": "claro",
+        "dark": "oscuro"
+      },
+      "taglines": {
+        "violet": "El predeterminado — seguro y algo juguetón.",
+        "emerald": "Asociado al crecimiento, evoca la mensajería sin copiar el verde de WhatsApp.",
+        "cobalt": "Azul limpio de SaaS B2B — sereno y con aire de producto.",
+        "amber": "Cálido y amigable — ideal para equipos de pymes.",
+        "rose": "Atrevido y moderno — D2C, economía de creadores, estilo de vida."
+      }
     },
     "security": {
       "title": "Acceso y seguridad",
