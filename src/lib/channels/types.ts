@@ -174,10 +174,18 @@ export interface TemplateMessage {
   language: string;
   /** Provider-shaped component parameters, passed through untouched. */
   components?: unknown[];
+  /**
+   * Provider-specific send data the neutral shape cannot carry (WhatsApp:
+   * `{ row, messageParams, params }` = the local template row plus send-time
+   * values, needed for media headers and URL buttons). Opaque to the core.
+   */
+  provider?: unknown;
 }
 
-/** What the core asks a provider to send. */
-export type OutboundMessage =
+/** What the core asks a provider to send. `replyTo` quotes an earlier message. */
+export type OutboundMessage = OutboundContentMessage & { replyTo?: MessageRef };
+
+type OutboundContentMessage =
   | { type: 'text'; text: string }
   | {
       type: 'media';
@@ -193,6 +201,11 @@ export type OutboundMessage =
 export interface SendResult {
   /** Provider message id (wamid, Telegram message_id), used for status/idempotency. */
   externalId: string;
+  /**
+   * Set when the provider delivered to a different address than `target.address`
+   * (WhatsApp phone-variant retry), so the core can persist the working one.
+   */
+  resolvedAddress?: string;
 }
 
 /** Content of an inbound message, normalized across channels. */

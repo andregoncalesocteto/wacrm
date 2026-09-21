@@ -137,3 +137,14 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - ChannelError.retryable defaults to true only for 'rate_limited'.
   - Baseline: 99 files / 1180 tests, lint 41 warnings.
 ---
+
+## 2026-09-21 - US-010
+- Added src/lib/channels/providers/whatsapp-cloud/{index,errors,schemas,whatsapp-cloud.test}.ts and providers/index.ts (`registerBuiltinProviders()`, idempotent; registry.ts does NOT import providers). Provider = adapter over lib/whatsapp/* (untouched). Outbound only: capabilities, config/credentials schemas, resolveTarget (resolveContactSendTarget over whatsapp:phone / whatsapp:bsuid), send (text/media/template/interactive/reaction) with the phone-variant retry inside the provider, react(). connect/disconnect/health/resolveConnection/verify/parse throw ChannelError('unsupported') until US-011+. `typing` is not implemented (the contract has no inbound wamid; capability typingIndicator stays true).
+- Error mapping (errors.ts): MetaApiError.code (or "(#NNNNNN)" in the message) -> auth (190,102,463,467,10,200; HTTP 401), rate_limited (4,17,32,613,80007,130429,131048,131056; 429), recipient_unreachable (131026,131030,131021,131033,131037), window_closed (131047), invalid (100,131008/9,1310xx,1320xx; HTTP 400; local meta-api validation), else unknown. Original message kept, code in providerCode.
+- Small additive changes to types.ts: OutboundMessage gains `replyTo?: MessageRef`, TemplateMessage gains opaque `provider?` (WhatsApp: {row, messageParams, params} for media headers/URL buttons), SendResult gains `resolvedAddress?` (the working phone variant, so the core can persist the auto-fix like send-message.ts does).
+- Files changed: the new files above, types.ts, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - The old core wraps errors as SendMessageError('meta_error', 'Meta API error: ...', 502); when US-014+ migrates it, keep that wrapping at the core, ChannelError carries the raw message.
+  - maxMediaBytes is 16 MB (upload-media MEDIA_MAX_BYTES); the composer caps images at 5 MB per kind, the contract has one number only.
+  - Baseline: 100 files / 1208 tests, lint 41 warnings.
+---
