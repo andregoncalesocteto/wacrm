@@ -1,0 +1,41 @@
+# Ralph Progress Log — ralph/channel-abstraction
+Started: 2026-09-21
+PRD: .projects/channel-abstraction/prd.json (75 stories; execution order = `priority`, not id order: 011→073, 020→074, 039→075).
+Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md. No test-scenarios.json (acceptanceCriteria are the bar).
+
+## Codebase Patterns
+- Run project commands from the repo root (cwd can drift into .projects/…).
+- Quality checks: `npm run typecheck`, `npm run lint` (0 errors), `TZ=UTC npm test`. TZ=UTC is REQUIRED: two tests in
+  src/lib/dashboard/date-utils.test.ts fail on this machine's TZ (-03). Never edit that test.
+- Baseline before US-001: typecheck clean; lint 0 errors / 41 warnings (pre-existing, do not "fix" unrelated ones);
+  `TZ=UTC npm test` green (91 files, 1025 tests).
+- i18n rules (CLAUDE.md): text via useTranslations (no literals; react/jsx-no-literals is warn), keys in ALL FOUR catalogues
+  (messages/{en,pt,es,ko}.json; parity test), dates/numbers via useFormatter() with presets in src/i18n/formats.ts, never
+  toLocale*String / new Intl.*Format (lint error; exceptions: currency.ts, trigger-meta.ts, browser-time-zone.ts, tests).
+  Don't rewrite en.json/ko.json with json.dump (irregular whitespace): insert keys textually. pt.json round-trips OK.
+- Migrations: supabase/migrations/NNN_name.sql, next number = highest + 1 (043 at start). Never edit an applied one.
+  Idempotent DDL (IF NOT EXISTS / DO blocks). Apply to the dev DB: `$FULL run --rm -T migrate`; check with
+  `$FULL exec -T db psql -U postgres -tAc "<sql>"`. FULL="docker compose -f docker-compose.yml -f docker-compose.supabase.yml --env-file .env.local".
+- Replay from scratch (CI-like, ISOLATED, does not touch dev data, ~16s):
+    R="docker compose -p wacrm-replay -f docker-compose.yml -f docker-compose.supabase.yml --env-file .env.local"
+    $R up -d --wait db auth storage && $R run --rm -T migrate && \
+    $R exec -T db psql -U postgres -v ON_ERROR_STOP=1 < supabase/ci/verify-schema.sql ; $R down -v
+  ALWAYS use `-p wacrm-replay` for replay and `down -v` ONLY on that project. NEVER `down -v` the default (dev) project.
+- Strangler / expand-contract: the WhatsApp official channel must keep working at every commit. lib/whatsapp/* stays where it is;
+  the provider is an ADAPTER over it (design deviation, see PRD "Technical Considerations").
+- Credentials: `channel_connection_credentials` has RLS on and NO policies (service role only). Never return credentials to a
+  user client; never log secrets, secret_token, or Telegram file URLs (they embed the bot token).
+- Meta and Telegram are NOT reachable from the test environment: use fixtures (signed webhook payloads: HMAC with the local
+  META_APP_SECRET; Telegram secret_token header) and mocked fetch. Real bot / real Meta verification is manual: say so in progress.
+- Idempotency boundary stays UNIQUE (conversation_id, message_id); messages.message_id is NOT renamed.
+- contacts.phone stays NOT NULL DEFAULT '' in the DB; the API translates '' to null.
+- Browser verification: dev server on http://localhost:3100 (`setsid nohup env NEXT_PUBLIC_APP_LOCALE=pt npx next dev -p 3100`,
+  log /tmp/next-dev-3100.log). Next dev REWRITES AGENTS.md on start: run `git checkout -- AGENTS.md` before committing, never commit it.
+  NEVER run `pkill -f "next dev"` inside a Bash command whose text contains that string (it kills your own shell); kill by pid
+  (`ss -ltnp | grep :3100`). The docker app on :3000 bakes NEXT_PUBLIC_* and code at build time (needs `$FULL up -d --build --wait app`).
+  `npm run build` and the dev server share `.next`: stop the dev server before building.
+- Seeding data for browser checks: one SQL statement per psql call (multi-insert heredocs silently lost rows before); the QA account's
+  profile id differs from its auth user id (account_id comes from profiles.account_id); clean up seeds afterwards.
+- dev-browser: Sheet/dialog buttons may need force:true. Screenshots only under the scratchpad, never in the repo.
+
+---
