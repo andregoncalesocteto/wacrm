@@ -243,3 +243,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - route.test.ts is NOT prettier-formatted: never run prettier over it (huge diff).
   - Baseline: 104 files / 1292 tests, lint 41 warnings.
 ---
+
+## 2026-09-21 - US-018
+- New src/lib/channels/identity.ts (not wired into the webhook yet; US-019+): resolveOrCreateContact(db, {accountId, candidates, senderName, auditUserId}) -> {contact, wasCreated} | null. Lookup order: contact_identities by ANY candidate (candidate order), then legacy fallback (contacts.wa_user_id, then findExistingContact fuzzy phone). Create: phone column = whatsapp:phone candidate or '', name = senderName else @-less username/phone/BSUID/id, then upsert ALL identities (ignoreDuplicates on account,kind,external_id). Unique violation on create -> re-read via the same lookup. Found contact: adds the missing identities and backfills legacy columns with the same rules as the webhook's contactIdentityPatch (channel-supplied name only, wa_user_id/wa_username when changed, phone only fills a blank). contactDisplayName(contact, identities?): name, else @username > phone > BSUID > other (telegram handle/chat id), else legacy wa_* via contactHandle (kept, not removed).
+- Files: src/lib/channels/identity.ts, identity.test.ts (16 tests, own stateful fake with unique indexes + race injection), prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - The WhatsApp provider emits no candidate for the portfolio-level parent BSUID, so wa_parent_user_id is NOT backfilled by resolveOrCreateContact (webhook's contactIdentityPatch still does it). US-019+ must keep it (or add a kind) when the webhook switches over.
+  - Legacy wa_* backfill is keyed on 'whatsapp:*' kinds by design; drop it when the legacy columns are retired.
+  - Prettier for this repo uses semicolons in new files (differs from the wa-identity style); ran prettier only on my two files.
+  - Baseline: 105 files / 1308 tests, lint 41 warnings, typecheck clean.
+---
