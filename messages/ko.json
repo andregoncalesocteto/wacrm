@@ -1787,16 +1787,55 @@
     "stores": {
       "title": "매장",
       "description": "네트워크의 매장을 등록하세요.",
-      "listTitle": "아직 매장이 없습니다",
+      "listTitle": "첫 매장을 등록하세요",
       "empty": "여기에서 등록한 매장이 이 목록에 표시됩니다.",
-      "readOnly": "소유자와 관리자만 매장을 등록할 수 있습니다."
+      "readOnly": "소유자와 관리자만 매장을 등록할 수 있습니다.",
+      "newButton": "새 매장",
+      "edit": "매장 수정",
+      "delete": "매장 삭제",
+      "newTitle": "새 매장",
+      "editTitle": "매장 수정",
+      "nameLabel": "이름",
+      "namePlaceholder": "예: 중앙점",
+      "addressLabel": "주소",
+      "phoneLabel": "전화번호",
+      "hoursLabel": "영업시간",
+      "hoursPlaceholder": "예: 월-금 9시-18시",
+      "managerLabel": "매니저",
+      "cancel": "취소",
+      "save": "저장",
+      "noConnections": "아직 연결이 없습니다",
+      "deleteDisabledHint": "이 매장에는 연결이 있습니다. 매장을 삭제하기 전에 연결을 먼저 제거하세요.",
+      "deleteTitle": "매장 삭제",
+      "deleteConfirm": "\"{name}\" 매장을 삭제할까요? 이 작업은 되돌릴 수 없습니다.",
+      "deleteBlocked": "이 매장에는 아직 연결이 있어 삭제할 수 없습니다.",
+      "toastLoadFailed": "매장을 불러오지 못했습니다.",
+      "toastNameRequired": "매장 이름을 입력하세요.",
+      "toastNameTooLong": "이름은 최대 {max}자까지 입력할 수 있습니다.",
+      "toastFieldTooLong": "입력한 항목 중 하나가 너무 깁니다.",
+      "toastSaveFailed": "매장을 저장하지 못했습니다.",
+      "toastCreated": "매장을 만들었습니다.",
+      "toastUpdated": "매장을 수정했습니다.",
+      "toastDeleteFailed": "매장을 삭제하지 못했습니다.",
+      "toastDeleted": "매장을 삭제했습니다."
     },
     "channels": {
       "title": "채널",
       "description": "각 매장의 채널을 연결하세요.",
       "listTitle": "연결된 채널",
       "empty": "채널은 매장별로 연결됩니다. 현재는 아래의 WhatsApp 연결만 사용할 수 있습니다.",
-      "readOnly": "소유자와 관리자만 채널 연결을 변경할 수 있습니다."
+      "readOnly": "소유자와 관리자만 채널 연결을 변경할 수 있습니다.",
+      "type": {
+        "whatsapp_cloud": "WhatsApp",
+        "telegram": "Telegram"
+      },
+      "status": {
+        "connected": "연결됨",
+        "degraded": "불안정",
+        "disconnected": "연결 끊김",
+        "needs_action": "조치 필요",
+        "disabled": "비활성화됨"
+      }
     },
     "groups": {
       "account": "계정",

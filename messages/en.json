@@ -1787,16 +1787,55 @@
     "stores": {
       "title": "Stores",
       "description": "Register the stores in your network.",
-      "listTitle": "No stores yet",
+      "listTitle": "Register your first store",
       "empty": "Stores you register here will appear in this list.",
-      "readOnly": "Only owners and admins can register stores."
+      "readOnly": "Only owners and admins can register stores.",
+      "newButton": "New store",
+      "edit": "Edit store",
+      "delete": "Delete store",
+      "newTitle": "New store",
+      "editTitle": "Edit store",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Downtown store",
+      "addressLabel": "Address",
+      "phoneLabel": "Phone",
+      "hoursLabel": "Hours",
+      "hoursPlaceholder": "e.g. Mon-Fri 9am-6pm",
+      "managerLabel": "Manager",
+      "cancel": "Cancel",
+      "save": "Save",
+      "noConnections": "No connections yet",
+      "deleteDisabledHint": "This store has connections. Remove them before deleting the store.",
+      "deleteTitle": "Delete store",
+      "deleteConfirm": "Delete \"{name}\"? This cannot be undone.",
+      "deleteBlocked": "This store still has connections and cannot be deleted.",
+      "toastLoadFailed": "Could not load stores.",
+      "toastNameRequired": "Enter the store name.",
+      "toastNameTooLong": "The name must be at most {max} characters.",
+      "toastFieldTooLong": "One of the fields is too long.",
+      "toastSaveFailed": "Could not save the store.",
+      "toastCreated": "Store created.",
+      "toastUpdated": "Store updated.",
+      "toastDeleteFailed": "Could not delete the store.",
+      "toastDeleted": "Store deleted."
     },
     "channels": {
       "title": "Channels",
       "description": "Connect the channels of each store.",
       "listTitle": "Connected channels",
       "empty": "Channels are connected per store. For now, the WhatsApp connection below is the only one available.",
-      "readOnly": "Only owners and admins can change channel connections."
+      "readOnly": "Only owners and admins can change channel connections.",
+      "type": {
+        "whatsapp_cloud": "WhatsApp",
+        "telegram": "Telegram"
+      },
+      "status": {
+        "connected": "Connected",
+        "degraded": "Degraded",
+        "disconnected": "Disconnected",
+        "needs_action": "Action needed",
+        "disabled": "Disabled"
+      }
     },
     "groups": {
       "account": "Account",

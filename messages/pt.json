@@ -1777,16 +1777,55 @@
     "stores": {
       "title": "Lojas",
       "description": "Cadastre as lojas da sua rede.",
-      "listTitle": "Nenhuma loja ainda",
+      "listTitle": "Cadastre sua primeira loja",
       "empty": "As lojas cadastradas aqui aparecerão nesta lista.",
-      "readOnly": "Somente proprietários e administradores podem cadastrar lojas."
+      "readOnly": "Somente proprietários e administradores podem cadastrar lojas.",
+      "newButton": "Nova loja",
+      "edit": "Editar loja",
+      "delete": "Excluir loja",
+      "newTitle": "Nova loja",
+      "editTitle": "Editar loja",
+      "nameLabel": "Nome",
+      "namePlaceholder": "Ex.: Loja Centro",
+      "addressLabel": "Endereço",
+      "phoneLabel": "Telefone",
+      "hoursLabel": "Horário",
+      "hoursPlaceholder": "Ex.: Seg-Sex 9h-18h",
+      "managerLabel": "Gerente",
+      "cancel": "Cancelar",
+      "save": "Salvar",
+      "noConnections": "Nenhuma conexão ainda",
+      "deleteDisabledHint": "Esta loja tem conexões. Remova-as antes de excluir a loja.",
+      "deleteTitle": "Excluir loja",
+      "deleteConfirm": "Excluir \"{name}\"? Esta ação não pode ser desfeita.",
+      "deleteBlocked": "Esta loja ainda tem conexões e não pode ser excluída.",
+      "toastLoadFailed": "Não foi possível carregar as lojas.",
+      "toastNameRequired": "Informe o nome da loja.",
+      "toastNameTooLong": "O nome deve ter no máximo {max} caracteres.",
+      "toastFieldTooLong": "Um dos campos está longo demais.",
+      "toastSaveFailed": "Não foi possível salvar a loja.",
+      "toastCreated": "Loja criada.",
+      "toastUpdated": "Loja atualizada.",
+      "toastDeleteFailed": "Não foi possível excluir a loja.",
+      "toastDeleted": "Loja excluída."
     },
     "channels": {
       "title": "Canais",
       "description": "Conecte os canais de cada loja.",
       "listTitle": "Canais conectados",
       "empty": "Os canais são conectados por loja. Por enquanto, a conexão com o WhatsApp abaixo é a única disponível.",
-      "readOnly": "Somente proprietários e administradores podem alterar as conexões dos canais."
+      "readOnly": "Somente proprietários e administradores podem alterar as conexões dos canais.",
+      "type": {
+        "whatsapp_cloud": "WhatsApp",
+        "telegram": "Telegram"
+      },
+      "status": {
+        "connected": "Conectado",
+        "degraded": "Instável",
+        "disconnected": "Desconectado",
+        "needs_action": "Ação necessária",
+        "disabled": "Desativado"
+      }
     },
     "groups": {
       "account": "Conta",

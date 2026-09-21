@@ -484,3 +484,12 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Sidebar/header links still use ?tab=whatsapp on purpose (legacy mapping). Later stories fill StoresPanel (US-037/038?) and ChannelsPanel (US-039); keep WhatsAppConfig reachable until then.
   - Panel copy keys live under Settings.stores / Settings.channels; provider labels under Channels.providers.<type>.{name,description}.
 ---
+
+## 2026-09-21 - US-037
+- Stores screen: src/components/settings/stores-panel.tsx (list with name/address/phone + connection chips, create/edit dialog reused, delete confirm dialog, delete disabled with hint when the store has connections, empty state "Cadastre sua primeira loja", sonner toasts, writes gated by useCan('edit-settings')). Pure helpers in src/lib/stores/ui.ts (+ ui.test.ts): connectionChipState, hoursToText/textToHours (business_hours = { text } or null), validateDraft.
+- i18n: Settings.stores.* extended and Settings.channels.type.* / Settings.channels.status.{connected,degraded,disconnected,needs_action,disabled} added in all four catalogues (US-038 can reuse the channels keys). stores.listTitle is now the empty-state title.
+- Verified in browser (pt, :3100): empty state, name-required toast, create, edit, delete disabled with hint for a store with a seeded connection (seed removed), confirm-dialog delete, back to empty state. Checks: typecheck, lint (0 errors, 40 warnings), TZ=UTC tests (1507), build OK.
+- **Learnings for future iterations:**
+  - No alert-dialog ui component exists: confirmation uses Dialog + destructive Button.
+  - dev-browser screenshots land in ~/.dev-browser/tmp; use `dev-browser run file.js`, and waitUntil:"domcontentloaded" for goto (networkidle times out on Next dev).
+---

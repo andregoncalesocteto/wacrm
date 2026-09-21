@@ -698,7 +698,7 @@
         "Verify in browser using dev-browser skill (criar, editar, tentar apagar loja com conexão, estado vazio)"
       ],
       "priority": 41,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

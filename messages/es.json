@@ -1777,16 +1777,55 @@
     "stores": {
       "title": "Tiendas",
       "description": "Registra las tiendas de tu red.",
-      "listTitle": "Aún no hay tiendas",
+      "listTitle": "Registra tu primera tienda",
       "empty": "Las tiendas que registres aquí aparecerán en esta lista.",
-      "readOnly": "Solo los propietarios y administradores pueden registrar tiendas."
+      "readOnly": "Solo los propietarios y administradores pueden registrar tiendas.",
+      "newButton": "Nueva tienda",
+      "edit": "Editar tienda",
+      "delete": "Eliminar tienda",
+      "newTitle": "Nueva tienda",
+      "editTitle": "Editar tienda",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Ej.: Tienda Centro",
+      "addressLabel": "Dirección",
+      "phoneLabel": "Teléfono",
+      "hoursLabel": "Horario",
+      "hoursPlaceholder": "Ej.: Lun-Vie 9h-18h",
+      "managerLabel": "Encargado",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "noConnections": "Aún no hay conexiones",
+      "deleteDisabledHint": "Esta tienda tiene conexiones. Quítalas antes de eliminar la tienda.",
+      "deleteTitle": "Eliminar tienda",
+      "deleteConfirm": "¿Eliminar \"{name}\"? Esta acción no se puede deshacer.",
+      "deleteBlocked": "Esta tienda aún tiene conexiones y no se puede eliminar.",
+      "toastLoadFailed": "No se pudieron cargar las tiendas.",
+      "toastNameRequired": "Ingresa el nombre de la tienda.",
+      "toastNameTooLong": "El nombre debe tener como máximo {max} caracteres.",
+      "toastFieldTooLong": "Uno de los campos es demasiado largo.",
+      "toastSaveFailed": "No se pudo guardar la tienda.",
+      "toastCreated": "Tienda creada.",
+      "toastUpdated": "Tienda actualizada.",
+      "toastDeleteFailed": "No se pudo eliminar la tienda.",
+      "toastDeleted": "Tienda eliminada."
     },
     "channels": {
       "title": "Canales",
       "description": "Conecta los canales de cada tienda.",
       "listTitle": "Canales conectados",
       "empty": "Los canales se conectan por tienda. Por ahora, la conexión de WhatsApp de abajo es la única disponible.",
-      "readOnly": "Solo los propietarios y administradores pueden cambiar las conexiones de los canales."
+      "readOnly": "Solo los propietarios y administradores pueden cambiar las conexiones de los canales.",
+      "type": {
+        "whatsapp_cloud": "WhatsApp",
+        "telegram": "Telegram"
+      },
+      "status": {
+        "connected": "Conectado",
+        "degraded": "Inestable",
+        "disconnected": "Desconectado",
+        "needs_action": "Acción necesaria",
+        "disabled": "Desactivado"
+      }
     },
     "groups": {
       "account": "Cuenta",
