@@ -385,7 +385,7 @@
       "description": "Como desenvolvedor, quero a ingestão tratando mídia, status e reações.",
       "acceptanceCriteria": [
         "O espelhamento de mídia recebida usa `provider.downloadMedia` e o armazenamento atual, respeitando a opção da conexão",
-        "Eventos `status` avançam o estado da mensagem só para frente e gravam o motivo de falha (provedores sem recibo simplesmente não geram esse evento)",
+        "Eventos `status` atualizam o estado da mensagem **exatamente como o código atual**: sem trava de ordem, porque o teste de caracterização da US-002 fixa que a espelhada em `messages` aceita qualquer status recebido; a escada só-para-frente existe apenas para `broadcast_recipients` e continua valendo lá. Grava o motivo de falha, e provedores sem recibo simplesmente não geram esse evento",
         "Eventos `reaction` gravam ou removem a reação",
         "Testes de unidade para cada tipo de evento",
         "Typecheck passes",
@@ -394,7 +394,7 @@
       ],
       "priority": 23,
       "passes": false,
-      "notes": ""
+      "notes": "Critério de status ajustado pelo orquestrador após a US-002: a espelhada de messages não tem trava de ordem hoje (fixado por teste de caracterização); manter o comportamento (RNF-01)."
     },
     {
       "id": "US-022",
