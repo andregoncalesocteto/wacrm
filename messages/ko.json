@@ -1667,6 +1667,21 @@
       "ownerHint": "계정과 결제에 대한 전체 권한"
     },
     "whatsapp": {
+      "displayName": "연결 이름",
+      "displayNamePlaceholder": "예: 대표 번호",
+      "displayNameRequired": "연결 이름은 필수입니다",
+      "phoneNumberIdLocked": "번호는 변경할 수 없습니다. 다른 번호를 사용하려면 새 연결을 만드세요.",
+      "wabaIdRequired": "WhatsApp Business 계정 ID는 필수입니다",
+      "tokenProvided": "토큰 입력됨",
+      "replace": "교체",
+      "keepCurrent": "현재 값 유지",
+      "verifyTokenProvided": "인증 토큰 입력됨",
+      "verifyTokenCopied": "인증 토큰을 클립보드에 복사했습니다",
+      "copyVerifyToken": "인증 토큰 복사",
+      "verifyTokenGeneratedHint": "이 토큰을 Meta의 웹훅 설정에 복사하세요. 지금만 표시되며, 저장 후에는 교체할 수는 있지만 다시 볼 수는 없습니다.",
+      "createConnection": "연결 만들기",
+      "saved": "연결이 저장되었습니다.",
+      "duplicateConnection": "이 전화번호에 대한 연결이 이미 있습니다.",
       "title": "WhatsApp 연결",
       "description": "Meta WhatsApp 비즈니스 API를 연결하세요. 자격 증명, 웹훅, 설정 단계가 모두 여기 있습니다.",
       "tokenCorrupted": "저장된 토큰을 복호화할 수 없습니다",
@@ -1820,6 +1835,8 @@
       "toastDeleted": "매장을 삭제했습니다."
     },
     "channels": {
+      "back": "채널로 돌아가기",
+      "storeLabel": "매장",
       "title": "채널",
       "description": "각 매장의 채널을 연결하세요.",
       "listTitle": "연결된 채널",

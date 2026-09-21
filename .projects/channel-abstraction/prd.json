@@ -733,8 +733,8 @@
         "Verify in browser using dev-browser skill (a tela do WhatsApp dentro de uma conexão, com credenciais inválidas e o erro tratado)"
       ],
       "priority": 43,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser (pt): edit panel of a seeded connection masks secrets (verify token absent from DOM); create with invalid token shows the explained Meta error; /test probe works. Meta was reachable and rejected the token. Not checked: a successful registration with a real token/PIN (manual)."
     },
     {
       "id": "US-075",

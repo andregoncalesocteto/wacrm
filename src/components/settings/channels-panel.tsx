@@ -4,11 +4,11 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import {
+  ArrowLeft,
   Loader2,
   MessageCircle,
   Plug,
   PlugZap,
-  Send,
   Store,
 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { useCan } from '@/hooks/use-can';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -32,10 +33,13 @@ import {
   type ChannelConnectionRow,
   type StoreRef,
 } from '@/lib/channels/ui';
+import {
+  configurableChannelTypes,
+  getChannelUi,
+} from '@/lib/channels/ui-registry';
 import { getDateFnsLocale } from '@/lib/i18n/date-fns-locale';
 import { connectionChipState, type ConnectionChipState } from '@/lib/stores/ui';
 import { SettingsPanelHead } from './settings-panel-head';
-import { WhatsAppConfig } from './whatsapp-config';
 
 const CHIP_TONE: Record<ConnectionChipState, string> = {
   connected: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
@@ -45,8 +49,11 @@ const CHIP_TONE: Record<ConnectionChipState, string> = {
   disabled: 'bg-muted text-muted-foreground line-through',
 };
 
-const CHANNEL_TYPES = ['whatsapp_cloud', 'telegram'] as const;
-const LEGACY_FORM_ID = 'whatsapp-config';
+// Which panel is open in place of the list: a connection (edit) or a new one.
+type View =
+  | { mode: 'edit'; connection: ChannelConnectionRow }
+  | { mode: 'create'; storeId: string; channelType: string }
+  | null;
 
 type Pending = {
   kind: 'disable' | 'delete';
@@ -55,12 +62,13 @@ type Pending = {
 
 /**
  * Channels section: connections grouped by store, with state and actions.
- * The existing WhatsApp configuration stays below until the connection wizard
- * replaces it. Write actions require `edit-settings`.
+ * "Configure" / "Connect channel" open the provider's panel from the UI
+ * registry in place of the list (the guided wizard comes later). Write
+ * actions require `edit-settings`.
  */
 export function ChannelsPanel() {
   const t = useTranslations('Settings.channels');
-  const tProvider = useTranslations('Channels.providers.whatsapp_cloud');
+  const tProvider = useTranslations('Channels.providers');
   const locale = useLocale();
   const canEditSettings = useCan('edit-settings');
 
@@ -69,6 +77,7 @@ export function ChannelsPanel() {
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<Pending>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [view, setView] = useState<View>(null);
 
   const load = useCallback(async () => {
     try {
@@ -101,9 +110,13 @@ export function ChannelsPanel() {
   }, [load]);
 
   const channelLabel = (type: string) =>
-    (CHANNEL_TYPES as readonly string[]).includes(type)
-      ? t(`type.${type as (typeof CHANNEL_TYPES)[number]}`)
-      : type;
+    t.has(`type.${type}`) ? t(`type.${type}`) : type;
+
+  const openCreate = () => {
+    const channelType = configurableChannelTypes()[0];
+    if (!channelType || stores.length === 0) return;
+    setView({ mode: 'create', storeId: stores[0].id, channelType });
+  };
 
   const runAction = async (
     c: ChannelConnectionRow,
@@ -160,31 +173,82 @@ export function ChannelsPanel() {
     }
   };
 
-  const scrollToLegacyForm = () =>
-    document
-      .getElementById(LEGACY_FORM_ID)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
   const kind = emptyStateKind(stores.length, connections.length);
   const groups = groupConnectionsByStore(stores, connections);
+
+  if (view) {
+    const entry = getChannelUi(
+      view.mode === 'edit' ? view.connection.channel_type : view.channelType
+    );
+    const Panel = entry?.kind === 'panel' ? entry.Panel : null;
+    const storeId =
+      view.mode === 'edit' ? view.connection.store_id : view.storeId;
+    return (
+      <div className="space-y-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setView(null);
+            void load();
+          }}
+        >
+          <ArrowLeft className="size-4" />
+          {t('back')}
+        </Button>
+        {view.mode === 'create' ? (
+          <div className="max-w-xs space-y-1.5">
+            <Label htmlFor="channel-store">{t('storeLabel')}</Label>
+            <select
+              id="channel-store"
+              value={view.storeId}
+              onChange={(e) => setView({ ...view, storeId: e.target.value })}
+              className="border-border bg-muted text-foreground h-9 w-full rounded-md border px-2 text-sm"
+            >
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {Panel ? (
+          <Panel
+            // A store change in create mode must not keep half-typed state
+            // tied to the previous store, and each connection is its own form.
+            key={view.mode === 'edit' ? view.connection.id : 'create'}
+            connection={view.mode === 'edit' ? view.connection : null}
+            storeId={storeId}
+            onChanged={() => void load()}
+          />
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
       <section className="animate-in fade-in-50 max-w-3xl space-y-4 duration-200">
         <SettingsPanelHead title={t('title')} description={t('description')} />
-        <Card className="flex flex-row items-center gap-3 px-4 py-3">
-          <span className="bg-primary-soft text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
-            <PlugZap className="size-4" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-foreground text-sm font-semibold">
-              {tProvider('name')}
-            </p>
-            <p className="text-muted-foreground text-xs">
-              {tProvider('description')}
-            </p>
-          </div>
-        </Card>
+        {configurableChannelTypes().map((type) => (
+          <Card
+            key={type}
+            className="flex flex-row items-center gap-3 px-4 py-3"
+          >
+            <span className="bg-primary-soft text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
+              <PlugZap className="size-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-foreground text-sm font-semibold">
+                {tProvider(`${type}.name`)}
+              </p>
+              <p className="text-muted-foreground text-xs">
+                {tProvider(`${type}.description`)}
+              </p>
+            </div>
+          </Card>
+        ))}
 
         {loading ? (
           <div className="flex justify-center py-10">
@@ -192,6 +256,13 @@ export function ChannelsPanel() {
           </div>
         ) : kind === 'has-connections' ? (
           <div className="space-y-5">
+            {canEditSettings ? (
+              <div className="flex justify-end">
+                <Button size="sm" onClick={openCreate}>
+                  {t('connect')}
+                </Button>
+              </div>
+            ) : null}
             {groups.map((g) => (
               <div key={g.store.id} className="space-y-2">
                 <h3 className="text-foreground flex items-center gap-1.5 text-sm font-semibold">
@@ -201,8 +272,8 @@ export function ChannelsPanel() {
                 <ul className="flex flex-col gap-2">
                   {g.connections.map((c) => {
                     const state = connectionChipState(c);
-                    const Icon =
-                      c.channel_type === 'telegram' ? Send : MessageCircle;
+                    const ui = getChannelUi(c.channel_type);
+                    const Icon = ui?.icon ?? MessageCircle;
                     const busy = busyId === c.id;
                     return (
                       <li
@@ -240,8 +311,21 @@ export function ChannelsPanel() {
                         </span>
                         {canEditSettings ? (
                           <div className="flex shrink-0 flex-wrap gap-1">
-                            <span title={t('configureSoon')}>
-                              <Button variant="outline" size="sm" disabled>
+                            <span
+                              title={
+                                ui?.kind === 'panel'
+                                  ? undefined
+                                  : t('configureSoon')
+                              }
+                            >
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={ui?.kind !== 'panel'}
+                                onClick={() =>
+                                  setView({ mode: 'edit', connection: c })
+                                }
+                              >
                                 {t('configure')}
                               </Button>
                             </span>
@@ -311,7 +395,7 @@ export function ChannelsPanel() {
                   {t('createStoreFirst')}
                 </Button>
               ) : (
-                <Button onClick={scrollToLegacyForm}>{t('connect')}</Button>
+                <Button onClick={openCreate}>{t('connect')}</Button>
               )
             ) : null}
           </Card>
@@ -320,9 +404,6 @@ export function ChannelsPanel() {
           <p className="text-muted-foreground text-xs">{t('readOnly')}</p>
         ) : null}
       </section>
-      <div id={LEGACY_FORM_ID}>
-        <WhatsAppConfig />
-      </div>
 
       <Dialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
         <DialogContent className="sm:max-w-md">

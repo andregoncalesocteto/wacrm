@@ -1657,6 +1657,21 @@
       "ownerHint": "Controle total da conta e do faturamento"
     },
     "whatsapp": {
+      "displayName": "Nome da conexão",
+      "displayNamePlaceholder": "ex.: Número principal",
+      "displayNameRequired": "O nome da conexão é obrigatório",
+      "phoneNumberIdLocked": "O número não pode ser alterado. Para usar outro número, crie uma nova conexão.",
+      "wabaIdRequired": "O ID da conta do WhatsApp Business é obrigatório",
+      "tokenProvided": "Token informado",
+      "replace": "Substituir",
+      "keepCurrent": "Manter o atual",
+      "verifyTokenProvided": "Token de verificação informado",
+      "verifyTokenCopied": "Token de verificação copiado",
+      "copyVerifyToken": "Copiar token de verificação",
+      "verifyTokenGeneratedHint": "Copie este token para as configurações de webhook na Meta. Ele só aparece agora; depois de salvar você pode substituí-lo, mas não lê-lo de novo.",
+      "createConnection": "Criar conexão",
+      "saved": "Conexão salva.",
+      "duplicateConnection": "Já existe uma conexão para este número de telefone.",
       "title": "Conexão com o WhatsApp",
       "description": "Conecte sua API do WhatsApp Business da Meta. Credenciais, webhook e etapas de configuração ficam todos aqui.",
       "tokenCorrupted": "Não foi possível descriptografar o token armazenado",
@@ -1810,6 +1825,8 @@
       "toastDeleted": "Loja excluída."
     },
     "channels": {
+      "back": "Voltar para canais",
+      "storeLabel": "Loja",
       "title": "Canais",
       "description": "Conecte os canais de cada loja.",
       "listTitle": "Canais conectados",

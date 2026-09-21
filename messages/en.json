@@ -1667,6 +1667,21 @@
       "ownerHint": "Full control over account and billing"
     },
     "whatsapp": {
+      "displayName": "Connection name",
+      "displayNamePlaceholder": "e.g. Main number",
+      "displayNameRequired": "Connection name is required",
+      "phoneNumberIdLocked": "The number cannot be changed. To use another number, create a new connection.",
+      "wabaIdRequired": "WhatsApp Business Account ID is required",
+      "tokenProvided": "Token provided",
+      "replace": "Replace",
+      "keepCurrent": "Keep current",
+      "verifyTokenProvided": "Verify token provided",
+      "verifyTokenCopied": "Verify token copied to clipboard",
+      "copyVerifyToken": "Copy verify token",
+      "verifyTokenGeneratedHint": "Copy this token into the webhook settings in Meta. It is only shown now; after saving you can replace it but not read it again.",
+      "createConnection": "Create connection",
+      "saved": "Connection saved.",
+      "duplicateConnection": "A connection for this phone number already exists.",
       "title": "WhatsApp connection",
       "description": "Connect your Meta WhatsApp Business API. Credentials, webhook, and setup steps all live here.",
       "tokenCorrupted": "Stored token can't be decrypted",
@@ -1820,6 +1835,8 @@
       "toastDeleted": "Store deleted."
     },
     "channels": {
+      "back": "Back to channels",
+      "storeLabel": "Store",
       "title": "Channels",
       "description": "Connect the channels of each store.",
       "listTitle": "Connected channels",

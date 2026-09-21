@@ -503,3 +503,12 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - dev-browser session may be logged in as another account (qa-ptbr): check the auth cookie email; contacts/conversations.user_id is the auth.users id, NOT profiles.id.
   - has_conversations query is not paginated: PostgREST caps at 1000 rows, so with huge conversation counts it can under-report (DELETE still 409s; safe).
 ---
+
+## 2026-09-21 - US-039
+- New src/lib/channels/ui-registry.tsx (channel_type -> panel | form descriptor + icon; whatsapp_cloud = panel, telegram = form/no fields). whatsapp-config.tsx was `git mv`d to src/lib/channels/providers/whatsapp-cloud/ui/whatsapp-connection-panel.tsx and rewritten over the NEW routes (create: POST connections then /connect {pin}; edit: PATCH then /connect when needed; probe: /test; mirror: PATCH config). Pure helpers in ui/panel-logic.ts (+test, 30 cases). ChannelsPanel: legacy embedded form removed; Configurar opens the registry panel in place of the list; Conectar canal opens create mode with a store select (native select). ChannelConnectionRow gained optional external_id/config/last_error.
+- Secrets: never prefilled. Access token and verify token show "informado" + Substituir; create mode generates a verify token (32 hex) to copy into Meta; PIN goes only to /connect.
+- i18n: 15 keys in Settings.whatsapp, back/storeLabel in Settings.channels (4 catalogues). Old keys no longer used (tokenCorrupted, resetConfig, tokenHidden, wabaSubscribed...) were left in place; US-069 can prune.
+- Behavior changes to know: waba_id is now REQUIRED (config schema); phone number is read-only in edit (PATCH cannot change external_id); no Reset button (delete lives in the list); probe shows connected/not + reason only (Health has no per-check breakdown), Meta step/trace details of the old save error are not shown; the "token corrupted" banner is now the status message.
+- Checks: typecheck, lint 0 errors/39 warnings, TZ=UTC tests 1537, build ok. Browser verified (see prd notes); seeds removed.
+- **Learnings:** the /connect failure after a successful create leaves the connection row (needs_action); the panel stays open in edit mode with the error. Legacy /api/whatsapp/config routes untouched (US-069).
+---

@@ -9,6 +9,10 @@ export interface ChannelConnectionRow {
   disabled_at: string | null;
   last_inbound_at: string | null;
   has_conversations: boolean;
+  /** Non-secret fields the GET list also returns (secrets never leave the server). */
+  external_id?: string | null;
+  config?: Record<string, unknown> | null;
+  last_error?: { message?: string } | null;
 }
 
 export interface StoreRef {
