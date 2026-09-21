@@ -564,6 +564,7 @@
       "description": "Como desenvolvedor, quero que o banco garanta a regra \"uma conversa por contato e conexão\".",
       "acceptanceCriteria": [
         "Migration `046` torna `conversations.connection_id` `NOT NULL`, troca `idx_conversations_account_contact` por `UNIQUE (contact_id, connection_id)` e cria o índice `(connection_id, last_message_at DESC)`",
+        "Antes do `NOT NULL`, contas que têm conversas mas **não têm mais `whatsapp_config`** (a configuração foi apagada depois) recebem uma conexão **desativada de legado** (`external_id` sintético `legacy-<account_id>`, `disabled_at` preenchido, sem credenciais, numa loja padrão da conta), e suas conversas são ligadas a ela, para o histórico não se perder. `verify-schema.sql` afirma que nenhuma conversa fica sem `connection_id`",
         "Troca `idx_one_active_run_per_contact` por unicidade da execução ativa **por conversa**",
         "`verify-schema.sql` verifica os índices novos e a ausência de `connection_id` nulo",
         "O replay do zero, `verify-schema.sql` e a suíte passam",
@@ -573,7 +574,7 @@
       ],
       "priority": 34,
       "passes": false,
-      "notes": ""
+      "notes": "Adicionado pelo orquestrador após a US-007: o backfill deixa connection_id nulo em contas sem whatsapp_config; o NOT NULL exige tratar conversas órfãs (config apagada) com uma conexão desativada de legado."
     },
     {
       "id": "US-033",
