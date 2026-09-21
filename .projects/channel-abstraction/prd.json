@@ -70,8 +70,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Pinned as-is: a failed Meta send in flows/automations/AI persists nothing (no failed row; flows run -> failed/send_*_failed, automation log -> failed); AI slot is consumed before the send so a failed send still counts against the cap; a resumed wait whose send fails still closes the pending row as done (the failure is in the log); deliverBroadcast never writes count columns (DB trigger owns them). Differs from coverage-map.md speculation of a 'failed' message row."
     },
     {
       "id": "US-005",

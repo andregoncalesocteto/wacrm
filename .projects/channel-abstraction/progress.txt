@@ -69,3 +69,21 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Still untested on the send side (left for later stories): POST /api/whatsapp/react, send route for conversation_id text/media, media proxy route, templates routes.
   - Baseline now: 93 files / 1102 tests green, lint 41 warnings, typecheck clean.
 ---
+
+## 2026-09-21 - US-004
+- Added 4 characterization test files + 1 shared fake (no production code changed, existing tests untouched, 60 new tests):
+  - src/lib/whatsapp/broadcast-deliver.characterization.test.ts (16): deliverBroadcast (sent stamp with wamid/sent_at, failed + error_message, keeps going, variant retry only on "recipient not allowed", "Unknown error"), finalizeBroadcastStatus (pending -> stays sending, partial -> sent, all failed -> failed, delivered/read/replied count as reached), markBroadcastSending, resume pass (only leftovers, does not condemn the campaign).
+  - src/lib/flows/engine.characterization.test.ts (18): engineSendText/Media/InteractiveButtons/List persist a bot message + update the conversation preview; variant retry; nothing persisted when Meta fails; plus the real engine running text->media->buttons and a list flow, and a failed send failing the run.
+  - src/lib/automations/engine.characterization.test.ts (17): send_message/send_template/send_buttons/send_list through the real senders, conversation from context vs contact fallback, wait parks the run, resumePendingExecution sends via the right conversation.
+  - src/lib/ai/auto-reply.characterization.test.ts (9): real engineSendText with ai_generated=true, typing indicator, per-conversation cap (atomic claim), lost claim, failed send swallowed, handoff, per-account throttle (30/min).
+  - src/lib/automations/engine.characterization.fake.ts: shared in-memory service-role client (eq/is/in/gte/order/insert/update/rpc), imported inside vi.mock factories by the automations and AI tests.
+- Files changed: the files above, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - Every non-WhatsApp-webhook sender (flows, automations, AI) duplicates the same pattern: contact lookup by account, resolveContactSendTarget, whatsapp_config decrypt, phoneVariants retry, INSERT messages (sender_type 'bot', status 'sent'), UPDATE conversations preview. When Meta fails NOTHING is persisted (same as send-message, US-003); coverage-map.md's speculation of a 'failed' row is wrong for all of them.
+  - The send target passed to Meta is the sanitized number WITHOUT '+' ('15551234567'); the first phone variant equals it.
+  - AI: the reply slot is claimed BEFORE the send, so a failed send still consumes a slot (fail-safe, pinned). Handoff consumes no slot. auto-reply.test.ts stubs engineSendText; the new file runs it for real.
+  - Automations: executeStepsFrom swallows step errors into automation_logs, so resumePendingExecution marks the pending row 'done' even when the resumed send failed (the failure shows in the log only). The trigger type is 'new_contact_created' (not 'new_contact').
+  - Templates in automations: params sorted numerically by variable key; without a local template row the send still goes out with content_text null and preview '[template:name]'.
+  - Still untested (out of US-004 criteria): broadcast API routes (POST /api/whatsapp/broadcast, resume, /api/v1/broadcasts), flows handleReplyForActiveRun/collect_input/condition paths.
+  - Baseline now: 97 files / 1162 tests green (TZ=UTC), lint 41 warnings, typecheck clean.
+---
