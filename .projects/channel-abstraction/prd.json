@@ -394,7 +394,7 @@
       ],
       "priority": 23,
       "passes": false,
-      "notes": "Critério de status ajustado pelo orquestrador após a US-002: a espelhada de messages não tem trava de ordem hoje (fixado por teste de caracterização); manter o comportamento (RNF-01)."
+      "notes": "Critério de status ajustado pelo orquestrador após a US-002: a espelhada de messages não tem trava de ordem hoje (fixado por teste de caracterização); manter o comportamento (RNF-01). Após a US-073: três casos de borda do `parse` do WhatsApp diferem do que o webhook atual grava quando mapeados 1:1 — (1) interativo sem opção: a rota grava `content_type` \"interactive\", o parse emite `unsupported` (texto); (2) mídia sem id: a rota grava `content_type` image com mídia nula; (3) botão sem payload nem texto: `id` e `title` vazios. Ao ligar a ingestão (US-019/US-021) e trocar a rota (US-022), reproduzir exatamente o que a rota grava hoje (ajustando o mapeamento no núcleo ou enriquecendo o evento de forma aditiva) e cobrir os três casos com testes."
     },
     {
       "id": "US-022",
@@ -411,7 +411,7 @@
       ],
       "priority": 24,
       "passes": false,
-      "notes": ""
+      "notes": "Após a US-073: três casos de borda do `parse` do WhatsApp diferem do que o webhook atual grava quando mapeados 1:1 — (1) interativo sem opção: a rota grava `content_type` \"interactive\", o parse emite `unsupported` (texto); (2) mídia sem id: a rota grava `content_type` image com mídia nula; (3) botão sem payload nem texto: `id` e `title` vazios. Ao ligar a ingestão (US-019/US-021) e trocar a rota (US-022), reproduzir exatamente o que a rota grava hoje (ajustando o mapeamento no núcleo ou enriquecendo o evento de forma aditiva) e cobrir os três casos com testes."
     },
     {
       "id": "US-023",
