@@ -680,7 +680,7 @@
       ],
       "priority": 40,
       "passes": false,
-      "notes": ""
+      "notes": "Após a US-035: `GET /api/channels/providers` devolve o rótulo como a chave `Channels.providers.<tipo>.name` (e o descritor do provedor), que ainda NÃO existe nos catálogos: acrescentar `Channels.providers.whatsapp_cloud.name` (e a descrição curta) nos quatro catálogos; o Telegram acrescenta as suas na US-050. Convenção: chaves `Settings.stores.*`, `Settings.channels.*`, `Channels.providers.<tipo>.*`."
     },
     {
       "id": "US-037",
