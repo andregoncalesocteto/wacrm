@@ -888,7 +888,7 @@
         "Verify in browser using dev-browser skill (compositor numa conversa de WhatsApp)"
       ],
       "priority": 52,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

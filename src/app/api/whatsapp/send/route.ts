@@ -188,6 +188,8 @@ export async function POST(request: Request) {
           {
             error: err.message,
             ...(err.code === 'connection_disabled' && { code: err.code }),
+            ...(err.channelCode &&
+              err.code !== 'connection_disabled' && { code: err.channelCode }),
           },
           { status: err.status }
         )

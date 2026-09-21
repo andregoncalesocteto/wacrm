@@ -55,6 +55,10 @@ import {
 import { validateInteractivePayload } from "@/lib/whatsapp/interactive";
 import type { InteractiveMessagePayload, QuickReply } from "@/types";
 import { QuickReplyPicker } from "./quick-reply-picker";
+import {
+  composerCapabilities,
+  type ComposerCapabilities,
+} from "@/lib/channels/composer-capabilities";
 
 /** Media content types an agent can send from the composer. */
 export type ComposerMediaKind = "image" | "video" | "document" | "audio";
@@ -113,6 +117,8 @@ interface MessageComposerProps {
   conversationId: string;
   /** Store of the conversation's connection; scopes the quick-reply picker. */
   storeId?: string | null;
+  /** What the conversation's channel supports; omitted = WhatsApp (everything). */
+  capabilities?: ComposerCapabilities;
   sessionExpired: boolean;
   onSend: (text: string, replyToId?: string) => void;
   onSendMedia: (payload: SendMediaPayload) => void;
@@ -136,6 +142,7 @@ const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 export function MessageComposer({
   conversationId,
   storeId,
+  capabilities,
   sessionExpired,
   onSend,
   onSendMedia,
@@ -192,6 +199,9 @@ export function MessageComposer({
   // every capability — so the disabled branch is a no-op there.
   const canSend = useCan("send-messages");
   const readOnly = !canSend;
+  const caps = capabilities ?? composerCapabilities(null, null);
+  const captionMax = caps.captionMax;
+  const canInteractive = caps.canButtons || caps.canList;
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired;
 
@@ -363,6 +373,10 @@ export function MessageComposer({
     (qr: QuickReply) => {
       setQuickReplyOpen(false);
       if (qr.kind === "interactive" && qr.interactive_payload) {
+        if (!canInteractive) {
+          toast.error(t("unsupportedButtons"));
+          return;
+        }
         openInteractiveBuilder(qr.interactive_payload);
         return;
       }
@@ -381,7 +395,7 @@ export function MessageComposer({
         }
       });
     },
-    [openInteractiveBuilder, adjustHeight],
+    [openInteractiveBuilder, adjustHeight, canInteractive, t],
   );
 
   // Upload a captured file to chat-media and stage it as a draft.
@@ -390,6 +404,10 @@ export function MessageComposer({
       // Per-kind ceiling mirrors Meta's caps (image 5 MB, etc.) so we
       // reject before upload rather than orphaning an object that Meta
       // would then refuse at send.
+      if (!caps.mediaKinds.includes(kind)) {
+        toast.error(t("unsupportedMedia"));
+        return;
+      }
       const max = MEDIA_MAX_BYTES_BY_KIND[kind];
       if (file.size > max) {
         toast.error(
@@ -411,7 +429,7 @@ export function MessageComposer({
         setBusy(false);
       }
     },
-    [removeStaged],
+    [removeStaged, caps.mediaKinds, t],
   );
 
   const handlePicked = useCallback(
@@ -510,6 +528,10 @@ export function MessageComposer({
 
   const sendDraft = useCallback(() => {
     if (!draft || busy) return;
+    if (draft.kind !== "audio" && draft.caption.trim().length > captionMax) {
+      toast.error(t("captionTooLong", { max: captionMax }));
+      return;
+    }
     onSendMedia({
       kind: draft.kind,
       mediaUrl: draft.mediaUrl,
@@ -524,7 +546,7 @@ export function MessageComposer({
     // The object is now owned by the sent message — clear without GC.
     setDraft(null);
     onClearReply?.();
-  }, [draft, busy, onSendMedia, replyTo?.id, onClearReply]);
+  }, [draft, busy, onSendMedia, replyTo?.id, onClearReply, captionMax, t]);
 
   // Discard GCs the staged object — it was uploaded but never sent.
   const discardDraft = useCallback(() => {
@@ -559,6 +581,12 @@ export function MessageComposer({
             size="sm"
             className="h-7 text-xs text-amber-400 hover:text-amber-300"
             onClick={onOpenTemplates}
+            disabled={!caps.canTemplate}
+            title={
+              caps.canTemplate || !caps.reasons.template
+                ? undefined
+                : t(caps.reasons.template)
+            }
           >
             <LayoutTemplate className="mr-1 h-3 w-3" />
             {t("templates")}
@@ -603,6 +631,7 @@ export function MessageComposer({
           draft={draft}
           busy={busy}
           readOnly={readOnly}
+          captionMax={captionMax}
           onCaptionChange={setCaption}
           onDiscard={discardDraft}
           onSend={sendDraft}
@@ -636,13 +665,15 @@ export function MessageComposer({
           {/* Attach menu — photo / video / document / voice. */}
           <DropdownMenu>
             <DropdownMenuTrigger
-              disabled={inputsDisabled || busy}
+              disabled={inputsDisabled || busy || !caps.canMedia}
               title={
                 readOnly
                   ? t("readOnlyTitle")
-                  : inputsDisabled
-                    ? undefined
-                    : t("attachMedia")
+                  : !caps.canMedia && caps.reasons.media
+                    ? t(caps.reasons.media)
+                    : inputsDisabled
+                      ? undefined
+                      : t("attachMedia")
               }
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -653,22 +684,46 @@ export function MessageComposer({
               )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="border-border bg-popover">
-              <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
-                <ImageIcon className="mr-2 h-4 w-4" />
-                {t("photo")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => videoInputRef.current?.click()}>
-                <Video className="mr-2 h-4 w-4" />
-                {t("video")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => documentInputRef.current?.click()}>
-                <FileText className="mr-2 h-4 w-4" />
-                {t("document")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void startRecording()}>
-                <Mic className="mr-2 h-4 w-4" />
-                {t("voiceNote")}
-              </DropdownMenuItem>
+              {(
+                [
+                  ["image", imageInputRef, ImageIcon, "photo"],
+                  ["video", videoInputRef, Video, "video"],
+                  ["document", documentInputRef, FileText, "document"],
+                ] as const
+              ).map(([kind, ref, Icon, label]) => {
+                const allowed = caps.mediaKinds.includes(kind);
+                return (
+                  <span
+                    key={kind}
+                    className="block"
+                    title={allowed ? undefined : t("unsupportedMedia")}
+                  >
+                    <DropdownMenuItem
+                      disabled={!allowed}
+                      onClick={() => ref.current?.click()}
+                    >
+                      <Icon className="mr-2 h-4 w-4" />
+                      {t(label)}
+                    </DropdownMenuItem>
+                  </span>
+                );
+              })}
+              <span
+                className="block"
+                title={
+                  caps.mediaKinds.includes("audio")
+                    ? undefined
+                    : t("unsupportedMedia")
+                }
+              >
+                <DropdownMenuItem
+                  disabled={!caps.mediaKinds.includes("audio")}
+                  onClick={() => void startRecording()}
+                >
+                  <Mic className="mr-2 h-4 w-4" />
+                  {t("voiceNote")}
+                </DropdownMenuItem>
+              </span>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -689,10 +744,22 @@ export function MessageComposer({
               <Plus className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="border-border bg-popover">
-              <DropdownMenuItem onClick={() => openInteractiveBuilder()}>
-                <MessageSquareDashed className="mr-2 h-4 w-4" />
-                {t("interactiveMessage")}
-              </DropdownMenuItem>
+              <span
+                className="block"
+                title={
+                  canInteractive
+                    ? undefined
+                    : t(caps.reasons.buttons ?? "unsupportedButtons")
+                }
+              >
+                <DropdownMenuItem
+                  disabled={!canInteractive}
+                  onClick={() => openInteractiveBuilder()}
+                >
+                  <MessageSquareDashed className="mr-2 h-4 w-4" />
+                  {t("interactiveMessage")}
+                </DropdownMenuItem>
+              </span>
               <DropdownMenuItem onClick={() => setQuickReplyOpen(true)}>
                 <Zap className="mr-2 h-4 w-4" />
                 {t("quickReplies")}
@@ -705,7 +772,14 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            title={readOnly ? undefined : t("sendTemplate")}
+            disabled={!caps.canTemplate}
+            title={
+              readOnly
+                ? undefined
+                : caps.canTemplate || !caps.reasons.template
+                  ? t("sendTemplate")
+                  : t(caps.reasons.template)
+            }
             className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
             onClick={onOpenTemplates}
           >
@@ -829,6 +903,7 @@ function MediaDraftPreview({
   draft,
   busy,
   readOnly,
+  captionMax,
   onCaptionChange,
   onDiscard,
   onSend,
@@ -837,6 +912,7 @@ function MediaDraftPreview({
   draft: MediaDraft;
   busy: boolean;
   readOnly: boolean;
+  captionMax: number;
   onCaptionChange: (caption: string) => void;
   onDiscard: () => void;
   onSend: () => void;
@@ -881,7 +957,7 @@ function MediaDraftPreview({
         {draft.kind !== "audio" && (
           <input
             value={draft.caption}
-            maxLength={MEDIA_CAPTION_MAX}
+            maxLength={captionMax}
             onChange={(e) => onCaptionChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {

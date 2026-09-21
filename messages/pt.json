@@ -180,6 +180,13 @@
     "messageThread": {
       "connectionDisabled": "Esta conexão está desativada; reative-a em Configurações → Canais para responder",
       "connectionDisabledLink": "Abrir Canais",
+      "sendError": {
+        "unsupported": "Esta conversa não aceita este tipo de mensagem",
+        "windowClosed": "A janela de 24h terminou: envie um template",
+        "recipientUnreachable": "Destinatário inacessível",
+        "connectionDisabled": "Conexão desativada",
+        "invalid": "A mensagem é inválida para este canal"
+      },
       "backToConversations": "Voltar às conversas",
       "hideContactPanel": "Ocultar painel do contato",
       "showContactPanel": "Mostrar painel do contato",
@@ -224,6 +231,12 @@
       "sessionExpiredPlaceholder": "Sessão expirada - use um template",
       "typeMessagePlaceholder": "Digite uma mensagem... (Shift+Enter para nova linha)",
       "readOnlyTitle": "Somente leitura — sua função não pode enviar mensagens",
+      "unsupportedTemplates": "Este canal não aceita templates",
+      "unsupportedButtons": "Este canal não aceita mensagens interativas",
+      "unsupportedList": "Este canal não aceita mensagens de lista",
+      "unsupportedReactions": "Este canal não aceita reações",
+      "unsupportedMedia": "Este canal não aceita este tipo de mídia",
+      "captionTooLong": "Legenda muito longa (máximo de {max} caracteres)",
       "recording": "Gravando… {current} / {max}",
       "cancel": "Cancelar",
       "stopAndAttach": "Parar e anexar",

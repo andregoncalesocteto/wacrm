@@ -180,6 +180,13 @@
     "messageThread": {
       "connectionDisabled": "이 연결은 비활성화되어 있습니다. 답장하려면 설정 → 채널에서 다시 활성화하세요",
       "connectionDisabledLink": "채널 열기",
+      "sendError": {
+        "unsupported": "이 대화는 이 유형의 메시지를 지원하지 않습니다",
+        "windowClosed": "24시간 창이 종료되었습니다: 템플릿을 보내세요",
+        "recipientUnreachable": "수신자에게 연결할 수 없습니다",
+        "connectionDisabled": "연결이 비활성화되었습니다",
+        "invalid": "이 채널에서 유효하지 않은 메시지입니다"
+      },
       "backToConversations": "대화 목록으로 돌아가기",
       "hideContactPanel": "연락처 패널 숨기기",
       "showContactPanel": "연락처 패널 표시",
@@ -224,6 +231,12 @@
       "sessionExpiredPlaceholder": "세션 만료 - 템플릿을 사용하세요",
       "typeMessagePlaceholder": "메시지를 입력하세요... (줄바꿈은 Shift+Enter)",
       "readOnlyTitle": "읽기 전용 — 현재 역할로는 메시지를 보낼 수 없습니다",
+      "unsupportedTemplates": "이 채널은 템플릿을 지원하지 않습니다",
+      "unsupportedButtons": "이 채널은 인터랙티브 메시지를 지원하지 않습니다",
+      "unsupportedList": "이 채널은 목록 메시지를 지원하지 않습니다",
+      "unsupportedReactions": "이 채널은 반응을 지원하지 않습니다",
+      "unsupportedMedia": "이 채널은 이 미디어 유형을 지원하지 않습니다",
+      "captionTooLong": "캡션이 너무 깁니다 (최대 {max}자)",
       "recording": "녹음 중… {current} / {max}",
       "cancel": "취소",
       "stopAndAttach": "중지하고 첨부",

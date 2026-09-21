@@ -561,12 +561,13 @@ export function toSendMessageError(err: unknown): unknown {
         err.code === 'invalid')
     ) {
       // Failed before the provider was called: the old core answered 400.
-      return new SendMessageError('bad_request', err.message, 400);
+      return new SendMessageError('bad_request', err.message, 400, err.code);
     }
     return new SendMessageError(
       'meta_error',
       `Meta API error: ${err.message}`,
-      502
+      502,
+      err.code
     );
   }
   return err;

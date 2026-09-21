@@ -55,6 +55,11 @@ import {
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
 import { ConversationScopeBadge } from "./conversation-scope-badge";
+import { useChannelProviders } from "@/hooks/use-channel-providers";
+import {
+  composerCapabilities,
+  sendErrorMessageKey,
+} from "@/lib/channels/composer-capabilities";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { renderTemplateBody } from "@/lib/whatsapp/template-body";
@@ -186,6 +191,25 @@ export function MessageThread({
   const canEditSettings = useCan("edit-settings");
   // A disabled connection keeps its history readable but cannot send.
   const connectionDisabled = isConversationConnectionDisabled(conversation);
+  // What the conversation's channel can do (templates, buttons, reactions...).
+  const providers = useChannelProviders();
+  const caps = useMemo(
+    () => composerCapabilities(conversation?.connection?.channel_type, providers),
+    [conversation?.connection?.channel_type, providers],
+  );
+  // A send error with a known ChannelError code becomes a translated message;
+  // anything else keeps the server text.
+  const sendFailedMessage = useCallback(
+    (
+      payload: { code?: unknown } | null | undefined,
+      failedKey: "sendFailed" | "sendTemplateFailed",
+      reason: string,
+    ) => {
+      const key = sendErrorMessageKey(payload?.code);
+      return key ? t(`sendError.${key}`) : t(failedKey, { reason });
+    },
+    [t],
+  );
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -517,7 +541,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send message:", reason);
-          toast.error(t("sendFailed", { reason }));
+          toast.error(sendFailedMessage(payload, "sendFailed", reason));
           // Mark the optimistic bubble as failed so the user sees what happened
           onUpdateMessage(tempId, { status: "failed" });
           return;
@@ -534,7 +558,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t]
+    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t, sendFailedMessage]
   );
 
   const handleSendMedia = useCallback(
@@ -583,7 +607,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send media:", reason);
-          toast.error(t("sendFailed", { reason }));
+          toast.error(sendFailedMessage(data, "sendFailed", reason));
           onUpdateMessage(tempId, { status: "failed" });
           // The upload never reached the recipient — GC the orphaned
           // object rather than leaving it in the public bucket forever.
@@ -600,7 +624,7 @@ export function MessageThread({
         void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
     },
-    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t],
+    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t, sendFailedMessage],
   );
 
   const handleSendInteractive = useCallback(
@@ -640,7 +664,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send interactive message:", reason);
-          toast.error(t("sendFailed", { reason }));
+          toast.error(sendFailedMessage(data, "sendFailed", reason));
           onUpdateMessage(tempId, { status: "failed" });
           return;
         }
@@ -653,7 +677,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t],
+    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t, sendFailedMessage],
   );
 
   const handleStatusChange = useCallback(
@@ -729,7 +753,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send template:", reason);
-          toast.error(t("sendTemplateFailed", { reason }));
+          toast.error(sendFailedMessage(payload, "sendTemplateFailed", reason));
           onUpdateMessage(tempId, { status: "failed" });
           return;
         }
@@ -742,7 +766,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t],
+    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t, sendFailedMessage],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -803,6 +827,7 @@ export function MessageThread({
         console.warn("[reactions] missing user or conversation");
         return;
       }
+      if (!caps.canReact || connectionDisabled) return;
       if (messageId.startsWith("temp-")) {
         toast.error(t("waitForSending"));
         return;
@@ -846,7 +871,10 @@ export function MessageThread({
         });
         if (!res.ok) {
           const payload = await res.json().catch(() => ({}));
-          throw new Error(payload?.error || `HTTP ${res.status}`);
+          const known = sendErrorMessageKey(payload?.code);
+          throw new Error(
+            known ? t(`sendError.${known}`) : payload?.error || `HTTP ${res.status}`,
+          );
         }
       } catch (err) {
         const reason = err instanceof Error ? err.message : "network error";
@@ -854,7 +882,7 @@ export function MessageThread({
         setReactions(snapshot);
       }
     },
-    [conversation, user?.id, t],
+    [conversation, user?.id, t, caps.canReact, connectionDisabled],
   );
 
   const handleAssignChange = useCallback(
@@ -1160,6 +1188,7 @@ export function MessageThread({
                         key={msg.id}
                         message={msg}
                         onReply={() => handleStartReply(msg)}
+                        canReact={caps.canReact && !connectionDisabled}
                         onReact={(emoji) => {
                           if (emoji) void postReaction(msg.id, emoji);
                         }}
@@ -1221,6 +1250,7 @@ export function MessageThread({
         <MessageComposer
           conversationId={conversation.id}
           storeId={conversation.connection?.store_id ?? null}
+          capabilities={caps}
           sessionExpired={sessionInfo.expired}
           onSend={handleSend}
           onSendMedia={handleSendMedia}

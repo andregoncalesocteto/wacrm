@@ -180,6 +180,13 @@
     "messageThread": {
       "connectionDisabled": "This connection is disabled; re-enable it in Settings → Channels to reply",
       "connectionDisabledLink": "Open Channels",
+      "sendError": {
+        "unsupported": "This conversation does not accept this kind of message",
+        "windowClosed": "The 24-hour window has ended: send a template",
+        "recipientUnreachable": "Recipient unreachable",
+        "connectionDisabled": "Connection disabled",
+        "invalid": "The message is invalid for this channel"
+      },
       "backToConversations": "Back to conversations",
       "hideContactPanel": "Hide contact panel",
       "showContactPanel": "Show contact panel",
@@ -224,6 +231,12 @@
       "sessionExpiredPlaceholder": "Session expired - use a template",
       "typeMessagePlaceholder": "Type a message... (Shift+Enter for new line)",
       "readOnlyTitle": "Read-only — your role can't send messages",
+      "unsupportedTemplates": "This channel does not support templates",
+      "unsupportedButtons": "This channel does not support interactive messages",
+      "unsupportedList": "This channel does not support list messages",
+      "unsupportedReactions": "This channel does not support reactions",
+      "unsupportedMedia": "This channel does not accept this kind of media",
+      "captionTooLong": "Caption is too long (maximum {max} characters)",
       "recording": "Recording… {current} / {max}",
       "cancel": "Cancel",
       "stopAndAttach": "Stop and attach",

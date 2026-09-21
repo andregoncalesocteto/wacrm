@@ -20,6 +20,8 @@ interface MessageActionsProps {
   message: Message;
   onReply: () => void;
   onReact: (emoji: string) => void;
+  /** False hides the reaction picker (channel without reactions / disabled connection). */
+  canReact?: boolean;
   children: ReactNode;
 }
 
@@ -32,6 +34,7 @@ export function MessageActions({
   message,
   onReply,
   onReact,
+  canReact = true,
   children,
 }: MessageActionsProps) {
   const t = useTranslations("Inbox.actions");
@@ -104,6 +107,7 @@ export function MessageActions({
           isAgent ? "right-3" : "left-3",
         )}
       >
+        {canReact && (
         <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
           <PopoverTrigger
             className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
@@ -128,6 +132,7 @@ export function MessageActions({
             ))}
           </PopoverContent>
         </Popover>
+        )}
         <button
           type="button"
           onClick={handleReply}

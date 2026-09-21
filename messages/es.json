@@ -180,6 +180,13 @@
     "messageThread": {
       "connectionDisabled": "Esta conexión está desactivada; reactívala en Configuración → Canales para responder",
       "connectionDisabledLink": "Abrir Canales",
+      "sendError": {
+        "unsupported": "Esta conversación no admite este tipo de mensaje",
+        "windowClosed": "La ventana de 24 h terminó: envía una plantilla",
+        "recipientUnreachable": "Destinatario inaccesible",
+        "connectionDisabled": "Conexión desactivada",
+        "invalid": "El mensaje no es válido para este canal"
+      },
       "backToConversations": "Volver a las conversaciones",
       "hideContactPanel": "Ocultar panel del contacto",
       "showContactPanel": "Mostrar panel del contacto",
@@ -224,6 +231,12 @@
       "sessionExpiredPlaceholder": "Sesión expirada - usa una plantilla",
       "typeMessagePlaceholder": "Escribe un mensaje... (Shift+Enter para nueva línea)",
       "readOnlyTitle": "Solo lectura: tu rol no puede enviar mensajes",
+      "unsupportedTemplates": "Este canal no admite plantillas",
+      "unsupportedButtons": "Este canal no admite mensajes interactivos",
+      "unsupportedList": "Este canal no admite mensajes de lista",
+      "unsupportedReactions": "Este canal no admite reacciones",
+      "unsupportedMedia": "Este canal no admite este tipo de multimedia",
+      "captionTooLong": "El pie de foto es demasiado largo (máximo {max} caracteres)",
       "recording": "Grabando… {current} / {max}",
       "cancel": "Cancelar",
       "stopAndAttach": "Detener y adjuntar",
