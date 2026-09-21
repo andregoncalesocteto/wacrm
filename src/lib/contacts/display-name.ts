@@ -125,3 +125,79 @@ export function matchesContactSearch(
   }
   return fields.some((f) => !!f && f.toLowerCase().includes(q));
 }
+
+/** PostgREST embed that hydrates what the display helpers need. Keep it lean. */
+export const CONTACT_IDENTITIES_EMBED =
+  'contact_identities(kind, external_id, handle)';
+
+/** Row shape returned by {@link CONTACT_IDENTITIES_EMBED}. */
+export type RawContactIdentity = {
+  kind: string;
+  external_id: string;
+  handle?: string | null;
+};
+
+/** snake_case embed rows -> `ContactIdentity[]` (tolerates a missing embed). */
+export function identitiesFromRows(
+  rows: RawContactIdentity[] | null | undefined
+): ContactIdentity[] {
+  return (rows ?? []).map((i) => ({
+    kind: i.kind,
+    externalId: i.external_id,
+    handle: i.handle ?? null,
+  }));
+}
+
+/**
+ * Contact row (or embedded contact) that still carries the raw
+ * `contact_identities` embed: hydrates `identities` and drops the raw key.
+ */
+export function withIdentities<T extends object>(
+  row: T & { contact_identities?: RawContactIdentity[] | null }
+): Omit<T, 'contact_identities'> & { identities: ContactIdentity[] } {
+  const { contact_identities, ...rest } = row;
+  return {
+    ...rest,
+    identities: identitiesFromRows(contact_identities),
+  } as Omit<T, 'contact_identities'> & { identities: ContactIdentity[] };
+}
+
+/** PostgREST may return an embedded to-one as an array; take the first. */
+export function firstOf<T>(v: T | T[] | null | undefined): T | null {
+  return (Array.isArray(v) ? v[0] : v) ?? null;
+}
+
+/**
+ * Secondary identifier of a contact in lists: the phone when present (exactly
+ * as before), else the primary identity plus its channel ("@maria · Telegram").
+ * `channelName` translates a channel type (`telegram`); without it, or when it
+ * returns nothing, only the identity is shown. Empty when there is nothing.
+ */
+export function contactSecondaryLine(
+  contact: DisplayContact,
+  identities: ContactIdentity[] = [],
+  channelName?: (channelType: string) => string | undefined
+): string {
+  if (contact.phone?.trim()) return contact.phone;
+  const primary = primaryIdentity(contact, identities);
+  if (!primary) return '';
+  const channel = primary.channelType
+    ? channelName?.(primary.channelType)
+    : undefined;
+  return channel ? `${primary.label} · ${channel}` : primary.label;
+}
+
+/**
+ * Whether a broadcast (WhatsApp template) can reach the contact: it has a
+ * phone, a WhatsApp phone / BSUID identity, or a legacy `wa_user_id`.
+ * Telegram-only contacts are not eligible.
+ */
+export function isWhatsAppReachable(
+  contact: DisplayContact,
+  identities: ContactIdentity[] = []
+): boolean {
+  if (contact.phone?.trim() || contact.wa_user_id?.trim()) return true;
+  return identities.some(
+    (i) => i.kind === 'whatsapp:phone' || i.kind === 'whatsapp:bsuid'
+  );
+}

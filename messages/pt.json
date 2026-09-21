@@ -387,6 +387,7 @@
       "noContactsYet": "Nenhum contato ainda.",
       "addFirstContact": "Adicione seu primeiro contato",
       "unnamed": "Sem nome",
+      "noIdentifier": "Sem identificador",
       "editAction": "Editar",
       "deleteAction": "Excluir",
       "showingPagination": "Mostrando {start}-{end} de {total}",
@@ -832,6 +833,10 @@
         "errorCsvMissingPhone": "O CSV deve ter uma coluna 'phone'.",
         "audienceSummary": "Resumo do público",
         "estimatedRecipients": "destinatários estimados",
+        "ineligibleTitle": "{count, plural, one {# contato não elegível} other {# contatos não elegíveis}}",
+        "ineligibleReason": "Sem número de WhatsApp — este contato não pode receber broadcasts",
+        "ineligibleUnnamed": "Contato sem nome",
+        "ineligibleMore": "+{count} outros",
         "selectTypeForEstimate": "Selecione um tipo de público para ver a estimativa.",
         "calculating": "Calculando…"
       },

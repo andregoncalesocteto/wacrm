@@ -387,6 +387,7 @@
       "noContactsYet": "아직 연락처가 없습니다.",
       "addFirstContact": "첫 연락처 추가하기",
       "unnamed": "이름 없음",
+      "noIdentifier": "식별자 없음",
       "editAction": "수정",
       "deleteAction": "삭제",
       "showingPagination": "전체 {total}개 중 {start}-{end}",
@@ -832,6 +833,10 @@
         "errorCsvMissingPhone": "CSV에 'phone' 열이 있어야 합니다.",
         "audienceSummary": "대상 요약",
         "estimatedRecipients": "예상 수신자",
+        "ineligibleTitle": "{count, plural, other {#명의 연락처는 대상이 아닙니다}}",
+        "ineligibleReason": "WhatsApp 번호 없음 — 이 연락처는 브로드캐스트를 받을 수 없습니다",
+        "ineligibleUnnamed": "이름 없는 연락처",
+        "ineligibleMore": "+{count}명 더",
         "selectTypeForEstimate": "예상치를 보려면 대상 유형을 선택하세요.",
         "calculating": "계산 중…"
       },

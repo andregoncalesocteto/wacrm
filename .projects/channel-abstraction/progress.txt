@@ -684,3 +684,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - pickContactDisplayName (notifications/browser-notify.ts) is now unused by the hook but kept with its tests.
   - Baseline: 146 files / 1780 tests, lint 41 warnings.
 ---
+
+## 2026-09-21 - US-053
+- Display name outside the inbox. display-name.ts gained CONTACT_IDENTITIES_EMBED, identitiesFromRows/withIdentities/firstOf (hydrate the `contact_identities` embed), contactSecondaryLine (phone, else "@handle · Canal") and isWhatsAppReachable; hook use-contact-display.ts binds it to Settings.channels.type. Applied to: contacts list (name/phone column, never blank: "Sem identificador" fallback, aria-label, delete dialog; identities fetched for the page in one query), contacts detail (title, subtitle, avatar initial; phone field only when set or WhatsApp-reachable, save skips phone otherwise) and form (same rule), pipeline deal card + deal form picker (deals select embeds identities), dashboard activity feed, automation logs and flow runs contact labels, broadcast step3 preview label.
+- Broadcasts: lib/contacts/broadcast-eligibility.ts (isBroadcastEligible, partitionBroadcastAudience, fetchIneligibleContacts = contacts with phone '' filtered by predicate). Step2 shows "N contatos não elegíveis" + reason + first 5 names and removes them from the estimate; step4 reach subtracts them; use-broadcast-sending resolveAudience excludes them so they never become recipients/total_recipients.
+- Search: contacts page server-side also matches contact_identities handle/external_id (pre-lookup of ids, capped at 200 matches; the tag-filter RPC p_search still only knows name/phone/email). Deal form picker is a <select> (no search box).
+- Keys: Contacts.page.noIdentifier, Broadcasts.wizard.selectAudience.ineligible{Title,Reason,Unnamed,More} x4. Tests: broadcast-eligibility.test, secondary-line.test.
+- Remaining `.phone` (allowed): form/edit fields, phone dedupe (contact-form dupMatch is a phone match), WhatsApp/broadcast send code, broadcast recipients table (WhatsApp-only, phone column), import modal, template personalization {{phone}} field.
+- Browser (pt :3100, QA account): WA contact unchanged; TG named/nameless in list ("@maria_tg · Telegram"), handle search, detail header, deal cards (Deal TG shows "Maria Telegram", anon shows "@anon_tg"), dashboard feed "New contact: @anon_tg", broadcast audience shows 2 not eligible with reason, count 1. Seeds removed.
+- **Learnings:** prettier over touched files reformatted whole files (big diffs, e.g. dashboard/queries.ts, contacts page). Dashboard feed strings are hardcoded English (pre-existing). Checks: typecheck, lint 0 errors, TZ=UTC 148 files/1792 tests, build OK.
+---

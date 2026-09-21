@@ -387,6 +387,7 @@
       "noContactsYet": "Aún no hay contactos.",
       "addFirstContact": "Agrega tu primer contacto",
       "unnamed": "Sin nombre",
+      "noIdentifier": "Sin identificador",
       "editAction": "Editar",
       "deleteAction": "Eliminar",
       "showingPagination": "Mostrando {start}-{end} de {total}",
@@ -832,6 +833,10 @@
         "errorCsvMissingPhone": "El CSV debe tener una columna 'phone'.",
         "audienceSummary": "Resumen de la audiencia",
         "estimatedRecipients": "destinatarios estimados",
+        "ineligibleTitle": "{count, plural, one {# contacto no elegible} other {# contactos no elegibles}}",
+        "ineligibleReason": "Sin número de WhatsApp — este contacto no puede recibir difusiones",
+        "ineligibleUnnamed": "Contacto sin nombre",
+        "ineligibleMore": "+{count} más",
         "selectTypeForEstimate": "Selecciona un tipo de audiencia para ver la estimación.",
         "calculating": "Calculando…"
       },

@@ -1045,7 +1045,7 @@
         "Verify in browser using dev-browser skill (contatos, pipelines e audiência de broadcast)"
       ],
       "priority": 61,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
