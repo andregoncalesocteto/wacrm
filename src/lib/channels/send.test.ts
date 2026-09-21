@@ -16,6 +16,7 @@ import {
 import { SendMessageError } from '@/lib/whatsapp/send-message';
 import {
   sendOutbound,
+  showTyping,
   toSendMessageError,
   ConversationNotFoundError,
 } from './send';
@@ -144,13 +145,17 @@ const resolveTargetMock = vi.fn((ids: ContactIdentity[]) => {
   return p ? { kind: p.kind, address: p.externalId } : null;
 });
 
-function provider(): ChannelProvider {
+const typingMock = vi.fn();
+
+function provider(over: Partial<ChannelProvider> = {}): ChannelProvider {
   return {
+    typing: typingMock,
     type: 'whatsapp_cloud',
     identityKinds: ['whatsapp:phone'],
     capabilities: caps,
     resolveTarget: resolveTargetMock,
     send: sendMock,
+    ...over,
   } as unknown as ChannelProvider;
 }
 
@@ -622,5 +627,41 @@ describe('toSendMessageError', () => {
       code: 'not_found',
       status: 404,
     });
+  });
+});
+
+describe('showTyping', () => {
+  const typing = () =>
+    showTyping({
+      conversationId: 'cv-1',
+      accountId: 'acct-1',
+      inboundExternalId: 'wamid.in',
+      db: fakeDb(),
+    });
+
+  it('calls provider.typing with the resolved target and the inbound id', async () => {
+    typingMock.mockReset();
+    await typing();
+    expect(typingMock).toHaveBeenCalledWith(
+      expect.objectContaining({ external_id: 'pn-1' }),
+      { kind: 'whatsapp:phone', address: '15551234567' },
+      { inboundExternalId: 'wamid.in' }
+    );
+  });
+
+  it('is a no-op when the provider does not declare typingIndicator', async () => {
+    typingMock.mockReset();
+    resetRegistryForTests();
+    registerProvider(
+      provider({ capabilities: { ...caps, typingIndicator: false } })
+    );
+    await typing();
+    expect(typingMock).not.toHaveBeenCalled();
+  });
+
+  it('propagates provider errors', async () => {
+    typingMock.mockReset();
+    typingMock.mockRejectedValue(new ChannelError('unknown', 'x'));
+    await expect(typing()).rejects.toBeInstanceOf(ChannelError);
   });
 });

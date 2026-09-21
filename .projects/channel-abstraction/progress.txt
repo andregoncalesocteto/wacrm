@@ -378,3 +378,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - automations/meta-send.ts and flows/meta-send.ts are now dead except flows meta-send serving ai/auto-reply (US-031 cleanup).
   - Ran `npm run build` (OK). Baseline: 113 files / 1435 tests, lint 40 warnings, typecheck clean.
 ---
+
+## 2026-09-21 - US-029
+- src/lib/ai/auto-reply.ts: the reply now goes through sendOutbound({actor:{type:'ai'}, message:{type:'text'}, db: ai admin}) (ai_generated true, sender_type bot, as before); "typing..." goes through new `showTyping` (src/lib/channels/send.ts): loads the conversation's connection (fallback: account's WhatsApp), provider from registry, no-op unless capabilities.typingIndicator, then provider.typing(conn, target, {inboundExternalId}). Still best-effort: auto-reply catches and warns "typing indicator failed (continuing)". Slot claimed before the send, throttle, cap and handoff untouched. src/lib/ai no longer imports flows/meta-send.
+- inboundMessageId was already threaded (fanout passes externalId).
+- Tests: auto-reply.characterization.test.ts passes UNCHANGED. auto-reply.test.ts mocked the old modules (flows/meta-send, meta-api), so its mocks were re-pointed to channels/send (sendOutbound/showTyping); the loadAccountMetaCredentials(_, 'acct-1') assertion is gone since credentials are now the provider's job (typing now uses the conversation's connection, not only the fallback). New showTyping tests in channels/send.test.ts (3).
+- Files: src/lib/ai/auto-reply.ts, auto-reply.test.ts, src/lib/channels/send.ts, send.test.ts, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - flows/meta-send.ts and automations meta-send are now unused by production code (US-031 removes them).
+  - src/lib/ai files are not prettier-formatted (no semicolons style); don't run prettier over them.
+---

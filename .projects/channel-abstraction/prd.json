@@ -523,8 +523,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 31,
-      "passes": false,
-      "notes": "Após a US-010: o \"digitando\" precisa do id externo da mensagem recebida; passar `inboundExternalId` a `provider.typing` (assinatura estendida na US-012). Após a US-014: `auto-reply.test.ts` asserta `loadAccountMetaCredentials(_, \"acct-1\")` com 2 argumentos, então o \"digitando\" da IA usa só a conexão de fallback da conta; ao migrar, passar a conexão da conversa (atualizar essa asserção de forma justificada)."
+      "passes": true,
+      "notes": "Após a US-010: o \"digitando\" precisa do id externo da mensagem recebida; passar `inboundExternalId` a `provider.typing` (assinatura estendida na US-012). Após a US-014: `auto-reply.test.ts` asserta `loadAccountMetaCredentials(_, \"acct-1\")` com 2 argumentos, então o \"digitando\" da IA usa só a conexão de fallback da conta; ao migrar, passar a conexão da conversa (atualizar essa asserção de forma justificada). Feito: auto-reply envia por sendOutbound (ator ai) e o digitando vai por showTyping (src/lib/channels/send.ts) -> provider.typing({inboundExternalId}) com a conexao da conversa (fallback da conta), so se capabilities.typingIndicator. auto-reply.test.ts: mocks apontados para channels/send (a asserção loadAccountMetaCredentials(_, 'acct-1') deixou de existir porque o carregamento de credenciais agora e do provider)."
     },
     {
       "id": "US-030",

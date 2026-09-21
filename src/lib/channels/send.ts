@@ -260,6 +260,55 @@ function validate(message: OutboundMessage, caps: Capabilities): void {
   }
 }
 
+/**
+ * Best-effort "typing..." for the inbound message being answered (US-029).
+ * Resolves the conversation's connection and provider like `sendOutbound`;
+ * no-op when the provider does not declare `typingIndicator`. Errors
+ * propagate: the caller decides whether they matter (the AI reply swallows
+ * them).
+ */
+export async function showTyping(input: {
+  conversationId: string;
+  accountId: string;
+  inboundExternalId: string;
+  db?: SupabaseClient;
+}): Promise<void> {
+  const { conversationId, accountId, inboundExternalId } = input;
+  const db = input.db ?? supabaseAdmin();
+
+  const { data: conversation, error } = await db
+    .from('conversations')
+    .select('*, contact:contacts(*)')
+    .eq('id', conversationId)
+    .eq('account_id', accountId)
+    .single();
+  if (error || !conversation) throw new ConversationNotFoundError();
+  const contact = (conversation as Row).contact as Row;
+
+  const connection = await loadConnection(
+    db,
+    accountId,
+    ((conversation as Row).connection_id as string | null) ?? null
+  );
+  if (!connection) throw new ConnectionNotConfiguredError();
+
+  registerBuiltinProviders();
+  const provider = getProvider(connection.channel_type);
+  if (!provider.capabilities.typingIndicator || !provider.typing) return;
+
+  const identities = await loadIdentities(
+    db,
+    accountId,
+    contact,
+    connection.channel_type
+  );
+  const target = provider.resolveTarget(identities);
+  if (!target) {
+    throw new ChannelError('recipient_unreachable', 'No reachable address');
+  }
+  await provider.typing(connection, target, { inboundExternalId });
+}
+
 export async function sendOutbound(
   input: SendOutboundInput
 ): Promise<SendOutboundResult> {
