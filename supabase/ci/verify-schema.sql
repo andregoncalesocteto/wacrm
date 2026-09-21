@@ -219,6 +219,30 @@ BEGIN
     RAISE EXCEPTION 'filter_contacts_by_tags must search contact_identities (migration 048)';
   END IF;
 
+  -- 049: merge_contacts must handle EVERY table that has a contact_id
+  -- column (a table added later without updating the merge would lose or
+  -- orphan rows). Lists the real schema, not a hand-kept list.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc WHERE oid = 'public.merge_contacts(uuid, uuid, uuid)'::regprocedure
+  ) THEN
+    RAISE EXCEPTION 'merge_contacts is missing (migration 049)';
+  END IF;
+  DECLARE
+    v_missing TEXT;
+  BEGIN
+    SELECT string_agg(c.table_name, ', ') INTO v_missing
+    FROM information_schema.columns c
+    JOIN information_schema.tables t
+      ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+    WHERE c.table_schema = 'public' AND c.column_name = 'contact_id'
+      AND t.table_type = 'BASE TABLE'
+      AND pg_get_functiondef('public.merge_contacts(uuid, uuid, uuid)'::regprocedure)
+          !~ ('UPDATE ' || c.table_name || '( \w+)? SET contact_id');
+    IF v_missing IS NOT NULL THEN
+      RAISE EXCEPTION 'merge_contacts does not handle: % (migration 049)', v_missing;
+    END IF;
+  END;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;
