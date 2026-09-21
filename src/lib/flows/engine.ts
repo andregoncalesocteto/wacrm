@@ -505,6 +505,15 @@ async function executeHandoff(
 }
 
 /**
+ * A contact field is "not set" (undefined) when it is null, missing or an
+ * empty string. A contact without a phone (e.g. Telegram-only) stores
+ * phone = '' and so behaves like `absent` for every operator.
+ */
+export function contactFieldSubjectValue(raw: unknown): string | undefined {
+  return typeof raw === "string" && raw.length > 0 ? raw : undefined;
+}
+
+/**
  * Resolve a condition node's subject value from DB / run state, then
  * call the pure `evaluateConditionPredicate`. Splits out so the
  * predicate itself stays unit-testable without a Supabase mock.
@@ -548,7 +557,7 @@ async function evaluateConditionNode(
       .eq("id", run.contact_id!)
       .maybeSingle();
     const raw = (data as Record<string, unknown> | null)?.[cfg.subject_key];
-    subjectValue = typeof raw === "string" && raw.length > 0 ? raw : undefined;
+    subjectValue = contactFieldSubjectValue(raw);
   }
   return evaluateConditionPredicate({
     operator: cfg.operator,

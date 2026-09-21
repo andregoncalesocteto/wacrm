@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { ArrowLeft, ArrowRight, Eye, ImageIcon, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { previewFieldValue } from '@/hooks/use-broadcast-sending';
 import { useContactDisplay } from '@/hooks/use-contact-display';
 import {
   CONTACT_IDENTITIES_EMBED,
@@ -224,7 +225,7 @@ export function Step3Personalize({
             email: contact.email,
             company: contact.company,
           };
-          replacement = fieldMap[mapping.value] ?? placeholder;
+          replacement = previewFieldValue(fieldMap, mapping.value, placeholder);
         } else if (mapping.type === 'custom_field' && mapping.value) {
           replacement = customValues.get(mapping.value) || placeholder;
         }

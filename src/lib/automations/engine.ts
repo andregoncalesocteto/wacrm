@@ -822,6 +822,22 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
   return true
 }
 
+/**
+ * `contact_field` equality. A contact without a phone stores phone = '',
+ * which counts as "not set": it never equals anything (not even ''),
+ * mirroring how the flows engine treats an empty field. Other fields keep
+ * the plain comparison.
+ */
+export function contactFieldMatches(
+  field: string | undefined,
+  raw: unknown,
+  expected: string | undefined,
+): boolean {
+  if (raw == null) return false
+  if (field === 'phone' && String(raw) === '') return false
+  return String(raw) === String(expected ?? '')
+}
+
 async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): Promise<boolean> {
   const db = supabaseAdmin()
   switch (cfg.subject) {
@@ -848,7 +864,7 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
         .eq('account_id', args.automation.account_id)
         .maybeSingle()
       const v = (data as Record<string, unknown> | null)?.[cfg.operand]
-      return v != null && String(v) === String(cfg.value ?? '')
+      return contactFieldMatches(cfg.operand, v, cfg.value)
     }
     case 'message_content': {
       const text = (args.context.message_text ?? '').toString()

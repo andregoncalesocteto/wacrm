@@ -126,6 +126,19 @@ export function resolveVariables(
 }
 
 /**
+ * Preview text for a built-in field mapping. A contact without a phone
+ * (null/'') previews as empty, never as the literal placeholder.
+ */
+export function previewFieldValue(
+  fieldMap: Record<string, string | undefined | null>,
+  field: string,
+  placeholder: string,
+): string {
+  if (field === 'phone') return fieldMap.phone ?? '';
+  return fieldMap[field] ?? placeholder;
+}
+
+/**
  * Bulk-fetch contact_custom_values for a set of contacts. Returns an
  * index keyed by contact_id → field_id → value.
  */
