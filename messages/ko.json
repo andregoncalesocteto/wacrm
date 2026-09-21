@@ -962,6 +962,7 @@
       "step": "단계 {count}개",
       "stepPlural": "단계 {count}개",
       "noSteps": "기록된 단계가 없습니다.",
+      "ignoredUnsupported": "무시됨: 연락처가 {capability, select, templates {템플릿} interactiveButtons {답장 버튼} interactiveList {목록} other {이 단계}}을(를) 지원하는 연결에 대화가 없습니다.",
       "status": {
         "success": "성공",
         "partial": "부분 성공",
@@ -2427,6 +2428,13 @@
     "loading": "불러오는 중..."
   },
   "Channels": {
+    "stepWarnings": {
+      "title": "일부 단계는 모든 연결에서 동작하지 않습니다",
+      "templates": "“템플릿 보내기” 단계는 템플릿을 지원하는 연결에서만 동작합니다. {channels} 대화는 실패합니다.",
+      "interactiveButtons": "“버튼 보내기” 단계는 답장 버튼을 지원하는 연결에서만 동작합니다. {channels} 대화는 실패합니다.",
+      "interactiveList": "“목록 보내기” 단계는 목록을 지원하는 연결에서만 동작합니다. {channels} 대화는 실패합니다.",
+      "media": "“{kind, select, image {이미지} video {동영상} document {문서} audio {오디오} other {미디어}} 보내기” 단계는 {channels}에서 지원되지 않습니다. 해당 대화는 실패합니다."
+    },
     "providers": {
       "whatsapp_cloud": {
         "name": "WhatsApp Cloud API",

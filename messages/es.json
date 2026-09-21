@@ -962,6 +962,7 @@
       "step": "{count} paso",
       "stepPlural": "{count} pasos",
       "noSteps": "No se registraron pasos.",
+      "ignoredUnsupported": "Ignorado: el contacto no tiene conversación en una conexión que admita {capability, select, templates {plantillas} interactiveButtons {botones de respuesta} interactiveList {listas} other {este paso}}.",
       "status": {
         "success": "éxito",
         "partial": "parcial",
@@ -2415,6 +2416,13 @@
     "loading": "Cargando..."
   },
   "Channels": {
+    "stepWarnings": {
+      "title": "Algunos pasos no funcionan en todas las conexiones",
+      "templates": "El paso “Enviar plantilla” solo funciona en conexiones que admiten plantillas: las conversaciones de {channels} fallarán.",
+      "interactiveButtons": "El paso “Enviar botones” solo funciona en conexiones que admiten botones de respuesta: las conversaciones de {channels} fallarán.",
+      "interactiveList": "El paso “Enviar lista” solo funciona en conexiones que admiten listas: las conversaciones de {channels} fallarán.",
+      "media": "El paso “Enviar {kind, select, image {imagen} video {video} document {documento} audio {audio} other {multimedia}}” no es compatible con {channels}: esas conversaciones fallarán."
+    },
     "providers": {
       "whatsapp_cloud": {
         "name": "WhatsApp Cloud API",

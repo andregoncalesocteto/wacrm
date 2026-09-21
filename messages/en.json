@@ -962,6 +962,7 @@
       "step": "{count} step",
       "stepPlural": "{count} steps",
       "noSteps": "No steps recorded.",
+      "ignoredUnsupported": "Ignored: the contact has no conversation on a connection that supports {capability, select, templates {templates} interactiveButtons {reply buttons} interactiveList {list messages} other {this step}}.",
       "status": {
         "success": "success",
         "partial": "partial",
@@ -2427,6 +2428,13 @@
     "loading": "Loading..."
   },
   "Channels": {
+    "stepWarnings": {
+      "title": "Some steps will not work on every connection",
+      "templates": "The “Send template” step only works on connections that support templates: {channels} conversations will fail.",
+      "interactiveButtons": "The “Send buttons” step only works on connections that support reply buttons: {channels} conversations will fail.",
+      "interactiveList": "The “Send list” step only works on connections that support list messages: {channels} conversations will fail.",
+      "media": "The “Send {kind, select, image {image} video {video} document {document} audio {audio} other {media}}” step is not supported on {channels}: those conversations will fail."
+    },
     "providers": {
       "whatsapp_cloud": {
         "name": "WhatsApp Cloud API",

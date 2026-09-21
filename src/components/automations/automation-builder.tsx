@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react"
@@ -72,6 +73,8 @@ import {
   type StepPath,
 } from "@/lib/automations/builder-tree"
 import { cn } from "@/lib/utils"
+import { StepWarnings } from "@/components/channels/step-warnings"
+import { stepRequirements } from "@/lib/channels/step-capabilities"
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -755,6 +758,8 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
           {isEditing ? t("save") : t("saveDraft")}
         </Button>
       </header>
+
+      <AutomationStepWarnings steps={state.steps} />
 
       {/* Canvas */}
       <div className="relative flex-1 overflow-y-auto">
@@ -1599,4 +1604,14 @@ export function fromServerSteps(nodes: ServerStepNode[]): BuilderStep[] {
           }
         : undefined,
   }))
+}
+
+/** Channel-capability heads-up for the automation's steps (informational). */
+function AutomationStepWarnings({ steps }: { steps: BuilderStep[] }) {
+  const requirements = useMemo(() => stepRequirements(steps), [steps])
+  return (
+    <div className="flex-shrink-0 px-3 pt-2 empty:hidden sm:px-4">
+      <StepWarnings requirements={requirements} />
+    </div>
+  )
 }

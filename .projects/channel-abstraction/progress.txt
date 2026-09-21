@@ -661,3 +661,16 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - The 'secret_persist_failed' reason has no translated fix key yet (reasonFixKey in lib/channels/ui.ts maps only public_https_required); the English message is the fallback.
   - Test order is asserted via a shared h.order array between the fetch mock and the credentials mock; don't queue an extra ok() before it.
 ---
+
+## 2026-09-21 - US-051
+- Activation warning (informational, never blocks): pure client-safe src/lib/channels/step-capabilities.ts (`stepRequirements` maps flow nodes / automation steps, recursing into branches, to send_template->templates, send_buttons->interactiveButtons, send_list->interactiveList, send_media->media kind; `channelWarnings(requirements, providers, activeChannelTypes)` returns which steps fail on which channel types; empty with <2 active connections, providers not loaded, or all supporting). UI: components/channels/step-warnings.tsx (+ hooks/use-active-channel-types.ts reading GET /api/channels/connections, enabled ones only; providers via use-channel-providers) mounted under the flow validation panel (flows/flow-step-warnings.tsx) and under the automation builder header. Shown live while editing, so it is visible when activating. Flow issue codes/messages untouched. Keys Channels.stepWarnings.* x4.
+- Runtime: no engine change needed; tests with REAL telegram capabilities: flow send_list on a telegram conversation -> run failed (send_list_failed) with the "list" unsupported detail in flow_run_events; automation send_template on telegram -> step failed with the template unsupported message + error_message. NOTE flows have no template node (only list/buttons/media).
+- US-028 resolution now EXCLUDES conversations on connections with disabled_at (tests: skips to the older enabled conversation; all disabled -> ignored). Ignored reason says "an enabled connection" when a disabled one was skipped.
+- Logs page: skipped step now a neutral icon (Minus) instead of red X; pure lib/automations/log-step.ts (`logStepView`) maps the engine's ignored reason to translatable Automations.logs.ignoredUnsupported.
+- Browser (pt :3100, seeded WA+TG connections, automation with send_template): warning "O passo “Enviar template” só funciona em conexões que suportam templates: as conversas de Telegram falharão." shown; with only WhatsApp nothing; logs page seeded skipped step shows neutral icon + translated reason, failed step red. Flow editor warning not exercised in browser (same component, unit-tested). Seeds removed.
+- Files: step-capabilities(+test), log-step(+test), step-warnings.tsx, flow-step-warnings.tsx, use-active-channel-types.ts, automation-builder.tsx, flow-editor-shell.tsx, logs page, automations/engine.ts, engine.channel.test.ts, flows engine.characterization.test.ts, messages x4.
+- **Learnings:**
+  - sendOutbound resolves the target BEFORE validating capabilities: a telegram conversation test needs a `telegram:chat_id` contact_identities row, else the error is recipient_unreachable.
+  - engine.channel.test.ts registers a stand-in telegram; new tests there call resetRegistryForTests + registerBuiltinProviders in their own beforeEach.
+  - Checks: typecheck clean, lint 0 errors/40 warnings, TZ=UTC 144 files/1765 tests, build OK.
+---

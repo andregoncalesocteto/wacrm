@@ -715,15 +715,23 @@ async function resolveConversationId(args: ExecuteArgs, need: SendNeed): Promise
     ...new Set(rows.map((r) => r.connection_id).filter((c): c is string => !!c)),
   ]
   const typeById = new Map<string, string>()
+  let skippedDisabled = false
   if (connectionIds.length > 0) {
     const { data: conns, error: connErr } = await db
       .from('channel_connections')
-      .select('id, channel_type')
+      .select('id, channel_type, disabled_at')
       .eq('account_id', accountId)
       .in('id', connectionIds)
     if (connErr) throw new Error(`connection lookup failed: ${connErr.message}`)
-    for (const c of (conns ?? []) as { id: string; channel_type: string }[]) {
-      typeById.set(c.id, c.channel_type)
+    for (const c of (conns ?? []) as {
+      id: string
+      channel_type: string
+      disabled_at: string | null
+    }[]) {
+      // A disabled connection refuses every send (US-078): never pick its
+      // conversations, they would only fail in sendOutbound.
+      if (c.disabled_at) skippedDisabled = true
+      else typeById.set(c.id, c.channel_type)
     }
   }
   for (const row of rows) {
@@ -732,7 +740,7 @@ async function resolveConversationId(args: ExecuteArgs, need: SendNeed): Promise
     if (type && connectionSupports(type, need)) return row.id
   }
   throw new ExecutionIgnored(
-    `contact has no conversation on a connection that supports ${need}`,
+    `contact has no conversation on ${skippedDisabled ? 'an enabled' : 'a'} connection that supports ${need}`,
   )
 }
 

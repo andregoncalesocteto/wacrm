@@ -8,7 +8,12 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { whatsappConnectionRow } from '@/lib/channels/credentials-admin.fake';
-import { hasProvider, registerProvider } from '@/lib/channels/registry';
+import { registerBuiltinProviders } from '@/lib/channels/providers';
+import {
+  hasProvider,
+  registerProvider,
+  resetRegistryForTests,
+} from '@/lib/channels/registry';
 import type { ChannelProvider } from '@/lib/channels/types';
 import { resumePendingExecution, runAutomationsForTrigger } from './engine';
 
@@ -283,5 +288,94 @@ describe('disabled connection (US-078)', () => {
     expect(conv('cv-old-wa').last_message_text).toBe('old');
     expect(log().status).toBe('failed');
     expect(String(log().error_message)).toMatch(/disabled/i);
+  });
+});
+
+describe('channel capabilities (US-051, real telegram provider)', () => {
+  beforeEach(() => {
+    // Replace the stand-in channel with the real providers' capabilities.
+    resetRegistryForTests();
+    registerBuiltinProviders();
+  });
+
+  it('send_template on a telegram conversation logs the step failed with the unsupported message', async () => {
+    conv('cv-new-wa').connection_id = TG_CONN;
+    h.db.contact_identities = [
+      {
+        account_id: 'acct-1',
+        contact_id: 'ct-1',
+        kind: 'telegram:chat_id',
+        external_id: '555',
+      },
+    ];
+    steps({
+      step_type: 'send_template',
+      step_config: { template_name: 'order_update', language: 'en' },
+    });
+
+    await fire({ conversation_id: 'cv-new-wa' });
+
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    expect(h.db.messages).toHaveLength(0);
+    expect(log().status).toBe('failed');
+    expect(log().steps_executed).toEqual([
+      expect.objectContaining({
+        step_type: 'send_template',
+        status: 'failed',
+        detail: expect.stringMatching(/template/i),
+      }),
+    ]);
+    expect(String(log().error_message)).toMatch(/template/i);
+  });
+
+  it('a scheduled send to a contact whose only conversation is on telegram is ignored, with the reason', async () => {
+    conv('cv-new-wa').connection_id = TG_CONN;
+    conv('cv-old-wa').connection_id = TG_CONN;
+    steps({
+      step_type: 'send_template',
+      step_config: { template_name: 'order_update', language: 'en' },
+    });
+
+    await fire();
+
+    expect(h.db.messages).toHaveLength(0);
+    expect(log().steps_executed).toEqual([
+      expect.objectContaining({
+        status: 'skipped',
+        detail: expect.stringContaining('supports templates'),
+      }),
+    ]);
+  });
+
+  it('never picks a conversation on a disabled connection (US-051 notes)', async () => {
+    // Newest thread: WhatsApp connection disabled. Older thread: enabled one.
+    h.db.channel_connections.push({
+      ...whatsappConnectionRow('acct-1', 'pn-2'),
+      id: 'conn-wa-2',
+    });
+    conv('cv-old-wa').connection_id = 'conn-wa-2';
+    h.db.channel_connections.find((c) => c.id === WA_CONN)!.disabled_at =
+      '2026-09-01T00:00:00Z';
+    steps({ step_type: 'send_message', step_config: { text: 'Hello' } });
+
+    await fire();
+
+    expect(h.db.messages).toHaveLength(1);
+    expect(h.db.messages[0].conversation_id).toBe('cv-old-wa');
+    expect(log().status).toBe('success');
+  });
+
+  it('all conversations on disabled connections: ignored, no send', async () => {
+    h.db.channel_connections.find((c) => c.id === WA_CONN)!.disabled_at =
+      '2026-09-01T00:00:00Z';
+    steps({ step_type: 'send_message', step_config: { text: 'Hello' } });
+
+    await fire();
+
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(h.db.messages).toHaveLength(0);
+    expect(log().steps_executed).toEqual([
+      expect.objectContaining({ status: 'skipped' }),
+    ]);
   });
 });

@@ -345,3 +345,78 @@ describe('engine run driving the real senders', () => {
     expect(conv().last_message_text).toBe('old');
   });
 });
+
+describe('channel capabilities at run time (US-051, real telegram provider)', () => {
+  it('a list step on a telegram conversation fails the run with the unsupported detail', async () => {
+    const { registerBuiltinProviders } = await import(
+      '@/lib/channels/providers'
+    );
+    registerBuiltinProviders();
+    h.db.channel_connections.push({
+      id: 'conn-tg',
+      account_id: 'acct-1',
+      channel_type: 'telegram',
+      external_id: 'bot-1',
+      status: 'connected',
+      config: {},
+      disabled_at: null,
+    });
+    h.db.conversations[0].connection_id = 'conn-tg';
+    h.db.contact_identities = [
+      {
+        account_id: 'acct-1',
+        contact_id: 'ct-1',
+        kind: 'telegram:chat_id',
+        external_id: '555',
+      },
+    ];
+    h.db.flows = [
+      {
+        id: 'fl-1',
+        account_id: 'acct-1',
+        user_id: 'user-1',
+        status: 'active',
+        trigger_type: 'keyword',
+        trigger_config: { keywords: ['start'], match_type: 'exact' },
+        entry_node_id: 'n1',
+        created_at: '2020-01-01',
+      },
+    ];
+    h.db.flow_nodes = [
+      {
+        flow_id: 'fl-1',
+        node_key: 'n1',
+        node_type: 'send_list',
+        config: {
+          text: 'Menu',
+          button_label: 'Open',
+          sections: [
+            { rows: [{ reply_id: 'r1', title: 'One', next_node_key: 'n2' }] },
+          ],
+        },
+      },
+      { flow_id: 'fl-1', node_key: 'n2', node_type: 'end', config: {} },
+    ];
+
+    await dispatchInboundToFlows({
+      accountId: 'acct-1',
+      userId: 'user-1',
+      contactId: 'ct-1',
+      conversationId: 'cv-1',
+      isFirstInboundMessage: false,
+      message: { kind: 'text', text: 'start', meta_message_id: 'wamid.in' },
+    });
+
+    expect(h.sendInteractiveList).not.toHaveBeenCalled();
+    expect(h.db.messages).toHaveLength(0);
+    expect(h.db.flow_runs[0]).toMatchObject({
+      status: 'failed',
+      end_reason: 'send_list_failed',
+    });
+    const ev = h.db.flow_run_events.find(
+      (e) => (e.payload as Row | undefined)?.reason === 'send_list_failed'
+    );
+    expect(ev).toBeDefined();
+    expect(String((ev!.payload as Row).detail)).toMatch(/list/i);
+  });
+});
