@@ -270,6 +270,14 @@ export interface ConnectResult {
   message?: string;
   /** Values the user must copy elsewhere (e.g. webhook URL, verify token). */
   details?: Record<string, string>;
+  /** Mapped failure when not ok, so the caller can persist it as `last_error`. */
+  error?: ChannelErrorInfo;
+}
+
+/** Transient inputs to `connect`; never persisted by the provider. */
+export interface ConnectOptions {
+  /** WhatsApp two-step verification PIN (6 digits) for number registration. */
+  pin?: string;
 }
 
 export interface Health {
@@ -291,7 +299,7 @@ export interface ChannelProvider {
 
   // lifecycle
   /** Registers with the provider (setWebhook, number registration). */
-  connect(conn: Connection): Promise<ConnectResult>;
+  connect(conn: Connection, opts?: ConnectOptions): Promise<ConnectResult>;
   disconnect(conn: Connection): Promise<void>;
   /** Live check, also used by the health cron. */
   health(conn: Connection): Promise<Health>;
@@ -318,5 +326,14 @@ export interface ChannelProvider {
     ref: MessageRef,
     emoji: string
   ): Promise<void>;
-  typing?(conn: Connection, target: Target): Promise<void>;
+  /**
+   * Shows "typing..." to the contact. `inboundExternalId` is the provider id of
+   * the inbound message being answered (WhatsApp wamid); channels that need it
+   * throw `invalid` when it is missing.
+   */
+  typing?(
+    conn: Connection,
+    target: Target,
+    opts?: { inboundExternalId?: string }
+  ): Promise<void>;
 }

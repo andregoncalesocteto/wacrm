@@ -171,3 +171,17 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - US-021 (core) must map: media/`caption` -> content_text/media_type(mimeType), `interactive_reply` -> content_type 'interactive' + interactive_reply_id (button with no payload/text yields ''), `location` -> content_type 'location', `unsupported.description` -> content_text with content_type 'text'. Edge: an interactive without option is content_type 'interactive' in the webhook but 'text' via `unsupported`; a media without id is content_type image with null media in the webhook.
   - Baseline: 101 files / 1248 tests, lint 41 warnings.
 ---
+
+## 2026-09-21 - US-012
+- Added providers/whatsapp-cloud/lifecycle.ts (+ lifecycle.test.ts, 26 tests, meta-api mocked) and wired connect/disconnect/health/downloadMedia/typing into the provider (react already existed). Production routes untouched.
+- connect(conn, opts?: {pin}): same steps/order as POST /api/whatsapp/config: verifyPhoneNumber -> listWabaPhoneNumbers + phoneNumberBelongsToWaba -> registerPhoneNumber ONLY with a PIN (no PIN = ok with hint, details.registration 'skipped', issue #242) -> subscribeWabaToApp. Uses getConnectionCredentials + config.waba_id. Persists nothing (PIN never stored/echoed; core stores the outcome). Failures return ok:false with message (explainMetaError summary, same text as the route) and error (mapped ChannelErrorInfo, code/providerCode).
+- disconnect: documented no-op (Meta unsubscribe/deregister would affect the whole WABA; not asked). Core marks the connection disconnected.
+- health: verifyPhoneNumber + getSubscribedApps + config.registered_at. auth/invalid on the number probe, no waba_id, no subscribed apps, missing token -> needs_action (reason); rate limit/5xx -> degraded; not registered but otherwise fine -> degraded; else connected.
+- downloadMedia: getMediaUrl -> meta downloadMedia -> Blob. typing(conn, target, {inboundExternalId}) -> sendTypingIndicator; missing id throws ChannelError('invalid').
+- Additive types.ts: ConnectResult.error?, ConnectOptions {pin?}, connect(conn, opts?), typing(conn, target, opts?: {inboundExternalId?}). US-029 (AI) must pass the inbound wamid.
+- Files changed: lifecycle.ts, lifecycle.test.ts, index.ts, types.ts, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - The health "registered" signal reads conn.config.registered_at (migration 045 copies it from whatsapp_config); when the core (connect callers) succeeds with registration it must write registered_at/subscribed_apps_at back into config.
+  - Meta's downloadMedia helper throws a plain Error (no code) so failures map to 'unknown'.
+  - Baseline: 102 files / 1274 tests, lint 41 warnings.
+---

@@ -24,6 +24,13 @@ import {
 } from '@/lib/whatsapp/phone-utils';
 import { resolveContactSendTarget } from '@/lib/whatsapp/wa-identity';
 import { toChannelError } from './errors';
+import {
+  connect,
+  disconnect,
+  downloadMedia,
+  health,
+  typing,
+} from './lifecycle';
 import { parse, resolveConnection, verify } from './inbound';
 import {
   whatsappCloudConfigSchema,
@@ -34,8 +41,9 @@ import {
  * WhatsApp Cloud API provider. An ADAPTER over `lib/whatsapp/*` (which stays
  * where it is and still serves production paths until the later migration
  * stories). Outbound is in this file, inbound in ./inbound.ts (status and
- * reaction parsing only; messages arrive with US-073). Lifecycle (connect,
- * disconnect, health) throws `unsupported` until its story.
+ * reaction parsing only; messages arrive with US-073). Lifecycle and optional
+ * operations (connect, disconnect, health, downloadMedia, typing) are in
+ * ./lifecycle.ts.
  */
 
 export const PHONE_KIND = 'whatsapp:phone';
@@ -58,13 +66,6 @@ export const whatsappCloudCapabilities: Capabilities = {
   // Meta caps media captions at 1024 chars (audio carries none).
   captionMaxLength: 1024,
 };
-
-function notYet(what: string): never {
-  throw new ChannelError(
-    'unsupported',
-    `whatsapp_cloud: ${what} is not implemented in the provider yet`
-  );
-}
 
 /**
  * Same semantics as `resolveContactSendTarget`: a valid E.164 phone wins,
@@ -209,9 +210,11 @@ export const whatsappCloudProvider: ChannelProvider = {
   configSchema: whatsappCloudConfigSchema,
   credentialsSchema: whatsappCloudCredentialsSchema,
 
-  connect: () => notYet('connect'),
-  disconnect: () => notYet('disconnect'),
-  health: () => notYet('health'),
+  connect,
+  disconnect,
+  health,
+  downloadMedia,
+  typing,
   resolveConnection,
   verify,
   parse,
