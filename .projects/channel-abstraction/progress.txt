@@ -48,3 +48,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - sendMessageToConversation only has validation/recipient tests (no happy-path/Meta-failure); deliverBroadcast, flows node execution, automations meta-send and the react/media/templates routes are untested.
   - The gap list is in coverage-map.md sections 1-9; US-002 = send, US-003 = webhook+templates, US-004 = broadcast/flows/automations/AI.
 ---
+
+## 2026-09-21 - US-002
+- Added src/app/api/whatsapp/webhook/route.characterization.test.ts (51 tests, no production code changed): GET handshake (200 challenge / 403 / 400), POST 401 on bad/missing signature and 400 on bad JSON, ack-then-after(), contact+conversation creation vs reuse (phone formatting variants, other account, closed conversation reopened), replay idempotency on (conversation, wamid), BSUID/username-only contact create + refind + backfill, content types (image/document/sticker->image/unsupported->text), reactions (insert/replace/remove/unknown target), message status mirror + failure reason, broadcast_recipients status ladder (forward-only, failed only from pending/sent, failed terminal), reply flips recipient to replied.
+- Files changed: the new test file, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - The file uses a stateful in-memory fake of the supabase-js builder (h.db tables; insert/upsert with onConflict+ignoreDuplicates/update/delete/eq/in/like) and the REAL webhook-signature, encryption, wa-identity and contacts/dedupe. Reusable for US-003/004 tests; it does not model embedded-resource joins (`broadcasts.account_id` filters are skipped).
+  - The status LADDER guards only broadcast_recipients; the `messages` mirror applies any incoming status unguarded (pinned as-is by the tests; a message can go read -> delivered).
+  - BSUIDs must match /^[A-Za-z]{2}\.(ENT\.)?[A-Za-z0-9]{4,}$/ (wa-identity); fixtures like "US.111" are silently ignored.
+  - Prettier is enforced on new files (`npx prettier --write`). Baseline now: 92 files / 1074 tests green, lint 41 warnings.
+---

@@ -34,8 +34,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "51 testes em src/app/api/whatsapp/webhook/route.characterization.test.ts (fake Supabase com estado, assinatura/criptografia/identidade reais). Rota de templates fica para US-003/004."
     },
     {
       "id": "US-003",
