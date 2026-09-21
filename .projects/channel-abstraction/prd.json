@@ -1114,7 +1114,7 @@
       ],
       "priority": 65,
       "passes": false,
-      "notes": ""
+      "notes": "Orientação do orquestrador (verificada no banco): `merge_duplicate_contacts()` (migration 022) e `merge_duplicate_conversations()` (036) NÃO recebem argumentos — varrem duplicatas por telefone/contato. Não servem para um merge par-a-par pedido pelo atendente. Escrever uma função SQL NOVA e idempotente `merge_contacts(p_account_id, p_survivor_id, p_duplicate_id)` (migration com o próximo número livre, 049) reaproveitando o PADRÃO de reapontamento com guarda de conflito da 022/036. Tabelas com FK para contacts hoje: automation_logs, automation_pending_executions, broadcast_recipients, contact_custom_values, contact_identities, contact_notes, contact_tags, conversations, deals, flow_runs, notifications. Atenção às unicidades: contact_tags (contact_id, tag_id), contact_custom_values (contact_id, custom_field_id), contact_identities (account_id, kind, external_id), conversations (contact_id, connection_id) — conversas do duplicado na MESMA conexão do sobrevivente devem ser fundidas (mensagens movidas, contadores somados), flow_runs ativo único por conversa."
     },
     {
       "id": "US-058",
