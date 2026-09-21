@@ -284,3 +284,16 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - US-022 must wire hooks.onConversationCreated = conversationCreatedHook and hooks.onMessageStored = fanoutHook(...). US-063 adds connection_id/store_id/channel to the message.received payload (fanout.ts).
   - Baseline: 108 files / 1356 tests, lint 41 warnings, typecheck clean.
 ---
+
+## 2026-09-21 - US-021
+- ingest.ts: ingestInbound now also handles `status` and `reaction` (outcomes 'status_updated' {recipientUpdated, webhookDispatched}, 'reaction_set' | 'reaction_removed', or 'skipped' with reason). Contact+conversation resolution extracted into resolveThread (shared by message and reaction; behavior of messages unchanged, US-019 tests untouched).
+  - status = port of handleStatusUpdate: messages update by external id with NO order guard (+ error_code/title/details on failed, kept by later statuses); broadcast_recipients via new status-ladder.ts (forward only, failed only from pending/sent, sent_at/delivered_at/read_at from event.at, error_message = event.error.message); then message.status_updated webhook using the embedded `conversations(account_id)` join (limit 1).
+  - reaction = port of handleReaction: resolves/creates contact + conversation first (fires onConversationCreated like the route), target looked up by external id in that conversation, unknown target skipped, null emoji deletes, else upsert on (message_id, actor_type, actor_id).
+- New media.ts createMediaResolver({provider, storage, fallbackUrl?}) = IngestHooks.resolveMedia: provider.downloadMedia -> mirrorInboundMedia (its `download` override; no token/URL ever handled) -> public URL; option off or upload refused -> proxy `/api/whatsapp/media/<id>` (whatsapp_cloud only, null for other channels); provider download throws -> null.
+- Tests: ingest.events.test.ts (28) using events from the REAL WhatsApp parse of signed payloads + ingest.fake.ts (copy of the ingest fake plus delete, embedded join, reactions upsert). Route and existing tests untouched.
+- **Learnings for future iterations:**
+  - US-022 wires: hooks.resolveMedia = createMediaResolver({provider: whatsappCloudProvider, storage: supabaseAdmin().storage}), and drops the route's ladderLevel/isValidStatusTransition/handleStatusUpdate/handleReaction/parseMessageContent media code.
+  - Known deltas vs the route: (1) mirror OFF used to still call Meta getMediaUrl (null url on failure), now stores the proxy directly; (2) mirror MIME comes from the webhook's mime_type, not Meta's getMediaUrl metadata; (3) oversize pre-check by file_size is gone (post-download check remains); (4) status webhook dispatch uses the passed service-role db.
+  - message_id is not unique across numbers: the messages status update is unscoped by connection on purpose (as today).
+  - Baseline: 109 files / 1384 tests, lint 41 warnings, typecheck clean.
+---

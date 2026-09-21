@@ -1,7 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
+import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import { resolveOrCreateContact, type ContactRow } from './identity';
+import { isValidStatusTransition } from './status-ladder';
 import type { Connection, InboundContent, InboundEvent } from './types';
 
 /**
@@ -14,13 +16,19 @@ import type { Connection, InboundContent, InboundEvent } from './types';
  * It depends ONLY on its arguments: no route, no `after()`, no request. `db`
  * must be a service-role client (there is no user session on this path).
  *
- * Extension points (`IngestHooks`) are where later stories plug in without
+ * Extension points (`IngestHooks`) are where the wiring plugs in without
  * changing this file's contract:
- *   - `resolveMedia`  -> US-021 (mirror media through `provider.downloadMedia`)
- *   - `onConversationCreated` / `onMessageStored` -> US-020 / US-074 (fan-out
- *     to automations, flows, AI and outbound webhooks)
- * `status` and `reaction` events are US-021; here they are reported as
- * `skipped` so a caller can hand over a whole parse result.
+ *   - `resolveMedia`  -> `createMediaResolver` (media.ts, US-021)
+ *   - `onConversationCreated` / `onMessageStored` -> fanout.ts (US-020 / US-074)
+ *
+ * US-021 adds the other two event kinds, reproducing the WhatsApp webhook:
+ *   - `status`   -> `messages` mirror (NO order guard, any status is written),
+ *     `broadcast_recipients` mirror (forward-only ladder, `failed` only from
+ *     pending/sent), then the `message.status_updated` outbound webhook.
+ *   - `reaction` -> insert/replace/remove on `message_reactions`; resolves (and
+ *     may create) the contact + conversation like a message does, never
+ *     touches `messages`, unread or the preview.
+ * `connection` events are still reported as `skipped`.
  */
 
 export interface IngestOptions {
@@ -51,6 +59,8 @@ export interface IngestHooks {
 }
 
 type MessageEvent = Extract<InboundEvent, { kind: 'message' }>;
+type StatusEvent = Extract<InboundEvent, { kind: 'status' }>;
+type ReactionEvent = Extract<InboundEvent, { kind: 'reaction' }>;
 
 export interface IngestContext {
   connection: Connection;
@@ -86,6 +96,24 @@ export type IngestOutcome =
       event: MessageEvent;
       conversation: ConversationRow;
       contact: ContactRow;
+    }
+  | {
+      /** A `status` event was applied (see `StatusUpdateOutcome`). */
+      status: 'status_updated';
+      event: StatusEvent;
+      /** A `broadcast_recipients` row moved (the ladder allowed it). */
+      recipientUpdated: boolean;
+      /** The `message.status_updated` webhook was dispatched (message row found). */
+      webhookDispatched: boolean;
+    }
+  | {
+      /** A `reaction` event was stored (`set`, insert or replace) or removed. */
+      status: 'reaction_set' | 'reaction_removed';
+      event: ReactionEvent;
+      conversation: ConversationRow;
+      contact: ContactRow;
+      /** `messages.id` the reaction targets. */
+      targetMessageId: string;
     }
   | {
       /** Not persisted: a non-message event, no usable identity, or a DB failure. */
@@ -286,30 +314,35 @@ async function runHook<A>(
   }
 }
 
-async function ingestMessage(
+/**
+ * Contact + conversation for an inbound event, firing `onConversationCreated`
+ * for a new thread (before the message / reaction, like the route).
+ */
+async function resolveThread(
   db: SupabaseClient,
   connection: Connection,
-  event: MessageEvent,
-  opts: IngestOptions
-): Promise<IngestOutcome> {
-  const skip = (reason: string): IngestOutcome => ({
-    status: 'skipped',
-    event,
-    reason,
-  });
+  opts: IngestOptions,
+  input: {
+    sender: MessageEvent['sender'];
+    senderName?: string;
+    parentExternalId?: string;
+  }
+): Promise<
+  | { skip: string }
+  | { ctx: IngestContext; conversation: ConversationRow; contact: ContactRow }
+> {
   const accountId = connection.account_id;
-
   const outcome = await resolveOrCreateContact(db, {
     accountId,
-    candidates: event.sender,
-    senderName: event.senderName,
+    candidates: input.sender,
+    senderName: input.senderName,
     auditUserId: opts.auditUserId,
   });
-  if (!outcome) return skip('no contact');
+  if (!outcome) return { skip: 'no contact' };
   const contact = await backfillParent(
     db,
     outcome.contact,
-    event.parentExternalId
+    input.parentExternalId
   );
 
   const conv = await findOrCreateConversation(
@@ -319,7 +352,7 @@ async function ingestMessage(
     contact.id,
     connection.id
   );
-  if (!conv) return skip('no conversation');
+  if (!conv) return { skip: 'no conversation' };
   const conversation = conv.conversation;
 
   const ctx: IngestContext = {
@@ -336,6 +369,28 @@ async function ingestMessage(
       ctx
     );
   }
+  return { ctx, conversation, contact };
+}
+
+async function ingestMessage(
+  db: SupabaseClient,
+  connection: Connection,
+  event: MessageEvent,
+  opts: IngestOptions
+): Promise<IngestOutcome> {
+  const skip = (reason: string): IngestOutcome => ({
+    status: 'skipped',
+    event,
+    reason,
+  });
+
+  const resolved = await resolveThread(db, connection, opts, {
+    sender: event.sender,
+    senderName: event.senderName,
+    parentExternalId: event.parentExternalId,
+  });
+  if ('skip' in resolved) return skip(resolved.skip);
+  const { ctx, conversation, contact } = resolved;
 
   const shape = shapeOf(event);
 
@@ -444,6 +499,187 @@ async function ingestMessage(
 }
 
 /**
+ * Port of the route's `handleStatusUpdate`, step for step:
+ *  1. `messages` mirror by external id: writes ANY status (no order guard; a
+ *     message can go read -> delivered) and, on `failed` with a reason, the
+ *     error_code/title/details columns. Later non-failed statuses leave them.
+ *     No `.select()`: message_id is not unique, so 0..N rows are updated.
+ *  2. `broadcast_recipients` by whatsapp_message_id, moved only when the
+ *     ladder allows it; `error_message` folds the reason.
+ *  3. `message.status_updated` outbound webhook (last, so a slow subscriber
+ *     cannot delay the mirrors); account resolved through the embedded
+ *     `conversations(account_id)` join of one message row.
+ */
+async function ingestStatus(
+  db: SupabaseClient,
+  event: StatusEvent
+): Promise<IngestOutcome> {
+  const failure = event.status === 'failed' ? event.error : undefined;
+  if (failure) {
+    console.warn(
+      `[ingest] message ${event.externalId} failed: ${failure.message}`
+    );
+  }
+
+  const messageUpdate: Record<string, unknown> = { status: event.status };
+  if (failure) {
+    messageUpdate.error_code = failure.providerCode ?? null;
+    messageUpdate.error_title = failure.title ?? failure.message;
+    messageUpdate.error_details = failure.details ?? null;
+  }
+  const { error: msgErr } = await db
+    .from('messages')
+    .update(messageUpdate)
+    .eq('message_id', event.externalId);
+  if (msgErr) console.error('[ingest] error updating message status:', msgErr);
+
+  const tsIso = (event.at ?? new Date()).toISOString();
+  let recipientUpdated = false;
+  const { data: recipient, error: recFetchErr } = await db
+    .from('broadcast_recipients')
+    .select('id, status')
+    .eq('whatsapp_message_id', event.externalId)
+    .maybeSingle();
+  if (recFetchErr) {
+    console.error('[ingest] error fetching broadcast recipient:', recFetchErr);
+  } else if (
+    recipient &&
+    isValidStatusTransition(
+      (recipient as { status: string }).status,
+      event.status
+    )
+  ) {
+    const update: Record<string, unknown> = { status: event.status };
+    if (event.status === 'sent') update.sent_at = tsIso;
+    if (event.status === 'delivered') update.delivered_at = tsIso;
+    if (event.status === 'read') update.read_at = tsIso;
+    if (failure) update.error_message = failure.message;
+    const { error: recUpdateErr } = await db
+      .from('broadcast_recipients')
+      .update(update)
+      .eq('id', (recipient as { id: string }).id);
+    if (recUpdateErr) {
+      console.error(
+        '[ingest] error updating broadcast recipient status:',
+        recUpdateErr
+      );
+    } else {
+      recipientUpdated = true;
+    }
+  }
+
+  let webhookDispatched = false;
+  const { data: msgRow } = await db
+    .from('messages')
+    .select('conversation_id, conversations(account_id)')
+    .eq('message_id', event.externalId)
+    .limit(1)
+    .maybeSingle();
+  if (msgRow) {
+    const row = msgRow as unknown as {
+      conversation_id: string;
+      conversations: { account_id: string } | null;
+    };
+    const accountId = row.conversations?.account_id;
+    if (accountId) {
+      await dispatchWebhookEvent(db, accountId, 'message.status_updated', {
+        whatsapp_message_id: event.externalId,
+        conversation_id: row.conversation_id,
+        status: event.status,
+      });
+      webhookDispatched = true;
+    }
+  }
+
+  return {
+    status: 'status_updated',
+    event,
+    recipientUpdated,
+    webhookDispatched,
+  };
+}
+
+/**
+ * Port of the route's reaction path: the sender's contact and conversation are
+ * resolved first (a reaction can open a thread and fire `conversation.created`),
+ * then the target message is found by external id inside that conversation. An
+ * unknown target is skipped (logged). Null emoji removes the customer's
+ * reaction; otherwise it is upserted (one per target and actor).
+ */
+async function ingestReaction(
+  db: SupabaseClient,
+  connection: Connection,
+  event: ReactionEvent,
+  opts: IngestOptions
+): Promise<IngestOutcome> {
+  const skip = (reason: string): IngestOutcome => ({
+    status: 'skipped',
+    event,
+    reason,
+  });
+  const resolved = await resolveThread(db, connection, opts, {
+    sender: event.sender,
+  });
+  if ('skip' in resolved) return skip(resolved.skip);
+  const { conversation, contact } = resolved;
+
+  const targetMessageId = await lookupInternalIdByExternalId(
+    db,
+    event.externalId,
+    conversation.id
+  );
+  if (!targetMessageId) {
+    console.warn(
+      '[ingest] reaction target message not found; skipping',
+      event.externalId
+    );
+    return skip('reaction target not found');
+  }
+
+  if (!event.emoji) {
+    const { error } = await db
+      .from('message_reactions')
+      .delete()
+      .eq('message_id', targetMessageId)
+      .eq('actor_type', 'customer')
+      .eq('actor_id', contact.id);
+    if (error) {
+      console.error('[ingest] reaction delete failed:', error.message);
+      return skip('reaction delete failed');
+    }
+    return {
+      status: 'reaction_removed',
+      event,
+      conversation,
+      contact,
+      targetMessageId,
+    };
+  }
+
+  const { error } = await db.from('message_reactions').upsert(
+    {
+      message_id: targetMessageId,
+      conversation_id: conversation.id,
+      actor_type: 'customer',
+      actor_id: contact.id,
+      emoji: event.emoji,
+    },
+    { onConflict: 'message_id,actor_type,actor_id' }
+  );
+  if (error) {
+    console.error('[ingest] reaction upsert failed:', error.message);
+    return skip('reaction upsert failed');
+  }
+  return {
+    status: 'reaction_set',
+    event,
+    conversation,
+    contact,
+    targetMessageId,
+  };
+}
+
+/**
  * Ingest the events a provider parsed for one connection, in order. Returns
  * one outcome per event. Never throws for a single bad event: it is reported
  * as `skipped` and the rest still run.
@@ -456,16 +692,24 @@ export async function ingestInbound(
 ): Promise<IngestOutcome[]> {
   const out: IngestOutcome[] = [];
   for (const event of events) {
-    if (event.kind !== 'message') {
-      out.push({
-        status: 'skipped',
-        event,
-        reason: `${event.kind} events are not handled yet`,
-      });
-      continue;
-    }
     try {
-      out.push(await ingestMessage(db, connection, event, opts));
+      switch (event.kind) {
+        case 'message':
+          out.push(await ingestMessage(db, connection, event, opts));
+          break;
+        case 'status':
+          out.push(await ingestStatus(db, event));
+          break;
+        case 'reaction':
+          out.push(await ingestReaction(db, connection, event, opts));
+          break;
+        default:
+          out.push({
+            status: 'skipped',
+            event,
+            reason: `${event.kind} events are not handled yet`,
+          });
+      }
     } catch (err) {
       console.error('[ingest] unexpected error:', err);
       out.push({ status: 'skipped', event, reason: 'unexpected error' });
