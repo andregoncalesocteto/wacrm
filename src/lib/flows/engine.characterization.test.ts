@@ -69,8 +69,12 @@ vi.mock('./admin-client', () => {
     private mode: 'many' | 'maybe' | 'single' = 'many';
     private head = false;
     private inserted: Row | null = null;
+    private embedContact = false;
     constructor(private table: string) {}
-    select(_c?: string, opts?: { head?: boolean }) {
+    select(c?: string, opts?: { head?: boolean }) {
+      if (typeof c === 'string' && c.includes('contact:contacts')) {
+        this.embedContact = true;
+      }
       if (opts?.head) this.head = true;
       return this;
     }
@@ -126,6 +130,14 @@ vi.mock('./admin-client', () => {
         for (const r of out) Object.assign(r, this.payload);
       } else {
         out = rows.filter((r) => this.filters.every((f) => f(r)));
+        if (this.embedContact) {
+          // `contact:contacts(*)` embed used by sendOutbound (US-027).
+          out = out.map((r) => ({
+            ...r,
+            contact:
+              (h.db.contacts ?? []).find((c) => c.id === r.contact_id) ?? null,
+          }));
+        }
       }
       if (this.head) return { data: null, count: out.length, error: null };
       if (this.mode === 'many')

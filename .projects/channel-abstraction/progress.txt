@@ -353,3 +353,14 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - v1 messages route only speaks phone (`to`); no address/channel field yet, so Telegram etc. need the contract change in US-060.
   - Rate limit runs in requireApiKey before the scope check; not exercised here (mocked), covered by the api-context tests.
   - The fake db in the new test (like/limit/eq/insert/update, conversations embed contact) is a copy of the send-message characterization fake plus like/limit.
+
+## 2026-09-21 - US-027
+- New src/lib/flows/send.ts: engineSendText/Media/InteractiveButtons/List keep the engine's call shape and `{whatsapp_message_id}` return but are thin adapters over sendOutbound({actor:{type:'flow'}, db: flows supabaseAdmin()}) with neutral messages (interactive uses buttonLabel; core persists the legacy button_label shape). engine.ts now imports "./send"; flows no longer touch meta-api or flows/meta-send.ts. A provider failure throws before persisting, so the run still ends failed with send_*_failed and nothing is stored.
+- flows/meta-send.ts left untouched (US-031 removes dead code): its engineSend* have no flows callers now; loadAccountMetaCredentials + engineSendText(aiGenerated) still serve ai/auto-reply, and automations/meta-send.ts imports engineSendInteractive*.
+- Test edits (assertions untouched): engine.test.ts and dispatch.test.ts mock "./send" instead of "./meta-send" (module the engine imports now); engine.characterization.test.ts fake gained the `contact:contacts(*)` embed for conversations (sendOutbound loads conversation+contact in one query). The direct engineSend* sender tests in that file still exercise the old meta-send.ts (dead code until US-031). New send.test.ts (4 tests).
+- Deltas vs old flows sends (RNF-01 notes): media rows now also store media_url (core behavior, same as dashboard); text rows omit explicit ai_generated (DB default false); preview for a whitespace-only media caption is the caption not "[kind]"; empty text / oversize caption / bad interactive payload are rejected by the core before the provider (still a failed send -> failed run). Not verified against real Meta (unreachable).
+- **Learnings for future iterations:**
+  - Fakes used with sendOutbound need the conversations `contact:contacts(*)` embed, insert().select().single(), and channel_connections/contact_identities tables.
+  - US-028+ (automations, AI auto-reply) can copy flows/send.ts as the adapter pattern; then meta-send.ts files become dead (US-031).
+  - `npm run build` not run (dev server on :3100 shares .next); typecheck/lint/test clean. Baseline: 112 files / 1429 tests, lint 40 warnings.
+---

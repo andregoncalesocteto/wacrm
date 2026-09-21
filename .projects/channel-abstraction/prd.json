@@ -491,8 +491,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 29,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Flows engine imports src/lib/flows/send.ts (adapters over sendOutbound, actor flow, service-role db). flows/meta-send.ts engineSend* now unused by flows (kept for US-031; loadAccountMetaCredentials and engineSendText/aiGenerated still used by ai/auto-reply and automations)."
     },
     {
       "id": "US-028",

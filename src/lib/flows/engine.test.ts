@@ -78,7 +78,7 @@ vi.mock("./admin-client", () => {
   };
 });
 
-vi.mock("./meta-send", () => ({
+vi.mock("./send", () => ({
   engineSendText: vi.fn(async () => ({ whatsapp_message_id: "wamid.1" })),
   engineSendMedia: vi.fn(async () => ({ whatsapp_message_id: "wamid.2" })),
   engineSendInteractiveButtons: h.sendButtons,
@@ -97,7 +97,7 @@ import {
 import type {
   engineSendInteractiveButtons,
   engineSendInteractiveList,
-} from "./meta-send";
+} from "./send";
 import type { ParsedInbound } from "./types";
 
 describe("matchReplyId", () => {
