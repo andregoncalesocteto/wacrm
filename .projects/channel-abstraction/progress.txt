@@ -343,3 +343,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Other senders (flows/automations/broadcast/AI) still call meta-api directly (US-027+).
   - Baseline: 110 files / 1417 tests, lint 40 warnings, typecheck clean, build OK.
 ---
+
+## 2026-09-21 - US-026
+- Mostly verification. POST /api/v1/messages -> resolveConversationByPhone (stamps connection_id = account's whatsapp_cloud connection on create; fails fast with whatsapp_not_configured 400 BEFORE creating anything) -> sendMessageToConversation (thin wrapper) -> sendOutbound. No production code changed.
+- Audit of every conversation creator (grep insert/upsert on conversations, non-test): resolve-conversation.ts (connection_id set), api/whatsapp/send route contact_id path (set, US-025), channels/ingest.ts (set, US-013/014). lib/api/v1/contacts.ts does not create conversations. All stamp connection_id.
+- Added src/app/api/v1/messages/route.test.ts (8 tests, real resolve-conversation + wrapper + sendOutbound over an in-memory db; only requireApiKey and Meta senders mocked): text to unknown number (contact+conversation with connection_id, 201 envelope, message persisted), reuse of contact/conversation, template, media+caption, 400 whatsapp_not_configured with nothing created, 502 meta_error with nothing persisted, 400 bad_request set (no orphan contact), 401/403/429 pass-through + scope 'messages:send'.
+- Current public contract (for US-060): request JSON {to (E.164, required), type: text|template|image|video|document|audio (default text; interactive types also accepted via interactive_payload), text (body or caption), media_url, filename, template:{name, language, params: string[] (positional body) | {header/body/button structured}}, interactive_payload, reply_to_message_id (uuid, same conversation), name (names a NEW contact)}. Success 201 {data:{message_id, whatsapp_message_id, conversation_id, contact_id, contact_created}}. Error envelope {error:{code,message}}; codes: unauthorized 401, forbidden 403 (missing scope messages:send), rate_limited 429 (+Retry-After, X-RateLimit-*; 120/min/key), bad_request 400, whatsapp_not_configured 400, not_found 404, meta_error 502, template_malformed 500, db_error 500, internal 500.
+- **Learnings for future iterations:**
+  - v1 messages route only speaks phone (`to`); no address/channel field yet, so Telegram etc. need the contract change in US-060.
+  - Rate limit runs in requireApiKey before the scope check; not exercised here (mocked), covered by the api-context tests.
+  - The fake db in the new test (like/limit/eq/insert/update, conversations embed contact) is a copy of the send-message characterization fake plus like/limit.
