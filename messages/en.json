@@ -1904,6 +1904,37 @@
       "lastInbound": "Last received {time}",
       "neverReceived": "Nothing received yet",
       "configure": "Configure",
+      "detail": {
+        "reasonDisabled": "Connection disabled: it neither sends nor receives until enabled again.",
+        "lastError": "Last error",
+        "errorCode": "Code",
+        "suggestion": {
+          "auth": "Send a valid token again and reconnect.",
+          "rate_limited": "Wait a few minutes and try again.",
+          "generic": "Check the connection details and try again. If it persists, test the connection or reconnect."
+        },
+        "last24h": "Last 24 hours",
+        "stat": {
+          "received": "Received",
+          "sent": "Sent",
+          "failed": "Failed"
+        },
+        "test": "Test connection",
+        "reconnect": "Reconnect",
+        "move": "Move to another store",
+        "noOtherStore": "There is no other store to move this connection to.",
+        "testOk": "The connection answered the test.",
+        "testNotOk": "The connection failed the test: {reason}",
+        "reconnectOk": "Connection re-established.",
+        "reconnectFailed": "Could not reconnect: {reason}",
+        "actionFailed": "Could not complete the action.",
+        "moveTitle": "Move to another store",
+        "targetStore": "Destination store",
+        "moveConfirm": "Move \"{name}\" to \"{store}\"? {count, plural, =0 {No conversation changes store.} one {1 conversation will belong to the new store.} other {# conversations will belong to the new store.}}",
+        "moveAction": "Move",
+        "moved": "Connection moved to \"{store}\".",
+        "disableWarning": "Disable \"{name}\"? It stops sending and receiving until you enable it again. {count, plural, =0 {There are no open conversations.} one {1 open conversation will stop receiving messages.} other {# open conversations will stop receiving messages.}}"
+      },
       "configureSoon": "The connection detail is coming soon.",
       "disable": "Disable",
       "enable": "Enable",

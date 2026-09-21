@@ -768,8 +768,8 @@
         "Verify in browser using dev-browser skill (cada ação, o aviso ao desativar e o segredo mascarado)"
       ],
       "priority": 45,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser (pt, :3100) verified with a seeded connection: 24h counts 2/1/1, last error + suggestion, test/reconnect (explained error), move with conversation count, disable warning with open count, enable, Apagar hidden with conversations. Masked secret comes from the US-039 WhatsApp panel rendered below (not re-checked here). Stats route also returns total/open conversation counts (2 extra count queries)."
     },
     {
       "id": "US-041",

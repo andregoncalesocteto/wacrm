@@ -3,14 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import {
-  ArrowLeft,
-  Loader2,
-  MessageCircle,
-  Plug,
-  PlugZap,
-  Store,
-} from 'lucide-react';
+import { Loader2, MessageCircle, Plug, PlugZap, Store } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -39,6 +32,7 @@ import {
 import { getDateFnsLocale } from '@/lib/i18n/date-fns-locale';
 import { connectionChipState, type ConnectionChipState } from '@/lib/stores/ui';
 import { ConnectChannelWizard } from './connect-channel-wizard';
+import { ConnectionDetail } from './connection-detail';
 import { SettingsPanelHead } from './settings-panel-head';
 
 const CHIP_TONE: Record<ConnectionChipState, string> = {
@@ -50,10 +44,7 @@ const CHIP_TONE: Record<ConnectionChipState, string> = {
 };
 
 // Which panel is open in place of the list: a connection (edit) or a new one.
-type View =
-  | { mode: 'edit'; connection: ChannelConnectionRow }
-  | { mode: 'wizard' }
-  | null;
+type View = { mode: 'edit'; connectionId: string } | { mode: 'wizard' } | null;
 
 type Pending = {
   kind: 'disable' | 'delete';
@@ -185,33 +176,21 @@ export function ChannelsPanel() {
   }
 
   if (view) {
-    const Panel = (() => {
-      const entry = getChannelUi(view.connection.channel_type);
-      return entry?.kind === 'panel' ? entry.Panel : null;
-    })();
-    return (
-      <div className="space-y-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
+    const current = connections.find((c) => c.id === view.connectionId);
+    if (current) {
+      return (
+        <ConnectionDetail
+          key={current.id}
+          connection={current}
+          stores={stores}
+          onBack={() => {
             setView(null);
             void load();
           }}
-        >
-          <ArrowLeft className="size-4" />
-          {t('back')}
-        </Button>
-        {Panel ? (
-          <Panel
-            key={view.connection.id}
-            connection={view.connection}
-            storeId={view.connection.store_id}
-            onChanged={() => void load()}
-          />
-        ) : null}
-      </div>
-    );
+          onChanged={() => void load()}
+        />
+      );
+    }
   }
 
   return (
@@ -298,24 +277,15 @@ export function ChannelsPanel() {
                         </span>
                         {canEditSettings ? (
                           <div className="flex shrink-0 flex-wrap gap-1">
-                            <span
-                              title={
-                                ui?.kind === 'panel'
-                                  ? undefined
-                                  : t('configureSoon')
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setView({ mode: 'edit', connectionId: c.id })
                               }
                             >
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={ui?.kind !== 'panel'}
-                                onClick={() =>
-                                  setView({ mode: 'edit', connection: c })
-                                }
-                              >
-                                {t('configure')}
-                              </Button>
-                            </span>
+                              {t('configure')}
+                            </Button>
                             {state === 'disabled' ? (
                               <Button
                                 variant="outline"

@@ -523,3 +523,11 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - The wizard preselects the store when there is exactly one; providers endpoint lists only registered providers (today whatsapp_cloud), so the wizard shows only those.
   - Field labels/help for a form provider: `Channels.providers.<type>.fields.<name>.label|help|options.<value>` (US-050 must add them).
 ---
+
+## 2026-09-21 - US-040
+- Connection detail: src/components/settings/connection-detail.tsx (state chip + reason, last error with code/message/suggested action, 24h counts, actions Testar/Reconectar/Mover de loja/Desativar-Ativar/Apagar, registry panel rendered below). ChannelsPanel "Configurar" now opens it for every connection (view keeps the connection id; the row is re-read from the list after each change).
+- New GET /api/channels/connections/[id]/stats (any member): received/sent/failed in 24h via messages!inner(conversations.connection_id) (3 head-count queries) + conversations total/open (2 more); numbers only. Pure helpers in lib/channels/ui.ts (parseLastError, errorSuggestion, canRunConnectionActions, moveTargets) with tests; route tests (3).
+- i18n: Settings.channels.detail.* x4 (textual insertion; ICU plural for counts). Old key configureSoon now unused.
+- Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1553, build ok. Browser verified; seeds removed.
+- **Learnings:** health failures store last_error.code = the health state (e.g. needs_action), so errorSuggestion treats needs_action as auth. Test/Reconnect are disabled for a disabled connection. Dialog buttons: use exact:true names (WhatsApp panel also has "Testar conexão com a API").
+---

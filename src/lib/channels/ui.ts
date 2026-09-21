@@ -58,3 +58,46 @@ export function emptyStateKind(
   if (connectionCount > 0) return 'has-connections';
   return storeCount === 0 ? 'no-stores' : 'no-connections';
 }
+
+export interface LastError {
+  code: string | null;
+  message: string;
+}
+
+/** Normalizes the stored `last_error` jsonb (may be null, partial or odd). */
+export function parseLastError(raw: unknown): LastError | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as { code?: unknown; message?: unknown };
+  const message = typeof r.message === 'string' ? r.message : '';
+  const code = typeof r.code === 'string' ? r.code : null;
+  if (!message && !code) return null;
+  return { code, message };
+}
+
+export type ErrorSuggestion = 'auth' | 'rate_limited' | 'generic';
+
+/**
+ * Which suggested action to show for an error code: auth-like states ask for a
+ * valid token, rate limiting asks to wait, everything else is generic.
+ * `needs_action` is what a failed health check stores for an auth problem.
+ */
+export function errorSuggestion(code: string | null): ErrorSuggestion {
+  if (code === 'auth' || code === 'needs_action') return 'auth';
+  if (code === 'rate_limited') return 'rate_limited';
+  return 'generic';
+}
+
+/** Disabled connections cannot be reconnected/tested until enabled again. */
+export function canRunConnectionActions(c: {
+  disabled_at: string | null;
+}): boolean {
+  return !c.disabled_at;
+}
+
+/** Other stores a connection can be moved to. */
+export function moveTargets(
+  stores: StoreRef[],
+  currentStoreId: string
+): StoreRef[] {
+  return stores.filter((s) => s.id !== currentStoreId);
+}

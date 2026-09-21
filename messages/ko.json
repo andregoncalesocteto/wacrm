@@ -1904,6 +1904,37 @@
       "lastInbound": "마지막 수신 {time}",
       "neverReceived": "아직 수신된 내용 없음",
       "configure": "설정",
+      "detail": {
+        "reasonDisabled": "연결이 비활성화되었습니다. 다시 활성화할 때까지 보내지도 받지도 않습니다.",
+        "lastError": "마지막 오류",
+        "errorCode": "코드",
+        "suggestion": {
+          "auth": "유효한 토큰을 다시 보내고 다시 연결하세요.",
+          "rate_limited": "몇 분 기다린 후 다시 시도하세요.",
+          "generic": "연결 정보를 확인하고 다시 시도하세요. 계속되면 연결을 테스트하거나 다시 연결하세요."
+        },
+        "last24h": "최근 24시간",
+        "stat": {
+          "received": "수신",
+          "sent": "발신",
+          "failed": "실패"
+        },
+        "test": "연결 테스트",
+        "reconnect": "다시 연결",
+        "move": "다른 매장으로 이동",
+        "noOtherStore": "이 연결을 옮길 다른 매장이 없습니다.",
+        "testOk": "연결이 테스트에 응답했습니다.",
+        "testNotOk": "연결이 테스트를 통과하지 못했습니다: {reason}",
+        "reconnectOk": "연결이 다시 설정되었습니다.",
+        "reconnectFailed": "다시 연결할 수 없습니다: {reason}",
+        "actionFailed": "작업을 완료할 수 없습니다.",
+        "moveTitle": "다른 매장으로 이동",
+        "targetStore": "대상 매장",
+        "moveConfirm": "\"{name}\"을(를) \"{store}\"(으)로 이동할까요? {count, plural, =0 {매장이 바뀌는 대화가 없습니다.} other {대화 #개가 새 매장에 속하게 됩니다.}}",
+        "moveAction": "이동",
+        "moved": "연결이 \"{store}\"(으)로 이동되었습니다.",
+        "disableWarning": "\"{name}\"을(를) 비활성화할까요? 다시 활성화할 때까지 보내지도 받지도 않습니다. {count, plural, =0 {열린 대화가 없습니다.} other {열린 대화 #개가 메시지를 받지 못하게 됩니다.}}"
+      },
       "configureSoon": "연결 상세 화면은 곧 제공됩니다.",
       "disable": "비활성화",
       "enable": "활성화",

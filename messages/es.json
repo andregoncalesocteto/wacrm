@@ -1894,6 +1894,37 @@
       "lastInbound": "Última recepción {time}",
       "neverReceived": "Aún no se ha recibido nada",
       "configure": "Configurar",
+      "detail": {
+        "reasonDisabled": "Conexión desactivada: no envía ni recibe hasta que se active de nuevo.",
+        "lastError": "Último error",
+        "errorCode": "Código",
+        "suggestion": {
+          "auth": "Vuelve a enviar un token válido y reconecta.",
+          "rate_limited": "Espera unos minutos e inténtalo de nuevo.",
+          "generic": "Revisa los datos de la conexión e inténtalo de nuevo. Si persiste, prueba la conexión o reconecta."
+        },
+        "last24h": "Últimas 24 horas",
+        "stat": {
+          "received": "Recibidos",
+          "sent": "Enviados",
+          "failed": "Fallidos"
+        },
+        "test": "Probar conexión",
+        "reconnect": "Reconectar",
+        "move": "Mover de tienda",
+        "noOtherStore": "No hay otra tienda a la que mover esta conexión.",
+        "testOk": "La conexión respondió a la prueba.",
+        "testNotOk": "La conexión no pasó la prueba: {reason}",
+        "reconnectOk": "Conexión restablecida.",
+        "reconnectFailed": "No se pudo reconectar: {reason}",
+        "actionFailed": "No se pudo completar la acción.",
+        "moveTitle": "Mover a otra tienda",
+        "targetStore": "Tienda de destino",
+        "moveConfirm": "¿Mover \"{name}\" a \"{store}\"? {count, plural, =0 {Ninguna conversación cambia de tienda.} one {1 conversación pasará a la nueva tienda.} other {# conversaciones pasarán a la nueva tienda.}}",
+        "moveAction": "Mover",
+        "moved": "Conexión movida a \"{store}\".",
+        "disableWarning": "¿Desactivar \"{name}\"? Deja de enviar y recibir hasta que la actives de nuevo. {count, plural, =0 {No hay conversaciones abiertas.} one {1 conversación abierta dejará de recibir mensajes.} other {# conversaciones abiertas dejarán de recibir mensajes.}}"
+      },
       "configureSoon": "El detalle de la conexión llegará pronto.",
       "disable": "Desactivar",
       "enable": "Activar",

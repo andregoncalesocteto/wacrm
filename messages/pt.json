@@ -1894,6 +1894,37 @@
       "lastInbound": "Último recebimento {time}",
       "neverReceived": "Nada recebido ainda",
       "configure": "Configurar",
+      "detail": {
+        "reasonDisabled": "Conexão desativada: não envia nem recebe até ser ativada de novo.",
+        "lastError": "Último erro",
+        "errorCode": "Código",
+        "suggestion": {
+          "auth": "Reenvie um token válido e reconecte.",
+          "rate_limited": "Aguarde alguns minutos e tente de novo.",
+          "generic": "Confira os dados da conexão e tente de novo. Se persistir, teste a conexão ou reconecte."
+        },
+        "last24h": "Últimas 24 horas",
+        "stat": {
+          "received": "Recebidas",
+          "sent": "Enviadas",
+          "failed": "Falhas"
+        },
+        "test": "Testar conexão",
+        "reconnect": "Reconectar",
+        "move": "Mover de loja",
+        "noOtherStore": "Não há outra loja para receber esta conexão.",
+        "testOk": "A conexão respondeu ao teste.",
+        "testNotOk": "A conexão não passou no teste: {reason}",
+        "reconnectOk": "Conexão refeita com sucesso.",
+        "reconnectFailed": "Não foi possível reconectar: {reason}",
+        "actionFailed": "Não foi possível concluir a ação.",
+        "moveTitle": "Mover para outra loja",
+        "targetStore": "Loja de destino",
+        "moveConfirm": "Mover \"{name}\" para \"{store}\"? {count, plural, =0 {Nenhuma conversa muda de loja.} one {1 conversa passa a pertencer à nova loja.} other {# conversas passam a pertencer à nova loja.}}",
+        "moveAction": "Mover",
+        "moved": "Conexão movida para \"{store}\".",
+        "disableWarning": "Desativar \"{name}\"? Ela para de enviar e receber até você ativá-la de novo. {count, plural, =0 {Não há conversas abertas.} one {Há 1 conversa aberta que deixará de receber mensagens.} other {Há # conversas abertas que deixarão de receber mensagens.}}"
+      },
       "configureSoon": "O detalhe da conexão chega em breve.",
       "disable": "Desativar",
       "enable": "Ativar",
