@@ -127,3 +127,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Credentials shape is snake_case (access_token) for every provider; verify_token of WhatsApp stays in connection.config, not in credentials.
   - Tests mock './admin-client' with a chainable fake; encryption uses the vitest dummy ENCRYPTION_KEY. Baseline: 98 files, lint 41 warnings.
 ---
+
+## 2026-09-21 - US-009
+- Added src/lib/channels/{types,registry,registry.test}.ts. types.ts: ChannelType, Capabilities (each field commented), ChannelProvider, InboundEvent/InboundContent, OutboundMessage, SendResult, Target, Health, ConnectResult, ContactIdentity, MessageRef/MediaRef and the ChannelError class (code, providerCode, retryable, toInfo()). `Connection` is an alias of ChannelConnection from connections.ts. registry.ts: registerProvider (duplicate throws), getProvider (unknown type throws listing registered ones), hasProvider, listProviders, resetRegistryForTests. Registry starts empty; providers register from US-010+.
+- Files changed: the three new files, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - types.ts imports nothing from lib/whatsapp: MediaKind and the interactive payload (camelCase buttonLabel) are redefined channel-neutral; WhatsApp provider must map from/to lib/whatsapp types.
+  - zod is NOT a direct dependency (only transitive), so configSchema/credentialsSchema use a structural `Schema` interface with safeParse (a zod schema satisfies it).
+  - ChannelError.retryable defaults to true only for 'rate_limited'.
+  - Baseline: 99 files / 1180 tests, lint 41 warnings.
+---

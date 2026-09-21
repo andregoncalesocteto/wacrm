@@ -1,0 +1,289 @@
+import type { ChannelConnection } from './connections';
+
+/**
+ * Provider contract: everything a messaging channel must implement so the CRM
+ * core stays independent of the channel (design.md section 5, ADR-002).
+ *
+ * This file is TYPES (plus ChannelError) only. It must stay channel-neutral:
+ * do NOT import from `lib/whatsapp` or any provider module here.
+ */
+
+/** A connection row as read by `connections.ts` (single source of the shape). */
+export type Connection = ChannelConnection;
+
+/** Discriminator stored in `channel_connections.channel_type`. */
+export type ChannelType = 'whatsapp_cloud' | 'telegram';
+
+export type MediaKind = 'image' | 'video' | 'document' | 'audio';
+
+/**
+ * Minimal structural validator (zod-compatible: a zod schema satisfies it)
+ * so the contract does not force a validation library on every provider.
+ */
+export interface Schema<T = unknown> {
+  safeParse(
+    input: unknown
+  ): { success: true; data: T } | { success: false; error: unknown };
+}
+
+/**
+ * What a channel can do. The core and the UI consult these flags instead of
+ * branching on `channel_type`, so a new channel needs no core changes.
+ */
+export interface Capabilities {
+  /** Approved message templates exist (WhatsApp); hides the template picker otherwise. */
+  templates: boolean;
+  /** Reply buttons can be sent; otherwise the composer hides them. */
+  interactiveButtons: boolean;
+  /** Tap-to-expand list messages can be sent. */
+  interactiveList: boolean;
+  /** Emoji reactions to a message are supported. */
+  reactions: boolean;
+  /** The channel can show "typing..." to the contact. */
+  typingIndicator: boolean;
+  /** The channel reports delivery ("delivered") receipts. */
+  deliveryStatus: boolean;
+  /** The channel reports read receipts. */
+  readStatus: boolean;
+  /**
+   * How a conversation may be started by us: 'template' (only via an approved
+   * template, WhatsApp), 'after_inbound' (only after the contact wrote first,
+   * Telegram) or 'free' (any time).
+   */
+  initiate: 'template' | 'after_inbound' | 'free';
+  /** Hours we may reply free-form after the last inbound (WhatsApp 24 h); null = no window. */
+  replyWindowHours: number | null;
+  /** Media kinds accepted on send; drives the attachment picker. */
+  mediaKinds: MediaKind[];
+  /** Upload size cap in bytes, checked before calling the provider. */
+  maxMediaBytes: number;
+  /** Max caption/text length attached to media. */
+  captionMaxLength: number;
+}
+
+export type ChannelErrorCode =
+  | 'auth'
+  | 'rate_limited'
+  | 'recipient_unreachable'
+  | 'unsupported'
+  | 'window_closed'
+  | 'invalid'
+  | 'unknown';
+
+/** Serializable error info carried by status events and stored as `last_error`. */
+export interface ChannelErrorInfo {
+  code: ChannelErrorCode;
+  message: string;
+  providerCode?: string | number;
+}
+
+/** Typed failure every provider throws, so the core can map it to HTTP/retry decisions. */
+export class ChannelError extends Error {
+  readonly code: ChannelErrorCode;
+  /** Raw provider code (Meta error code, Telegram error_code) for diagnostics. */
+  readonly providerCode?: string | number;
+  /** Whether retrying the same call later may succeed (rate limit, transient). */
+  readonly retryable: boolean;
+
+  constructor(
+    code: ChannelErrorCode,
+    message: string,
+    options: {
+      providerCode?: string | number;
+      retryable?: boolean;
+      cause?: unknown;
+    } = {}
+  ) {
+    super(
+      message,
+      options.cause !== undefined ? { cause: options.cause } : undefined
+    );
+    this.name = 'ChannelError';
+    this.code = code;
+    this.providerCode = options.providerCode;
+    this.retryable = options.retryable ?? code === 'rate_limited';
+  }
+
+  toInfo(): ChannelErrorInfo {
+    return {
+      code: this.code,
+      message: this.message,
+      ...(this.providerCode !== undefined && {
+        providerCode: this.providerCode,
+      }),
+    };
+  }
+}
+
+/** A contact identity as stored in `contact_identities`. */
+export interface ContactIdentity {
+  /** e.g. 'whatsapp:phone', 'whatsapp:bsuid', 'telegram:chat_id'. */
+  kind: string;
+  externalId: string;
+  handle?: string | null;
+}
+
+/** An identity extracted from an inbound event, before the contact is resolved. */
+export type IdentityCandidate = ContactIdentity;
+
+/** Where to deliver an outbound message, resolved from a contact's identities. */
+export interface Target {
+  /** Identity kind the target was derived from. */
+  kind: string;
+  /** Provider address (phone, BSUID, chat id). */
+  address: string;
+}
+
+/** Reference to a message on the provider side. */
+export interface MessageRef {
+  externalId: string;
+}
+
+/** Reference to downloadable inbound media. */
+export interface MediaRef {
+  kind: MediaKind;
+  /** Provider file/media id. */
+  id: string;
+  mimeType?: string;
+  fileName?: string;
+}
+
+/** Channel-neutral interactive payload (buttons or list). */
+export type InteractivePayload =
+  | {
+      kind: 'buttons';
+      body: string;
+      header?: string;
+      footer?: string;
+      buttons: { id: string; title: string }[];
+    }
+  | {
+      kind: 'list';
+      body: string;
+      header?: string;
+      footer?: string;
+      buttonLabel: string;
+      sections: {
+        title?: string;
+        rows: { id: string; title: string; description?: string }[];
+      }[];
+    };
+
+export interface TemplateMessage {
+  name: string;
+  language: string;
+  /** Provider-shaped component parameters, passed through untouched. */
+  components?: unknown[];
+}
+
+/** What the core asks a provider to send. */
+export type OutboundMessage =
+  | { type: 'text'; text: string }
+  | {
+      type: 'media';
+      kind: MediaKind;
+      url: string;
+      caption?: string;
+      fileName?: string;
+    }
+  | { type: 'template'; template: TemplateMessage }
+  | { type: 'interactive'; interactive: InteractivePayload }
+  | { type: 'reaction'; target: MessageRef; emoji: string | null };
+
+export interface SendResult {
+  /** Provider message id (wamid, Telegram message_id), used for status/idempotency. */
+  externalId: string;
+}
+
+/** Content of an inbound message, normalized across channels. */
+export type InboundContent =
+  | { type: 'text'; text: string }
+  | { type: 'media'; kind: MediaKind; media: MediaRef; caption?: string }
+  | { type: 'interactive_reply'; id: string; title: string }
+  | { type: 'unsupported'; description?: string };
+
+export type InboundEvent =
+  | {
+      kind: 'message';
+      externalId: string;
+      sender: IdentityCandidate[];
+      at: Date;
+      content: InboundContent;
+      replyToExternalId?: string;
+      senderName?: string;
+    }
+  | {
+      kind: 'status';
+      externalId: string;
+      status: 'sent' | 'delivered' | 'read' | 'failed';
+      error?: ChannelErrorInfo;
+    }
+  | {
+      kind: 'reaction';
+      externalId: string;
+      sender: IdentityCandidate[];
+      /** null = reaction removed. */
+      emoji: string | null;
+    }
+  | {
+      kind: 'connection';
+      state: 'connected' | 'degraded' | 'disconnected' | 'needs_action';
+      reason?: string;
+    };
+
+export interface ConnectResult {
+  ok: boolean;
+  /** Human-readable reason when not ok, or a hint (e.g. non-HTTPS webhook URL). */
+  message?: string;
+  /** Values the user must copy elsewhere (e.g. webhook URL, verify token). */
+  details?: Record<string, string>;
+}
+
+export interface Health {
+  state: 'connected' | 'degraded' | 'disconnected' | 'needs_action';
+  reason?: string;
+  checkedAt: Date;
+}
+
+export interface ChannelProvider {
+  readonly type: ChannelType;
+  /** Identity kinds this channel produces, e.g. ['whatsapp:phone', 'whatsapp:bsuid']. */
+  readonly identityKinds: string[];
+  readonly capabilities: Capabilities;
+
+  /** Validates `connection.config` (non-secret settings). */
+  readonly configSchema: Schema;
+  /** Validates the credentials payload (secrets; never returned to clients). */
+  readonly credentialsSchema: Schema;
+
+  // lifecycle
+  /** Registers with the provider (setWebhook, number registration). */
+  connect(conn: Connection): Promise<ConnectResult>;
+  disconnect(conn: Connection): Promise<void>;
+  /** Live check, also used by the health cron. */
+  health(conn: Connection): Promise<Health>;
+
+  // inbound
+  /** Finds the connection an incoming request belongs to (null = unknown). */
+  resolveConnection(req: Request): Promise<Connection | null>;
+  /** Authenticates the request (HMAC, secret token). */
+  verify(req: Request, conn: Connection): Promise<boolean>;
+  parse(req: Request, conn: Connection): Promise<InboundEvent[]>;
+  downloadMedia?(conn: Connection, ref: MediaRef): Promise<Blob>;
+
+  // outbound
+  /** Picks the address to deliver to from a contact's identities; null = unreachable here. */
+  resolveTarget(identities: ContactIdentity[]): Target | null;
+  send(
+    conn: Connection,
+    target: Target,
+    msg: OutboundMessage
+  ): Promise<SendResult>;
+  react?(
+    conn: Connection,
+    target: Target,
+    ref: MessageRef,
+    emoji: string
+  ): Promise<void>;
+  typing?(conn: Connection, target: Target): Promise<void>;
+}
