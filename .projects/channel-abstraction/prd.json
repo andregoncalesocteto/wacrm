@@ -262,7 +262,7 @@
       ],
       "priority": 15,
       "passes": false,
-      "notes": ""
+      "notes": "Orientação do orquestrador: (a) qual conexão usar — a `connection_id` da conversa quando existir; senão a conexão de WhatsApp ativa da conta (fallback, porque conversas criadas pelo código antigo depois da migration 045 ainda têm `connection_id` nulo); (b) `resolve-conversation.ts` deve gravar `connection_id` ao criar uma conversa; (c) os testes de caracterização não podem ter asserções alteradas; só os dublês/dados de origem (whatsapp_config → conexões e credenciais) podem mudar."
     },
     {
       "id": "US-015",
@@ -311,7 +311,7 @@
       ],
       "priority": 18,
       "passes": false,
-      "notes": ""
+      "notes": "Orientação do orquestrador: além dos leitores, o `findOrCreateConversation` do webhook antigo deve passar a gravar `connection_id` (a conexão que recebeu a mensagem) ao criar conversas, para não acumular conversas com `connection_id` nulo até a US-032. Asserções dos testes de caracterização não mudam."
     },
     {
       "id": "US-018",
@@ -574,7 +574,7 @@
       ],
       "priority": 34,
       "passes": false,
-      "notes": "Adicionado pelo orquestrador após a US-007: o backfill deixa connection_id nulo em contas sem whatsapp_config; o NOT NULL exige tratar conversas órfãs (config apagada) com uma conexão desativada de legado."
+      "notes": "Adicionado pelo orquestrador após a US-007: o backfill deixa connection_id nulo em contas sem whatsapp_config; o NOT NULL exige tratar conversas órfãs (config apagada) com uma conexão desativada de legado. Também: a migration 046 repete, de forma idempotente, o preenchimento de `conversations.connection_id` nulo (conversas criadas pelo código antigo depois da 045) a partir da conexão de WhatsApp da conta, ANTES de aplicar o NOT NULL."
     },
     {
       "id": "US-033",
