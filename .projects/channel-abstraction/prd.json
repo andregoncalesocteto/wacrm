@@ -428,7 +428,7 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 25,
-      "passes": false,
+      "passes": true,
       "notes": "Critério de falha ajustado pelo orquestrador após a US-003: o código atual não persiste linha failed quando a Meta recusa o envio; manter (RNF-01)."
     },
     {

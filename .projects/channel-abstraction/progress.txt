@@ -309,3 +309,15 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Provider.verify ignores the connection (app-level secret), so the route verifies even when resolveConnection returns null (template events).
   - Baseline: 109 files / 1386 tests, lint 40 warnings, typecheck clean, build OK.
 ---
+
+## 2026-09-21 - US-023
+- New src/lib/channels/send.ts: sendOutbound({conversationId, accountId, message: OutboundMessage, actor, replyToMessageId?, db?}) -> {messageId, externalMessageId, connectionId, resolvedAddress?}. Text + media only. Flow: conversation (account-scoped) + contact -> connection (conversation.connection_id in this account, else account's whatsapp_cloud) -> provider from registry (registerBuiltinProviders) -> identities from contact_identities + legacy phone/wa_user_id fallback (whatsapp only) -> provider.resolveTarget (null -> ChannelError recipient_unreachable) -> capability validation (unsupported media kind, caption > captionMaxLength except audio, missing text/url -> invalid) -> reply parent lookup -> provider.send -> contacts.phone fix on resolvedAddress -> insert message -> update conversation -> flow pause for agent (best-effort). Provider error propagates: nothing persisted, conversation untouched.
+- Actor mapping: agent -> sender_type 'agent' (+ sender_id when userId given); bot/flow/automation/ai -> 'bot', ai_generated true only for 'ai'. Persisted columns match today's send-message (no media_type column written, as today).
+- Errors: ChannelError (provider/validation), ConversationNotFoundError, ConnectionNotConfiguredError, OutboundPersistError; toSendMessageError(err) maps them to the old SendMessageError (not_found 404, whatsapp_not_configured 400, db_error 500, pre-provider ChannelErrors -> bad_request 400, others -> meta_error 502 "Meta API error: ...").
+- Files: send.ts, send.test.ts (19 tests, mocked provider), prd.json, progress.txt. Existing send path untouched.
+- **Learnings for future iterations:**
+  - Input needs accountId (tenancy), not in the original sketch. template/interactive throw ChannelError unsupported ("not implemented yet"): SEAM in validate() for US-024.
+  - Known gap: phone auto-fix updates contacts.phone only, not contact_identities (same as today's legacy behavior); revisit when identities become the source of truth.
+  - send.ts imports SendMessageError from whatsapp/send-message; when US-025 makes that module delegate to send.ts the cycle is runtime-only (used inside functions), but move the class if it bites.
+  - Baseline: typecheck clean, lint 40 warnings.
+---
