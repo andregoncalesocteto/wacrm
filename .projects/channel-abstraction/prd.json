@@ -1072,13 +1072,15 @@
       "acceptanceCriteria": [
         "A importação cria a identidade `whatsapp:phone` de cada contato e mantém as regras atuais de duplicidade e de erro",
         "Os testes de importação existentes passam; há um teste novo confirmando a identidade criada",
+        "A importação usa a detecção de duplicidade **consciente de identidades** (`findDuplicateContact`, que já checa `contacts.phone` e depois as identidades `whatsapp:phone`), e não só `contacts.phone`",
+        "Editar o telefone de um contato (formulário e detalhe) **atualiza a identidade `whatsapp:phone`**: a identidade antiga é removida (ou substituída) e a nova é inserida com `ON CONFLICT DO NOTHING`, para o número antigo não continuar resolvendo para esse contato; teste cobrindo a troca",
         "Typecheck passes",
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 63,
       "passes": false,
-      "notes": ""
+      "notes": "Após a US-054: a importação por CSV ainda deduplica só por contacts.phone e editar o telefone deixa a identidade antiga no lugar; ambos entram aqui."
     },
     {
       "id": "US-056",
