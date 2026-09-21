@@ -28,6 +28,9 @@ export const RECENT_ERROR_SECONDS = 60 * 60;
 /** Stable `reason` of the https guard; the UI maps it to a translated message. */
 export const PUBLIC_HTTPS_REQUIRED = 'public_https_required';
 
+/** Stable `reason`: setWebhook succeeded but the new secret was not persisted. */
+export const SECRET_PERSIST_FAILED = 'secret_persist_failed';
+
 const WEBHOOK_PATH = (id: string) => `/api/channels/telegram/webhook/${id}`;
 
 interface WebhookInfo {
@@ -76,16 +79,32 @@ export async function connect(conn: Connection): Promise<ConnectResult> {
   try {
     const { creds, token } = await requireBotToken(conn);
     const secretToken = generateSecretToken();
-    // Persist BEFORE registering: the first update may arrive right after setWebhook.
-    await saveConnectionCredentials(conn.id, conn.account_id, {
-      ...creds,
-      secret_token: secretToken,
-    });
+    // Register FIRST: if Telegram refuses, the stored secret still matches the
+    // webhook that is currently registered and nothing is written.
     await callBotApi<true>(token, 'setWebhook', {
       url: webhookUrl,
       secret_token: secretToken,
       allowed_updates: WEBHOOK_ALLOWED_UPDATES,
     });
+    try {
+      await saveConnectionCredentials(
+        conn.id,
+        conn.account_id,
+        { ...creds, secret_token: secretToken },
+        { merge: true }
+      );
+    } catch {
+      // The webhook already uses the new secret but we could not keep it, so
+      // updates would be rejected until the admin reconnects. No detail is
+      // echoed: the underlying error may mention the storage layer.
+      const message =
+        'The webhook was registered but the new secret could not be saved. Connect the channel again.';
+      return {
+        ok: false,
+        message,
+        error: { code: 'invalid', message, reason: SECRET_PERSIST_FAILED },
+      };
+    }
     return { ok: true, details: { webhook_url: webhookUrl } };
   } catch (err) {
     return failure(err);

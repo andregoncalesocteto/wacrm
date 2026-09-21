@@ -5,15 +5,22 @@ import type { Connection } from '../../types';
 const h = vi.hoisted(() => ({
   creds: null as Record<string, unknown> | null,
   saved: [] as Array<Record<string, unknown>>,
+  opts: [] as Array<{ merge?: boolean } | undefined>,
+  order: [] as string[],
+  saveError: null as string | null,
 }));
 vi.mock('../../connections', () => ({
   getConnectionCredentials: async () => h.creds,
   saveConnectionCredentials: async (
     _id: string,
     _acct: string,
-    c: Record<string, unknown>
+    c: Record<string, unknown>,
+    opts?: { merge?: boolean }
   ) => {
+    h.order.push('save');
+    if (h.saveError) throw new Error(h.saveError);
     h.saved.push(c);
+    h.opts.push(opts);
     h.creds = c;
   },
 }));
@@ -45,6 +52,9 @@ const lastCall = () => {
 beforeEach(() => {
   h.creds = { bot_token: TOKEN };
   h.saved = [];
+  h.opts = [];
+  h.order = [];
+  h.saveError = null;
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
   vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'https://crm.example.com/');
@@ -121,6 +131,41 @@ describe('connect', () => {
     expect(h.saved).toEqual([
       { bot_token: TOKEN, secret_token: body.secret_token },
     ]);
+  });
+
+  it('saves the secret only AFTER setWebhook succeeds, merged', async () => {
+    fetchMock.mockImplementationOnce(async () => {
+      h.order.push('setWebhook');
+      return new Response(JSON.stringify({ ok: true, result: true }), {
+        status: 200,
+      });
+    });
+    await telegramProvider.connect(conn);
+    expect(h.order).toEqual(['setWebhook', 'save']);
+    expect(h.opts).toEqual([{ merge: true }]);
+  });
+
+  it('setWebhook fails: nothing is written (old secret stays valid)', async () => {
+    h.creds = { bot_token: TOKEN, secret_token: 'old-secret' };
+    reply({ ok: false, error_code: 400, description: 'Bad Request' }, 400);
+    const r = await telegramProvider.connect(conn);
+    expect(r.ok).toBe(false);
+    expect(h.saved).toEqual([]);
+    expect(h.creds).toEqual({ bot_token: TOKEN, secret_token: 'old-secret' });
+  });
+
+  it('setWebhook ok but the write fails: stable reason, no secret leaked', async () => {
+    ok(true);
+    h.saveError = `db down ${TOKEN}`;
+    const r = await telegramProvider.connect(conn);
+    expect(r).toMatchObject({
+      ok: false,
+      error: { code: 'invalid', reason: 'secret_persist_failed' },
+    });
+    const sent = lastCall().body.secret_token as string;
+    expect(JSON.stringify(r)).not.toContain(sent);
+    expect(JSON.stringify(r)).not.toContain(TOKEN);
+    expect(r.message).toMatch(/again/i);
   });
 
   it('uses a fresh secret on every connect', async () => {

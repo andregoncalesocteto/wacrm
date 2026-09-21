@@ -653,3 +653,11 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC 142 files/1749 tests, build ok. Browser check not done.
 - **Learnings:** existing route.test.ts/connections.test.ts were prettier-formatted (reformat noise in the diff). Remaining risk: if setWebhook itself fails AFTER connect persisted a new secret_token, the old webhook's secret is stale (pre-existing ordering "persist before register"); not addressed here.
 ---
+
+## 2026-09-21 - US-080
+- Telegram connect now registers the webhook BEFORE persisting the new secret: https guard -> read creds -> generate secret -> setWebhook -> saveConnectionCredentials({merge:true}). setWebhook failure writes nothing (old secret stays valid). Save failure after setWebhook returns ok:false with error {code:'invalid', reason:'secret_persist_failed'}; the connect route already maps code invalid -> needs_action and stores last_error (no route change).
+- Files changed: providers/telegram/lifecycle.ts, telegram.test.ts, api/channels/connections/[id]/lifecycle.test.ts, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - The 'secret_persist_failed' reason has no translated fix key yet (reasonFixKey in lib/channels/ui.ts maps only public_https_required); the English message is the fallback.
+  - Test order is asserted via a shared h.order array between the fetch mock and the credentials mock; don't queue an extra ok() before it.
+---

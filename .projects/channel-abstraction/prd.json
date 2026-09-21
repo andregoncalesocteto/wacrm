@@ -992,8 +992,8 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "notes": "Adicionada pelo orquestrador após a US-079: risco residual apontado pelo subagente — o `connect` gravava o novo `secret_token` antes de `setWebhook`; se `setWebhook` falhasse, o segredo guardado não correspondia ao webhook antigo.",
-      "passes": false,
+      "notes": "Adicionada pelo orquestrador após a US-079: risco residual apontado pelo subagente — o `connect` gravava o novo `secret_token` antes de `setWebhook`; se `setWebhook` falhasse, o segredo guardado não correspondia ao webhook antigo. Implementada: connect = guarda https -> credenciais -> setWebhook -> saveConnectionCredentials({merge:true}); falha de gravacao devolve ok:false com error {code:'invalid', reason:'secret_persist_failed'} (a rota ja mapeia invalid -> needs_action + last_error). Sem chave i18n para esse reason (a mensagem em ingles e o fallback); verificacao em browser nao feita (exige bot real).",
+      "passes": true,
       "priority": 58
     },
     {

@@ -179,6 +179,25 @@ describe('POST connect', () => {
     expect(JSON.stringify(h.db)).not.toContain('654321');
   });
 
+  it('secret_persist_failed after setWebhook: needs_action with the reason, no secret', async () => {
+    const message =
+      'The webhook was registered but the new secret could not be saved. Connect the channel again.';
+    vi.mocked(fake.connect).mockResolvedValue({
+      ok: false,
+      message,
+      error: { code: 'invalid', message, reason: 'secret_persist_failed' },
+    });
+    const res = await connect(post({}), params('c1'));
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(row().status).toBe('needs_action');
+    expect(row().last_error).toMatchObject({
+      code: 'invalid',
+      reason: 'secret_persist_failed',
+    });
+    expect(JSON.stringify(h.db)).not.toContain('secret_token');
+  });
+
   it('a transient failure leaves it disconnected; a throw is tolerated', async () => {
     vi.mocked(fake.connect).mockRejectedValue(new Error('boom'));
     const res = await connect(post(), params('c1'));
