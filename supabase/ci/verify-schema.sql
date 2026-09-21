@@ -99,6 +99,27 @@ BEGIN
     RAISE EXCEPTION 'channel_connection_credentials must have RLS enabled';
   END IF;
 
+  -- Channel abstraction expand columns (044), all nullable.
+  IF (
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND is_nullable = 'YES' AND (
+      (table_name = 'conversations' AND column_name = 'connection_id')
+      OR (table_name = 'message_templates' AND column_name = 'connection_id')
+      OR (table_name = 'broadcasts' AND column_name = 'connection_id')
+      OR (table_name = 'automation_pending_executions' AND column_name IN ('conversation_id', 'connection_id'))
+      OR (table_name = 'quick_replies' AND column_name = 'store_id')
+    )
+  ) <> 6 THEN
+    RAISE EXCEPTION 'nullable channel columns are missing — migration 044 did not apply';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.notifications'::regclass AND contype = 'c'
+      AND pg_get_constraintdef(oid) LIKE '%connection_down%'
+  ) THEN
+    RAISE EXCEPTION 'notifications.type must accept connection_down (migration 044)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

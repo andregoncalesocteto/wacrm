@@ -97,3 +97,12 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Recent migrations use uuid_generate_v4() (035) or gen_random_uuid() (030); used uuid_generate_v4 per design. updated_at trigger is `set_updated_at` using update_updated_at_column().
   - Policies are DROP POLICY IF EXISTS + CREATE POLICY named <table>_<select|insert|update|delete>. No columns on the new tables are referenced by code yet; 044 (nullable connection_id columns + backfill) is next.
 ---
+
+## 2026-09-21 - US-006
+- Migration 044_channel_columns_nullable.sql: nullable conversations/message_templates/broadcasts.connection_id (RESTRICT), automation_pending_executions.conversation_id (CASCADE) and .connection_id (SET NULL: transient row, derivable from conversation_id), quick_replies.store_id (RESTRICT); non-unique indexes on each; notifications_type_check recreated (DROP IF EXISTS + ADD) accepting 'connection_down'. No unique index touched. verify-schema.sql asserts the 6 nullable columns and the CHECK.
+- Files changed: supabase/migrations/044_channel_columns_nullable.sql, supabase/ci/verify-schema.sql, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - The notifications CHECK was the auto-named `notifications_type_check` (only 'conversation_assigned'); the constraint is dropped and re-added, so it is idempotent.
+  - verify-schema.sql must stay ONE statement: assertions go inside the existing DO block.
+  - Dev DB and isolated replay (44 migrations) both pass verify-schema. Baseline: 97 files / 1162 tests, lint 41 warnings.
+---
