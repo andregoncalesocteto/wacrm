@@ -48,6 +48,24 @@ export async function findAccountWhatsAppConnection(
   return rows.find((c) => c.disabled_at == null) ?? rows[0] ?? null;
 }
 
+/**
+ * Strict ownership check for a caller-supplied connection id: it must exist,
+ * belong to `accountId` and be a `whatsapp_cloud` connection. Unlike
+ * `resolveWhatsAppConnection` it never falls back to the default connection.
+ */
+export async function isAccountWhatsAppConnection(
+  db: SupabaseClient,
+  accountId: string,
+  connectionId: string
+): Promise<boolean> {
+  const conn = await getConnectionById(connectionId, db);
+  return (
+    !!conn &&
+    conn.account_id === accountId &&
+    conn.channel_type === WHATSAPP_CHANNEL
+  );
+}
+
 async function conversationConnectionId(
   db: SupabaseClient,
   accountId: string,

@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   canDeleteConnection,
   canRunConnectionActions,
+  defaultConnectionId,
   emptyStateKind,
   errorSuggestion,
   groupConnectionsByStore,
   moveTargets,
   parseLastError,
+  summarizeChannels,
+  templatesForConnection,
   type ChannelConnectionRow,
 } from './ui';
 
@@ -97,5 +100,86 @@ describe('canRunConnectionActions / moveTargets', () => {
       { id: 'b', name: 'B' },
     ];
     expect(moveTargets(stores, 'a')).toEqual([{ id: 'b', name: 'B' }]);
+  });
+});
+
+describe('summarizeChannels', () => {
+  const c = (status: string, disabled = false) => ({
+    status,
+    disabled_at: disabled ? '2026-01-01' : null,
+  });
+  it('is empty without connections', () => {
+    expect(summarizeChannels([])).toEqual({
+      connected: 0,
+      total: 0,
+      disabled: 0,
+      worst: null,
+    });
+  });
+  it('counts connected of enabled and picks the worst state', () => {
+    const s = summarizeChannels([
+      c('connected'),
+      c('degraded'),
+      c('needs_action'),
+      c('disconnected'),
+    ]);
+    expect(s).toMatchObject({ connected: 1, total: 4, worst: 'needs_action' });
+  });
+  it('orders disconnected above degraded', () => {
+    expect(summarizeChannels([c('degraded'), c('disconnected')]).worst).toBe(
+      'disconnected'
+    );
+  });
+  it('reports all-connected as connected', () => {
+    expect(summarizeChannels([c('connected'), c('connected')])).toMatchObject({
+      connected: 2,
+      total: 2,
+      worst: 'connected',
+    });
+  });
+  it('keeps disabled connections out of Y and out of the worst state', () => {
+    const s = summarizeChannels([c('connected'), c('needs_action', true)]);
+    expect(s).toEqual({
+      connected: 1,
+      total: 1,
+      disabled: 1,
+      worst: 'connected',
+    });
+  });
+  it('only disabled connections leaves worst null', () => {
+    expect(summarizeChannels([c('connected', true)])).toMatchObject({
+      total: 0,
+      disabled: 1,
+      worst: null,
+    });
+  });
+});
+
+describe('templatesForConnection / defaultConnectionId', () => {
+  it('default is the enabled connection first, else the first', () => {
+    expect(
+      defaultConnectionId([
+        { id: 'a', disabled_at: 'x' },
+        { id: 'b', disabled_at: null },
+      ])
+    ).toBe('b');
+    expect(defaultConnectionId([{ id: 'a', disabled_at: 'x' }])).toBe('a');
+    expect(defaultConnectionId([])).toBeNull();
+  });
+  it('filters by connection_id and gives NULL rows to the default', () => {
+    const rows = [
+      { id: 't1', connection_id: 'a' },
+      { id: 't2', connection_id: 'b' },
+      { id: 't3', connection_id: null },
+      { id: 't4' },
+    ];
+    expect(templatesForConnection(rows, 'a', 'a').map((r) => r.id)).toEqual([
+      't1',
+      't3',
+      't4',
+    ]);
+    expect(templatesForConnection(rows, 'b', 'a').map((r) => r.id)).toEqual([
+      't2',
+    ]);
   });
 });

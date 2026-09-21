@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getCurrentAccount, requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { parseQuickReplyStoreId } from '@/lib/stores/quick-reply-store'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 
 // Quick replies — reusable snippets (plain text or a saved interactive
@@ -60,9 +61,16 @@ export async function POST(request: Request) {
     content_text = text
   }
 
-  const { data, error } = await supabaseAdmin()
+  const admin = supabaseAdmin()
+  const store = await parseQuickReplyStoreId(admin, ctx.accountId, body)
+  if (!store.ok) {
+    return NextResponse.json({ error: store.error }, { status: 400 })
+  }
+
+  const { data, error } = await admin
     .from('quick_replies')
     .insert({
+      store_id: store.value ?? null,
       account_id: ctx.accountId,
       user_id: ctx.userId,
       title,

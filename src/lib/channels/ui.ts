@@ -1,5 +1,7 @@
 // Pure helpers for the channels settings screen (no React, no i18n).
 
+import { connectionChipState } from '@/lib/stores/ui';
+
 export interface ChannelConnectionRow {
   id: string;
   store_id: string;
@@ -100,4 +102,78 @@ export function moveTargets(
   currentStoreId: string
 ): StoreRef[] {
   return stores.filter((s) => s.id !== currentStoreId);
+}
+
+export type WorstState =
+  'needs_action' | 'disconnected' | 'degraded' | 'connected';
+
+/** Highest severity first. */
+const SEVERITY: WorstState[] = [
+  'needs_action',
+  'disconnected',
+  'degraded',
+  'connected',
+];
+
+export interface ChannelsSummary {
+  /** Enabled connections that are connected (X). */
+  connected: number;
+  /** Enabled connections (Y). Disabled ones are NOT counted here. */
+  total: number;
+  /** Disabled connections, reported apart from X of Y. */
+  disabled: number;
+  /** Worst state among the enabled connections; null when there are none. */
+  worst: WorstState | null;
+}
+
+/**
+ * Overview tile "Canais: X conectados de Y". A disabled connection is a
+ * deliberate choice of the admin, not a problem, so it is excluded from Y and
+ * from the worst-state pick (severity: needs_action > disconnected >
+ * degraded > connected) and reported separately.
+ */
+export function summarizeChannels(
+  connections: Array<{ status: string; disabled_at: string | null }>
+): ChannelsSummary {
+  let connected = 0;
+  let total = 0;
+  let disabled = 0;
+  let worstIdx = SEVERITY.length;
+  for (const c of connections) {
+    const state = connectionChipState(c);
+    if (state === 'disabled') {
+      disabled++;
+      continue;
+    }
+    total++;
+    if (state === 'connected') connected++;
+    worstIdx = Math.min(worstIdx, SEVERITY.indexOf(state));
+  }
+  return {
+    connected,
+    total,
+    disabled,
+    worst: total === 0 ? null : SEVERITY[worstIdx],
+  };
+}
+
+/**
+ * The WhatsApp connection the account's legacy (NULL connection_id) rows
+ * belong to: the enabled one first, else the first (same rule as the server's
+ * findAccountWhatsAppConnection).
+ */
+export function defaultConnectionId(
+  connections: Array<{ id: string; disabled_at: string | null }>
+): string | null {
+  return (
+    (connections.find((c) => c.disabled_at == null) ?? connections[0])?.id ??
+    null
+  );
+}
+
+/** Templates of one connection; NULL connection_id belongs to the default one. */
+export function templatesForConnection<
+  T extends { connection_id?: string | null },
+>(templates: T[], selectedId: string | null, defaultId: string | null): T[] {
+  return templates.filter((t) => (t.connection_id ?? defaultId) === selectedId);
 }

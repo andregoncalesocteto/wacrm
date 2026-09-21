@@ -786,8 +786,8 @@
         "Verify in browser using dev-browser skill (visão geral, seletor de conexão em templates, campo Loja)"
       ],
       "priority": 46,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser (pt, :3100): overview tiles 'Lojas: 2' / 'Canais: 1 conectado de 2 + Ação necessária'; template selector shown with 2 WhatsApp connections (list switches per connection), hidden with 1; quick reply saved with store shows chip. Inbox quick-reply picker still lists all replies: Conversation has no connection->store data yet, filtering arrives with US-042/043. Disabled connections are excluded from Y and shown separately."
     },
     {
       "id": "US-042",

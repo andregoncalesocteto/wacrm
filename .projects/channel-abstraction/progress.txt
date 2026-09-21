@@ -531,3 +531,15 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1553, build ok. Browser verified; seeds removed.
 - **Learnings:** health failures store last_error.code = the health state (e.g. needs_action), so errorSuggestion treats needs_action as auth. Test/Reconnect are disabled for a disabled connection. Dialog buttons: use exact:true names (WhatsApp panel also has "Testar conexão com a API").
 ---
+
+## 2026-09-21 - US-041
+- Overview: WhatsApp tile replaced by "Lojas: N" (GET /api/stores) and "Canais: X conectados de Y" + worst state (GET /api/channels/connections); no whatsapp_config read left in components. Pure helpers in lib/channels/ui.ts: summarizeChannels (severity needs_action > disconnected > degraded > connected; DISABLED connections are excluded from Y and from the worst pick, shown as "· N desativados"), defaultConnectionId, templatesForConnection (NULL connection_id -> default connection).
+- Templates: TemplateManager reads whatsapp_cloud connections, shows a native select (#template-connection) only when >1, filters the list by connection_id and sends connection_id in sync/submit bodies. Routes sync/submit accept optional connection_id (strict check via new isAccountWhatsAppConnection: 404 if not the account's whatsapp_cloud, 400 if not a string; default = previous behavior). New route tests for both (characterization first, then connection_id). Sync's existing-row lookup now also filters connection_id = selected OR NULL so a sync never adopts another connection's row.
+- Quick replies: optional "Loja" select (hidden with <=1 store; empty = Toda a rede), POST/PATCH validate store_id against the account (lib/stores/quick-reply-store.ts + test), chip "Loja: X" in the list. Keys x4 (Settings.overview.*, Settings.templates.connectionLabel, Settings.quickReplies.store*).
+- Files: settings-overview, template-manager, quick-replies-manager, sync/submit routes(+tests), quick-replies routes, lib/channels/{ui,whatsapp-connection}, lib/stores/quick-reply-store, types, messages x4.
+- **Learnings for future iterations:**
+  - Inbox quick-reply picker still lists ALL replies: conversations carry no connection->store data in the UI yet; filter (store_id NULL or = conversation store) arrives with US-042/043.
+  - message_templates keeps UNIQUE (user_id,name,language): the same template name on two connections of one user collides on submit (upsert) / errors on sync. Not solved here.
+  - Template PATCH/DELETE ([id] route) already resolve the connection from the template's connection_id (US-016); untouched.
+  - Old overview keys (connected, needsReconnecting) are unused now; US-069 can prune.
+---

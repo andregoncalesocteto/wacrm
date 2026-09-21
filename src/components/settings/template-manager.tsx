@@ -54,6 +54,11 @@ import type {
 } from '@/types';
 import { templateStatusConfig } from '@/lib/template-status';
 import {
+  defaultConnectionId,
+  templatesForConnection,
+  type ChannelConnectionRow,
+} from '@/lib/channels/ui';
+import {
   extractVariableIndices,
   TEMPLATE_LIMITS,
 } from '@/lib/whatsapp/template-validators';
@@ -131,6 +136,7 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
 
 export function TemplateManager() {
   const t = useTranslations('Settings.templates');
+  const tStatus = useTranslations('Settings.channels.status');
   const headerFormatLabel = (type: HeaderFormat) =>
     type === 'none'
       ? t('headerNone')
@@ -145,7 +151,13 @@ export function TemplateManager() {
   const { user, loading: authLoading } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [allTemplates, setAllTemplates] = useState<MessageTemplate[]>([]);
+  // The account's WhatsApp connections; the list, sync and submit act on the
+  // selected one. The selector is hidden when there is a single connection.
+  const [connections, setConnections] = useState<ChannelConnectionRow[]>([]);
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(
+    null,
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -166,6 +178,41 @@ export function TemplateManager() {
   // Resumable-Upload handle.
   const [uploadingHeader, setUploadingHeader] = useState(false);
   const headerFileRef = useRef<HTMLInputElement>(null);
+
+  const defaultConnId = useMemo(
+    () => defaultConnectionId(connections),
+    [connections],
+  );
+  const templates = useMemo(
+    () =>
+      connections.length === 0
+        ? allTemplates
+        : templatesForConnection(allTemplates, selectedConnectionId, defaultConnId),
+    [allTemplates, connections.length, selectedConnectionId, defaultConnId],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/channels/connections', { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+        const rows = ((data.connections ?? []) as ChannelConnectionRow[]).filter(
+          (c) => c.channel_type === 'whatsapp_cloud',
+        );
+        setConnections(rows);
+        setSelectedConnectionId((cur) =>
+          cur && rows.some((c) => c.id === cur) ? cur : defaultConnectionId(rows),
+        );
+      } catch {
+        // No connections read: keep the account-wide list.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Body variable indices — `[1, 2, 3]` for "{{1}} {{2}} {{3}}". We
   // re-run the extractor on every render to keep the sample-value rows
@@ -212,7 +259,7 @@ export function TemplateManager() {
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      setTemplates(data || []);
+      setAllTemplates(data || []);
     } catch (err) {
       console.error('Failed to fetch templates:', err);
       toast.error(t('toastLoadFailed'));
@@ -286,7 +333,11 @@ export function TemplateManager() {
       const res = await fetch(url, {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildSubmitPayload()),
+        body: JSON.stringify(
+          isEdit || !selectedConnectionId
+            ? buildSubmitPayload()
+            : { ...buildSubmitPayload(), connection_id: selectedConnectionId },
+        ),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -321,7 +372,13 @@ export function TemplateManager() {
     if (!user) return;
     setSyncing(true);
     try {
-      const res = await fetch('/api/whatsapp/templates/sync', { method: 'POST' });
+      const res = await fetch('/api/whatsapp/templates/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          selectedConnectionId ? { connection_id: selectedConnectionId } : {},
+        ),
+      });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data?.error || `Sync failed (HTTP ${res.status})`);
@@ -375,7 +432,7 @@ export function TemplateManager() {
         throw new Error(data?.error || `Delete failed (HTTP ${res.status})`);
       }
       toast.success(t('toastDeleteSuccess'));
-      setTemplates((prev) => prev.filter((t) => t.id !== target.id));
+      setAllTemplates((prev) => prev.filter((t) => t.id !== target.id));
       setTemplateToDelete(null);
     } catch (err) {
       console.error('Delete error:', err);
@@ -550,6 +607,30 @@ export function TemplateManager() {
           </div>
         }
       />
+
+      {connections.length > 1 && (
+        <div className="flex items-center gap-2">
+          <label
+            htmlFor="template-connection"
+            className="text-sm text-muted-foreground"
+          >
+            {t('connectionLabel')}
+          </label>
+          <select
+            id="template-connection"
+            value={selectedConnectionId ?? ''}
+            onChange={(e) => setSelectedConnectionId(e.target.value)}
+            className="h-9 rounded-md border border-border bg-muted px-2 text-sm text-foreground"
+          >
+            {connections.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.display_name || c.external_id || c.id}
+                {c.disabled_at ? ` (${tStatus('disabled')})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {templates.length === 0 ? (
         <Card>

@@ -347,6 +347,8 @@ export interface TemplateSampleValues {
 export interface MessageTemplate {
   id: string;
   user_id: string;
+  /** Channel connection the template belongs to; NULL = the account's default. */
+  connection_id?: string | null;
   name: string;
   category: 'Marketing' | 'Utility' | 'Authentication';
   language?: string;
@@ -691,6 +693,8 @@ export interface QuickReply {
   /** Author / audit only. */
   user_id: string;
   title: string;
+  /** Store the reply is limited to; NULL/absent = network-wide. */
+  store_id?: string | null;
   kind: QuickReplyKind;
   /** Set when `kind === 'text'`. */
   content_text?: string | null;

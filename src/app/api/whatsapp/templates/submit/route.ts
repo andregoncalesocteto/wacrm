@@ -8,6 +8,7 @@ import {
 } from '@/lib/auth/account'
 import {
   findAccountWhatsAppConnection,
+  isAccountWhatsAppConnection,
   loadWhatsAppSendConnection,
 } from '@/lib/channels/whatsapp-connection'
 import { submitMessageTemplate } from '@/lib/whatsapp/meta-api'
@@ -114,6 +115,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
     }
 
+    // Optional connection_id: submit through that WhatsApp connection instead
+    // of the account's default one. Not part of the Meta payload.
+    const requestedId =
+      (payload as { connection_id?: unknown } | null)?.connection_id ?? null
+    if (requestedId !== null && typeof requestedId !== 'string') {
+      return NextResponse.json(
+        { error: 'connection_id must be a string.' },
+        { status: 400 },
+      )
+    }
+    if (
+      requestedId &&
+      !(await isAccountWhatsAppConnection(supabase, accountId, requestedId))
+    ) {
+      return NextResponse.json(
+        { error: 'WhatsApp connection not found.' },
+        { status: 404 },
+      )
+    }
+
     if (payload.category === 'Authentication') {
       return NextResponse.json(
         {
@@ -148,13 +169,16 @@ export async function POST(request: Request) {
       // with the account's connection when there is one.
       try {
         connectionId =
+          requestedId ??
           (await findAccountWhatsAppConnection(supabase, accountId))?.id ??
           null
       } catch {
         connectionId = null
       }
     } else {
-      const loaded = await loadWhatsAppSendConnection(supabase, accountId)
+      const loaded = await loadWhatsAppSendConnection(supabase, accountId, {
+        connectionId: requestedId,
+      })
       if (!loaded) {
         return NextResponse.json(
           {

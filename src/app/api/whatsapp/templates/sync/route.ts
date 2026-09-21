@@ -5,7 +5,10 @@ import {
   requireRole,
   toErrorResponse,
 } from '@/lib/auth/account'
-import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection'
+import {
+  isAccountWhatsAppConnection,
+  loadWhatsAppSendConnection,
+} from '@/lib/channels/whatsapp-connection'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
 import type { TemplateButton, TemplateSampleValues } from '@/types'
 
@@ -127,7 +130,7 @@ function extractSampleValues(
   return sv
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     // Syncing rewrites the account-wide template catalog, which is
     // settings-class data: `canEditSettings` and the message_templates
@@ -135,7 +138,31 @@ export async function POST() {
     // Resolving account_id off the profile only proved membership.
     const { supabase, accountId, userId } = await requireRole('admin')
 
-    const loaded = await loadWhatsAppSendConnection(supabase, accountId)
+    // Optional { connection_id }: sync that WhatsApp connection instead of the
+    // account's default one. An absent/empty body keeps the old behavior.
+    const body = (await request.json().catch(() => null)) as {
+      connection_id?: unknown
+    } | null
+    const requestedId = body?.connection_id ?? null
+    if (requestedId !== null && typeof requestedId !== 'string') {
+      return NextResponse.json(
+        { error: 'connection_id must be a string.' },
+        { status: 400 },
+      )
+    }
+    if (
+      requestedId &&
+      !(await isAccountWhatsAppConnection(supabase, accountId, requestedId))
+    ) {
+      return NextResponse.json(
+        { error: 'WhatsApp connection not found.' },
+        { status: 404 },
+      )
+    }
+
+    const loaded = await loadWhatsAppSendConnection(supabase, accountId, {
+      connectionId: requestedId,
+    })
 
     if (!loaded) {
       return NextResponse.json(
@@ -244,6 +271,9 @@ export async function POST() {
         .eq('account_id', accountId)
         .eq('name', t.name)
         .eq('language', t.language)
+        // Never adopt another connection's row of the same name (legacy rows
+        // with NULL connection_id still match).
+        .or(`connection_id.eq.${connectionId},connection_id.is.null`)
         .maybeSingle()
 
       if (lookupErr) {

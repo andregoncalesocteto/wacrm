@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { parseQuickReplyStoreId } from '@/lib/stores/quick-reply-store'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 
 // Update / delete a single quick reply. Quick replies are account-
@@ -68,11 +69,18 @@ export async function PATCH(
     }
   }
 
+  const admin = supabaseAdmin()
+  const store = await parseQuickReplyStoreId(admin, ctx.accountId, body)
+  if (!store.ok) {
+    return NextResponse.json({ error: store.error }, { status: 400 })
+  }
+  if (store.value !== undefined) update.store_id = store.value
+
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ ok: true })
   }
 
-  const { error } = await supabaseAdmin()
+  const { error } = await admin
     .from('quick_replies')
     .update(update)
     .eq('id', id)
