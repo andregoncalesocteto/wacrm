@@ -840,6 +840,25 @@
       "notes": "Unread per store = conversations with unread (same unit as sidebar total). Down banner only with >1 connection; with one connection the old whatsappNotConnected banner is unchanged. Reactions/other non-composer send paths are not gated (out of scope)."
     },
     {
+      "id": "US-078",
+      "title": "Envio recusa conexões desativadas no servidor",
+      "description": "Como operador, quero que nenhuma mensagem saia por uma conexão desativada, seja pela interface, pela API, por flows, automações, IA, broadcast ou reação.",
+      "acceptanceCriteria": [
+        "`sendOutbound` lança `ChannelError` tipado (código estável `connection_disabled`, categoria `unsupported`) quando a conexão da conversa tem `disabled_at` preenchido, **antes** de chamar o provedor e sem gravar mensagem nem alterar a conversa",
+        "A rota de envio do dashboard e `POST /api/v1/messages` respondem `409` com o código `connection_disabled` e uma mensagem clara; o contrato existente para os demais erros não muda",
+        "Flows, automações e resposta por IA que tentarem enviar por uma conexão desativada falham de forma **visível** (execução `failed` ou passo registrado com o motivo), nunca em silêncio",
+        "`POST /api/whatsapp/react` (reação) e `deliverBroadcast`/a rota de broadcast do dashboard recusam uma conexão desativada com o mesmo código",
+        "Testes: um por caminho (núcleo, rota do dashboard, API v1, reação, broadcast, motor de automações) provando que o provedor **não** é chamado e que nada é gravado",
+        "O texto do aviso do inbox \"A loja {store}\" é revisado para não repetir a palavra quando o nome da loja já começa com \"Loja\" (ex.: usar \"{store} está desconectada\" com o nome entre aspas ou destacado), nos quatro catálogos",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "notes": "Adicionada pelo orquestrador após a US-044: a US-044 bloqueou o compositor e os manipuladores de envio na interface, mas o servidor ainda aceitaria envio por uma conexão desativada (API v1, flows, automações, IA, broadcast) e a reação não é bloqueada. O banner também lê 'A loja Loja Norte'.",
+      "passes": false,
+      "priority": 50
+    },
+    {
       "id": "US-045",
       "title": "Conversas do contato em outras lojas",
       "description": "Como agente, quero ver se o mesmo cliente também falou com outra loja.",
@@ -851,7 +870,7 @@
         "Tests pass (`TZ=UTC npm test`)",
         "Verify in browser using dev-browser skill (um contato com conversas em duas conexões)"
       ],
-      "priority": 50,
+      "priority": 51,
       "passes": false,
       "notes": ""
     },
@@ -868,7 +887,7 @@
         "Tests pass (`TZ=UTC npm test`)",
         "Verify in browser using dev-browser skill (compositor numa conversa de WhatsApp)"
       ],
-      "priority": 51,
+      "priority": 52,
       "passes": false,
       "notes": ""
     },
@@ -886,7 +905,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 52,
+      "priority": 53,
       "passes": false,
       "notes": "Após a US-034: a rota `POST /api/channels/connections` usa `external_id` do corpo, senão `config.phone_number_id`, senão 400 (não há gancho no provedor). O id do bot do Telegram só é conhecido com o token (`getMe`): acrescentar de forma aditiva ao contrato um método opcional `deriveExternalId(config, credentials)` que o POST chama quando o `external_id` não vem, e implementá-lo no provedor Telegram. Chaves secretas de configuração são filtradas por regex `/token|secret|password|api_?key|private/`; nomear chaves do Telegram de forma compatível."
     },
@@ -904,7 +923,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 53,
+      "priority": 54,
       "passes": false,
       "notes": ""
     },
@@ -921,7 +940,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 54,
+      "priority": 55,
       "passes": false,
       "notes": ""
     },
@@ -938,7 +957,7 @@
         "Tests pass (`TZ=UTC npm test`)",
         "Verify in browser using dev-browser skill (o cartão do Telegram e o formulário; a conexão real depende de um bot e de um túnel, e fica como verificação manual)"
       ],
-      "priority": 55,
+      "priority": 56,
       "passes": false,
       "notes": ""
     },
@@ -956,7 +975,7 @@
         "Tests pass (`TZ=UTC npm test`)",
         "Verify in browser using dev-browser skill (o aviso ao ativar)"
       ],
-      "priority": 56,
+      "priority": 57,
       "passes": false,
       "notes": ""
     },
@@ -973,7 +992,7 @@
         "Tests pass (`TZ=UTC npm test`)",
         "Verify in browser using dev-browser skill (um contato sem telefone no inbox)"
       ],
-      "priority": 57,
+      "priority": 58,
       "passes": false,
       "notes": ""
     },
@@ -990,7 +1009,7 @@
         "Tests pass (`TZ=UTC npm test`)",
         "Verify in browser using dev-browser skill (contatos, pipelines e audiência de broadcast)"
       ],
-      "priority": 58,
+      "priority": 59,
       "passes": false,
       "notes": ""
     },
@@ -1007,7 +1026,7 @@
         "Tests pass (`TZ=UTC npm test`)",
         "Verify in browser using dev-browser skill (busca por `@username` e o aviso de duplicidade)"
       ],
-      "priority": 59,
+      "priority": 60,
       "passes": false,
       "notes": ""
     },
@@ -1022,7 +1041,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 60,
+      "priority": 61,
       "passes": false,
       "notes": ""
     },
@@ -1038,7 +1057,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 61,
+      "priority": 62,
       "passes": false,
       "notes": ""
     },
@@ -1056,7 +1075,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 62,
+      "priority": 63,
       "passes": false,
       "notes": ""
     },
@@ -1072,7 +1091,7 @@
         "Tests pass (`TZ=UTC npm test`)",
         "Verify in browser using dev-browser skill (juntar dois contatos com negócio e nota e conferir o resultado)"
       ],
-      "priority": 63,
+      "priority": 64,
       "passes": false,
       "notes": ""
     },
@@ -1087,7 +1106,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 64,
+      "priority": 65,
       "passes": false,
       "notes": ""
     },
@@ -1104,7 +1123,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 65,
+      "priority": 66,
       "passes": false,
       "notes": ""
     },
@@ -1121,7 +1140,7 @@
         "Tests pass (`TZ=UTC npm test`)",
         "Verify in browser using dev-browser skill (o escopo `connections:read` disponível ao criar uma chave de API)"
       ],
-      "priority": 66,
+      "priority": 67,
       "passes": false,
       "notes": ""
     },
@@ -1137,7 +1156,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 67,
+      "priority": 68,
       "passes": false,
       "notes": ""
     },
@@ -1153,7 +1172,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 68,
+      "priority": 69,
       "passes": false,
       "notes": ""
     },
@@ -1169,7 +1188,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 69,
+      "priority": 70,
       "passes": false,
       "notes": ""
     },
@@ -1186,7 +1205,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 70,
+      "priority": 71,
       "passes": false,
       "notes": ""
     },
@@ -1203,7 +1222,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 71,
+      "priority": 72,
       "passes": false,
       "notes": ""
     },
@@ -1220,7 +1239,7 @@
         "Tests pass (`TZ=UTC npm test`)",
         "Verify in browser using dev-browser skill (a notificação na lista, com o link)"
       ],
-      "priority": 72,
+      "priority": 73,
       "passes": false,
       "notes": ""
     },
@@ -1235,7 +1254,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 73,
+      "priority": 74,
       "passes": false,
       "notes": ""
     },
@@ -1252,7 +1271,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 74,
+      "priority": 75,
       "passes": false,
       "notes": ""
     },
@@ -1270,7 +1289,7 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "priority": 75,
+      "priority": 76,
       "passes": false,
       "notes": "O número \"047\" do critério é indicativo: use o próximo número livre depois das migrations já existentes. Antes de remover `wa_parent_user_id`, confirmar que nenhum código o lê; se algum caminho usar o BSUID do pai, migrá-lo para uma identidade `whatsapp:parent_bsuid` (backfill incluso). Após a US-041: `message_templates` mantém UNIQUE (user_id, name, language), então o mesmo nome de template em duas conexões do mesmo usuário colide até esta migration trocar para (connection_id, name, language); a troca precisa cobrir o código que depende da unicidade antiga (upserts/lookup por user_id,name,language)."
     },
@@ -1286,7 +1305,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 76,
+      "priority": 77,
       "passes": false,
       "notes": ""
     },
@@ -1306,7 +1325,7 @@
         "Tests pass (`TZ=UTC npm test`)",
         "Verify in browser using dev-browser skill"
       ],
-      "priority": 77,
+      "priority": 78,
       "passes": false,
       "notes": ""
     }
