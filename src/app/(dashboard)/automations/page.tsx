@@ -20,7 +20,7 @@ import {
 
 import { createClient } from "@/lib/supabase/client"
 import { useCan } from "@/hooks/use-can"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import type { Automation } from "@/types"
 import { Button } from "@/components/ui/button"
 import { GatedButton } from "@/components/ui/gated-button"
@@ -40,7 +40,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { AUTOMATION_TEMPLATES, type TemplateSlug } from "@/lib/automations/templates"
+import { type TemplateSlug } from "@/lib/automations/templates"
 import { triggerMeta, formatRelative, isKnownTrigger } from "@/lib/automations/trigger-meta"
 import { cn } from "@/lib/utils"
 
@@ -77,7 +77,7 @@ export default function AutomationsPage() {
       if (fetchErr) throw fetchErr
       setAutomations((data ?? []) as Automation[])
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load automations")
+      setError(err instanceof Error ? err.message : "")
     }
   }
 
@@ -137,10 +137,10 @@ export default function AutomationsPage() {
     router.push(`/automations/new?template=${slug}`)
   }
 
-  if (error) {
+  if (error !== null) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2">
-        <p className="text-sm text-red-400">{error}</p>
+        <p className="text-sm text-red-400">{error || t("loadError")}</p>
         <Button variant="outline" onClick={() => window.location.reload()}>
           {t("retry")}
         </Button>
@@ -183,7 +183,6 @@ export default function AutomationsPage() {
           <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{t("templatesTitle")}</h2>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {TEMPLATE_ORDER.map((slug) => {
-              const t = AUTOMATION_TEMPLATES[slug]
               const Icon = TEMPLATE_ICON[slug]
               return (
                 <button
@@ -194,8 +193,8 @@ export default function AutomationsPage() {
                   <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15">
                     <Icon className="h-5 w-5" />
                   </div>
-                  <div className="text-sm font-semibold text-foreground">{t.name}</div>
-                  <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
+                  <div className="text-sm font-semibold text-foreground">{t(`templates.${slug}.name`)}</div>
+                  <p className="mt-1 text-xs text-muted-foreground">{t(`templates.${slug}.description`)}</p>
                 </button>
               )
             })}
@@ -280,6 +279,7 @@ function AutomationCard({
 }) {
   const tTriggers = useTranslations("Automations.builder.triggers")
   const tRelative = useTranslations("Automations.relative")
+  const locale = useLocale()
   const meta = triggerMeta(automation.trigger_type)
   const triggerLabel = isKnownTrigger(automation.trigger_type)
     ? tTriggers(`${automation.trigger_type}.label`)
@@ -328,7 +328,7 @@ function AutomationCard({
                 : t("runsPlural", { count: automation.execution_count })}
             </span>
             <span aria-hidden>·</span>
-            <span>{t("lastRun", { time: formatRelative(automation.last_executed_at, tRelative) })}</span>
+            <span>{t("lastRun", { time: formatRelative(automation.last_executed_at, tRelative, locale) })}</span>
           </div>
         </button>
 

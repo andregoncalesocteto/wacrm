@@ -17,7 +17,7 @@ import {
   ArrowLeft,
   X,
 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
 
 type AudienceType = 'all' | 'tags' | 'custom_field' | 'csv';
 type CustomFieldOperator = 'is' | 'is_not' | 'contains';
@@ -50,6 +50,7 @@ export function Step2SelectAudience({
   onBack,
 }: Step2Props) {
   const t = useTranslations('Broadcasts.wizard');
+  const format = useFormatter();
 
   const OPERATOR_OPTIONS = useMemo<{ value: CustomFieldOperator; label: string }[]>(() => [
     { value: 'is', label: t('selectAudience.operatorIs') },
@@ -519,13 +520,13 @@ export function Step2SelectAudience({
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-primary" />
             <span className="text-sm text-foreground">
-              {estimatedCount.toLocaleString()}
+              {format.number(estimatedCount)}
             </span>
-            <span className="text-xs text-muted-foreground">estimated recipients</span>
+            <span className="text-xs text-muted-foreground">{t('selectAudience.estimatedRecipients')}</span>
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Select an audience type to see the estimate.
+            {t('selectAudience.selectTypeForEstimate')}
           </p>
         )}
       </div>

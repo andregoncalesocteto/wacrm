@@ -56,7 +56,7 @@ import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
 
 const PAGE_SIZE = 25;
 
@@ -66,6 +66,7 @@ interface ContactWithTags extends Contact {
 
 export default function ContactsPage() {
   const t = useTranslations('Contacts.page');
+  const format = useFormatter();
   const supabase = createClient();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
@@ -445,7 +446,7 @@ export default function ContactsPage() {
                       <Checkbox
                         checked={selectedTagIds.includes(tag.id)}
                         onCheckedChange={() => toggleTagFilter(tag.id)}
-                        aria-label={`Filter by ${tag.name}`}
+                        aria-label={t("filterByTag", { name: tag.name })}
                       />
                       <span
                         className="size-2.5 shrink-0 rounded-full"
@@ -480,7 +481,7 @@ export default function ContactsPage() {
                   {tag.name}
                   <button
                     onClick={() => toggleTagFilter(id)}
-                    aria-label={`Remove ${tag.name} filter`}
+                    aria-label={t("removeTagFilter", { name: tag.name })}
                     className="hover:opacity-70"
                   >
                     <X className="size-3" />
@@ -597,7 +598,7 @@ export default function ContactsPage() {
                     <Checkbox
                       checked={selected.has(contact.id)}
                       onCheckedChange={() => toggleSelect(contact.id)}
-                      aria-label={`Select ${contact.name || contact.phone}`}
+                      aria-label={t("selectContact", { name: contact.name || contact.phone })}
                     />
                   </TableCell>
                   <TableCell className="text-foreground font-medium">
@@ -607,10 +608,10 @@ export default function ContactsPage() {
                     {contact.phone}
                   </TableCell>
                   <TableCell className="text-muted-foreground hidden md:table-cell text-sm">
-                    {contact.email || <span className="text-muted-foreground">-</span>}
+                    {contact.email || <span className="text-muted-foreground">{"-"}</span>}
                   </TableCell>
                   <TableCell className="text-muted-foreground hidden lg:table-cell text-sm">
-                    {contact.company || <span className="text-muted-foreground">-</span>}
+                    {contact.company || <span className="text-muted-foreground">{"-"}</span>}
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                     <div className="flex flex-wrap gap-1">
@@ -628,21 +629,17 @@ export default function ContactsPage() {
                           </span>
                         ))
                       ) : (
-                        <span className="text-muted-foreground text-xs">-</span>
+                        <span className="text-muted-foreground text-xs">{"-"}</span>
                       )}
                       {contact.tags && contact.tags.length > 3 && (
                         <span className="text-[10px] text-muted-foreground">
-                          +{contact.tags.length - 3}
+                          {`+${contact.tags.length - 3}`}
                         </span>
                       )}
                     </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs hidden lg:table-cell">
-                    {new Date(contact.created_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
+                    {format.dateTime(new Date(contact.created_at), 'date')}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>

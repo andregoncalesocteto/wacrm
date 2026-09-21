@@ -1,0 +1,199 @@
+# Ralph Progress Log — ralph/i18n-pt-br
+Started: 2026-09-18
+PRD: .projects/i18n-pt-br/prd.json (19 stories). No test-scenarios.json (acceptanceCriteria are the bar).
+
+## Codebase Patterns
+- Run project commands from the repo root (cwd can drift into .projects/…).
+- Quality checks: `npm run typecheck`, `npm run lint`, `TZ=UTC npm test` (CI runs in UTC).
+  `src/lib/dashboard/date-utils.test.ts` (mondayIndex, 2 tests) fails on machines with a non-UTC TZ
+  (e.g. -03) because it builds `new Date("2026-05-18")` (UTC midnight). That is a pre-existing
+  env issue, NOT part of this feature — do not edit that test; use TZ=UTC.
+- Baseline before US-001: typecheck clean; lint 0 errors / 41 warnings (none from react/jsx-no-literals yet);
+  `TZ=UTC npm test` fails only messages.test.ts pt/es "covers every en.json key" (6 keys each).
+- i18n: next-intl v4.13.5; locale = NEXT_PUBLIC_APP_LOCALE (default en); catalogues in messages/{en,pt,es,ko}.json.
+  Every new key must exist in all four catalogues (src/i18n/messages.test.ts parity + ICU args).
+- Browser verification: a dev server in pt is expected at http://localhost:3100
+  (`NEXT_PUBLIC_APP_LOCALE=pt npx next dev -p 3100`, started outside the stories, Supabase stack at
+  http://supabase.localtest.me:8000 is up via docker compose). The docker app on :3000 is the pre-change `en` build.
+  Test account created via signup (email autoconfirm is on).
+
+---
+## 2026-09-18 - US-001
+- Added the 6 missing Contacts.importModal keys (resultInvalidPhone[_plural], failedRowsHeading, unknownReason, toastInvalidPhone[_plural]) to messages/pt.json and messages/es.json.
+- Files changed: messages/pt.json, messages/es.json, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Keys are inserted in the same position as en.json (parity test only checks presence + ICU args, not order).
+  - After this, `TZ=UTC npm test` is fully green (86 files / 1001 tests); lint stays at 41 warnings.
+---
+## 2026-09-18 - US-002
+- quick-replies-manager.tsx now uses useTranslations("Settings.quickReplies") for all visible text (title, description, buttons, empty state, dialog, placeholders, confirm, toasts); 17 keys added to en/pt/es/ko.
+- Files changed: src/components/settings/quick-replies-manager.tsx, messages/{en,pt,es,ko}.json, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Settings sections deep-link via `/settings?tab=<id>` (e.g. tab=quick-replies), not `section`.
+  - en.json/ko.json have quirky whitespace; do NOT rewrite them via json.dump (huge diff) - insert the block textually.
+  - Include `t` in useCallback deps when translating inside callbacks.
+  - Browser check done in pt (list, empty state, dialog, validation toast). The nested InteractiveBuilder is a separate component (not this story).
+---
+## 2026-09-18 - US-003
+- The catch-branch toast in contact-detail-view.tsx now reuses the existing key Contacts.detailView.toastTemplateFailed ({reason}); it already existed in all four catalogues with en text identical to the old literal (the HTTP-error branch used it already). No catalogue changes.
+- Files changed: src/components/contacts/contact-detail-view.tsx, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Before adding a key, grep the catalogues: earlier work may already have the key and only the call site is missed.
+  - The fallback `'network error'` reason string in that catch is still a hardcoded English literal (not in scope of this story).
+---
+## 2026-09-18 - US-004
+- dialog.tsx, sheet.tsx (sr-only "Close" and DialogFooter "Close") and gated-button.tsx (read-only tooltip) now use useTranslations("Ui"); new namespace Ui {close, gatedReadOnly({reason})} appended at the end of en/pt/es/ko (en text identical to before).
+- Files changed: src/components/ui/{dialog,sheet,gated-button}.tsx, messages/{en,pt,es,ko}.json, prd.json, progress.txt
+- Browser check done in pt: quick-replies dialog and pipeline deal Sheet both show "Fechar".
+- **Learnings for future iterations:**
+  - Shared ui/* components can call useTranslations("Ui") directly (root layout provides NextIntlClientProvider).
+  - GatedButton's `gateReason` is still an English verb phrase passed by callers ("create broadcasts"); the pt sentence is "Somente leitura — seu perfil não pode {reason}", so callers' gateReason must be translated in their own stories or it reads mixed.
+  - dev-browser: a scripts timeout is 30s; split steps into small scripts. /pipelines needs a pipeline before "Adicionar negócio" opens the deal Sheet (I created one "QA" pipeline in the QA account).
+---
+## 2026-09-18 - US-005
+- eslint.config.mjs: new block enabling react/jsx-no-literals as warn for src/components/** and src/app/** (tests ignored), allowedStrings ["·","/","—","•"]. Baseline recorded in .projects/i18n-pt-br/lint-baseline.md (41 new warnings: app 10, settings 13, agents 2, automations 3, broadcasts 5, contacts 2, flows 5, inbox 1).
+- Files changed: eslint.config.mjs, lint-baseline.md, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Lint total is now 82 warnings (41 old + 41 jsx-no-literals), 0 errors. Later stories should reduce only the jsx-no-literals half.
+  - The react plugin is already registered by eslint-config-next, so no plugin import was needed.
+  - Per-rule counts: `npx eslint . -f json -o <scratchpad>/l.json` and group by ruleId.
+---
+## 2026-09-18 - US-006
+- inbox/contacts had only 3 jsx-no-literals warnings, all punctuation: required-field "*" in contact-detail-view.tsx and contact-form.tsx now `{"*"}`; message-bubble.tsx `{t("notDelivered")}: {failure}` became one template literal. No catalogue changes, en output identical.
+- Files changed: contact-detail-view.tsx, contact-form.tsx, message-bubble.tsx, prd.json, progress.txt
+- Lint total now 79 warnings (38 jsx-no-literals left). Browser check NOT run (manual verification needed): render-identical edits.
+- **Learnings for future iterations:**
+  - Earlier stories already translated most text; check the actual warnings per dir first (`eslint <dir> -f json`), the PRD's expected scope may be smaller.
+  - Pure punctuation: wrap as `{"*"}` rather than adding keys or allowedStrings.
+---
+## 2026-09-18 - US-007
+- Zero jsx-no-literals in settings/agents/dashboard/layout/notifications/presence/auth (15 warnings: symbol literals wrapped as {':'} etc.; appearance-panel 'Theme id:' translated).
+- Beyond the rule (attributes/expressions): Unknown error (password-form, sessions-card), invite 'Failed to create invitation', profile avatar alt, template header sample alt, whatsapp saveFailure message (reused savedButRegistrationFailed), dashboard chart category 'Avg minutes' and weekday names (now format.dateTime weekday short), appearance mode names and theme taglines. New keys in all 4 catalogues.
+- Files changed: settings/{appearance-panel,whatsapp-config,api-keys-settings,password-form,sessions-card,invite-member-dialog,profile-form,template-manager}.tsx, agents/ai-usage.tsx, dashboard/response-time-chart.tsx, messages/*.json, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - jsx-no-literals ignores attributes/expressions: also grep placeholder=, alt=, aria-label=, `?? 'English'`, toast strings, and const label arrays.
+  - Insert keys textually right after the namespace opening line; use a python index() on '    "ns": {\n'.
+  - lib constants (themes.ts names/taglines, date-utils DOW_SHORT_MON_FIRST) hold English; translate at the call site with t(`x.${id}`).
+  - Left as-is on purpose: example placeholders (Ada Lovelace, en_US, sk-...), theme proper names.
+---
+## 2026-09-18 - US-008
+- Zero jsx-no-literals warnings left in src (lint back to 41 = old baseline). Real text translated: audience estimate texts (step2), Funnel heading, automation "Tag" label; punctuation/percent literals wrapped as template expressions in broadcasts/automations/flows/contacts page.
+- Beyond the rule: 'Unknown' recipient, 'Unknown error', 'Broadcast failed', flow save/status/delete failure messages (incl. thrown "X failed: {status}"), pipeline color-swatch aria-label. New keys in 4 catalogues (Broadcasts.wizard.selectAudience, Broadcasts.detail, Broadcasts.new, Flows.editorState, Pipelines.settings).
+- Files changed: src/app/(dashboard)/{broadcasts,contacts}, src/components/{automations,broadcasts,flows,pipelines}, messages/*.json, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Some keys already existed unused (Broadcasts.detail.funnel, Automations.builder.config.tagLabel): grep catalogues first.
+  - Left: en_US language fallbacks (data codes), interactive-preview English defaults (callers pass translated labels), flows/shared.tsx slugSeed (slug seeds, not UI), lib constants.
+  - Browser: pt pages render; deep states not exercised.
+---
+## 2026-09-18 - US-009
+- Confirmed zero react/jsx-no-literals warnings in the whole repo (lint total 41 = old baseline). src/app already had no literal JSX text; audited attributes/expressions: contacts page aria-labels (Filter by / Remove filter / Select contact) and automations list load-error fallback translated. New keys Contacts.page.{filterByTag,removeTagFilter,selectContact}, Automations.list.loadError in all 4 catalogues.
+- Files changed: src/app/(dashboard)/{contacts,automations}/page.tsx, messages/{en,pt,es,ko}.json, prd.json, progress.txt
+- Browser (pt): login, signup, forgot-password, /join/<invalid> ("Convite não encontrado"), notifications empty state OK. Manual check needed: /join with a valid token; notification list with items.
+- **Learnings for future iterations:**
+  - Adding `t` use inside a component-level function (e.g. load()) makes react-hooks/exhaustive-deps warn; keep the translation at render time (store "" and render `error || t(...)`).
+  - Logged-in sessions redirect /login,/signup: clear cookies (page.context().clearCookies()) in dev-browser before checking them.
+  - Left: thrown Errors only console-logged (flows), server `{error}` strings, static root metadata description (not locale-aware).
+---
+## 2026-09-18 - US-010
+- Added src/i18n/formats.ts (FORMATS + getFormats: presets date/dateTime/time/dayMonth and integer/compact per locale; pt numeric dd/mm/aaaa 24h, others dateStyle medium), wired `formats` in src/i18n/request.ts, added src/lib/i18n/date-fns-locale.ts (getDateFnsLocale) with tests for both. No call sites migrated.
+- Files changed: src/i18n/{formats,formats.test,request}.ts, src/lib/i18n/date-fns-locale{,.test}.ts, notes.md, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - The layout's NextIntlClientProvider DOES inherit `formats` (server variant resolves undefined props from request config); validated on :3100 with a temp client page (SSR HTML showed pt presets, no FORMATTING_ERROR). No change to layout.tsx. See notes.md.
+  - WARNING (R3): the provider also inherits `timeZone` = server/container tz (request.ts sets none), so client useFormatter formats in the SERVER tz, not the browser's (14:30Z rendered 11:30 on a -03 host). Decide before migrating call sites (pass browser timeZone / set it explicitly).
+  - Use `DateTimeFormatOptions`/`NumberFormatOptions` types from 'next-intl', not Intl.* (typecheck fails on timeZoneName). `createFormatter` from 'next-intl' works in vitest for preset tests.
+  - Presets are used by name: format.dateTime(d, 'date'), format.number(n, 'compact'). Plain format.number(n) uses locale defaults.
+---
+
+## 2026-09-18 - US-020
+- Added BrowserTimeZoneProvider (nested NextIntlClientProvider with the browser time zone) inside the root layout provider; pure `pickBrowserTimeZone` in src/lib/i18n/browser-time-zone.ts with unit tests.
+- Files: src/components/i18n/browser-time-zone-provider.tsx, src/lib/i18n/browser-time-zone.{ts,test.ts}, src/app/layout.tsx, notes.md, prd.json
+- **Learnings for future iterations:**
+  - The client NextIntlClientProvider requires `locale` explicitly but inherits messages/formats/now/onError from the parent context (use-intl IntlProvider uses prevContext).
+  - useFormatter() in client components now uses the BROWSER zone after hydration; SSR html uses the server zone. Verified with server TZ=UTC: 14:30Z -> 11:30 in browser, no hydration warnings.
+  - Never `pkill -f "next dev"` inside a Bash command whose own text contains that string (kills the shell); start the server with `setsid nohup`.
+---
+## 2026-09-18 - US-011
+- currency.ts: formatCurrency, formatCurrencyShort, formatCompactNumber take a trailing `locale` (default 'en') passed to Intl.NumberFormat (no more `undefined`). formatCompactNumber now uses Intl.NumberFormat(locale, fixed digits, useGrouping:false) instead of toFixed; en output verified identical to the old toFixed for a range of values. The 7 callers (dashboard page, pipeline-donut x2, pipeline-analytics, pipeline-board, deal-card, contact-detail-view, ai-usage) use useLocale().
+- Files changed: src/lib/currency.ts, currency.test.ts, the 7 callers, prd.json, progress.txt
+- Browser check done in pt: USD deal shows "US$ 1.234" in board/cards/stats and dashboard; dashboard donut shows "$1,2k" (compact keeps the symbol from CURRENCIES, decimal comma).
+- **Learnings for future iterations:**
+  - The Intl.NumberFormat calls in currency.ts are the ONE allowed exception to the future no-restricted-syntax rule (US-016): they receive an explicit locale.
+  - Intl output uses NBSP (U+00A0) between currency and number in pt; normalize in tests.
+  - QA account now has a contact "Maria QA" and a USD 1234 deal "Deal QA" in pipeline QA. The deal form's contact/currency/stage are native <select>s; dev-browser fill/click on Sheet buttons may need force:true.
+---
+## 2026-09-18 - US-012
+- formatRelative(iso, t, locale = 'en'): final branch now uses Intl.DateTimeFormat(locale, options) without hooks. Non-en locales use getFormats(locale).dateTime.date (pt = 05/01/2026); en keeps the numeric "1/5/2026" the branch rendered before (RNF-02), NOT the 'medium' preset ("Jan 5, 2026"). Callers (automations/page.tsx, automations/[id]/logs/page.tsx) pass useLocale().
+- Files changed: src/lib/automations/trigger-meta.ts, trigger-meta.test.ts (new), the two pages, prd.json, progress.txt
+- Browser check done in pt: seeded an automation with last_executed_at 2026-01-05 -> "última 05/01/2026"; seed row deleted afterwards.
+- **Learnings for future iterations:**
+  - US-016 (no-restricted-syntax on `new Intl.DateTimeFormat`): trigger-meta.ts uses it on purpose (pure function, explicit locale) -> add it to the rule's exceptions/ignores in eslint.config.mjs, like currency.ts.
+  - Seeding: automations.user_id must be the auth.users id; account_id comes from profiles.account_id (they differ for the QA account). DB: `docker exec wacrm-db-1 psql -U postgres`.
+---
+## 2026-09-18 - US-013
+- No toLocale*String left in src/components. Dates use useFormatter().dateTime(d, preset), numbers useFormatter().number(n). Added presets (all 4 locales) dateLong, dateShort, dateTimeShort, dateTimeSeconds, weekdayDayMonth to formats.ts; reused 'date' and 'dayMonth'. en reproduces each old output (numeric "9/18/2026", 12h "Sep 18, 2026, 11:30 AM", "Fri, Sep 18", "September 18, 2026"); pt is dd/mm/aaaa 24h. The en-US hard-codes (deal-card, contact notes) now follow the app locale.
+- Files: 11 components, src/i18n/formats.ts + formats.test.ts, prd.json, progress.txt
+- Browser (pt): deal card 24/12/2026, contact note 18/09/2026, 11:30, members "Entrou em 18/09/2026", profile "18 de setembro de 2026", API key "Criada em 18/09/2026". Seeded note/key/deal date removed afterwards.
+- **Learnings for future iterations:**
+  - Do not name the formatter `format` where date-fns `format` is imported (contact-sidebar uses `intlFormat`).
+  - Module-level helpers take the formatter as a param (`ReturnType<typeof useFormatter>`).
+  - The existing 'dateTime' preset (24h) is not what old en printed (12h); use 'dateTimeShort' for that site. Contact detail is opened from the /contacts list (no /contacts/[id] route).
+  - Deal expected_close_date (date-only) is parsed with new Date(str) -> UTC midnight, shows 24/12 in a -03 browser for 2026-12-25; pre-existing behaviour, identical in en.
+---
+## 2026-09-18 - US-014
+- No toLocale*String left in src/app. dashboard (metric values + deltaLabel now take the formatter), broadcasts list/detail (dateShort, dateTimeSeconds, format.number in StatCard/FunnelChart), contacts (en-US hard-code -> 'date' preset, follows app locale), join/[token] ('date'). No new presets: en output identical (list/detail "9/18/2026", recipients "9/18/2026, 11:30:45 AM", contacts/join "Sep 18, 2026").
+- R3: all five files are 'use client' pages that render dates only after client-side fetches (supabase / peek fetch), so no SSR date rendering; no post-mount workaround needed. notifications, flows/[id]/runs, automations (+logs) had no toLocale* left (earlier stories/formatRelative).
+- Files: 5 pages under src/app, prd.json, progress.txt
+- Browser (pt, :3100, browser tz -03): dashboard, broadcasts list "18/09/2026", detail "Criado em 18/09/2026" + recipient "18/09/2026, 11:30:45", contacts "18/09/2026", join "Link válido até 25/12/2026", notifications empty state; no hydration warnings. Not exercised: notifications with items, flows runs, automation logs (no date formatting from this story there). Seeded broadcast/recipient/invitation removed.
+- **Learnings for future iterations:**
+  - broadcasts.status check allows draft|scheduled|sending|sent|failed; invitation role enum owner|admin|agent|viewer; token_hash = sha256 hex of the token (peek: /api/invitations/<token>/peek).
+  - Contacts date column is hidden below the lg breakpoint: setViewportSize 1600 before checking. dev-browser waitForTimeout 5s per page; keep scripts under 30s.
+---
+## 2026-09-18 - US-015
+- date-fns relative time now gets { locale: getDateFnsLocale(useLocale()) } (conversation-list, notifications, flows runs). English-order absolute dates moved to useFormatter: message-thread separator "MMMM d, yyyy" -> 'dateLong' (formatter passed as param to formatDateSeparator), ai-usage "MMM d" -> 'dayMonth', contact-sidebar/media-lightbox "MMM d, yyyy HH:mm" and runs "PP p" -> new helper formatDateAndTime(formatter, date, 'time'|'timeShort'). New preset 'timeShort' (en 12h "2:30 PM", others 24h/locale). Left: HH:mm, HH:mm:ss, yyyy-MM-dd, filename.ts.
+- Files: src/lib/i18n/format-date-time.ts (new), src/i18n/formats{,.test}.ts, 7 components/pages, prd.json, progress.txt
+- Browser (pt): list "cerca de 3 horas", notifications "há cerca de 3 horas", thread separators "13 de setembro de 2026"/Ontem/Hoje, runs "Iniciada 18/09/2026 13:28 · durou cerca de 3 horas". Seeds removed.
+- **Learnings for future iterations:**
+  - Intl date+time presets insert a comma ("Sep 18, 2026, 11:30"), old date-fns patterns had none; formatDateAndTime composes date + space + time to keep en identical.
+  - date-fns pt-BR without addSuffix reads "cerca de 3 horas" (with suffix "há cerca de 3 horas").
+---
+
+## 2026-09-18 - US-016
+- ESLint `error` rule in eslint.config.mjs for src/**/*.{ts,tsx}: no-restricted-properties (toLocale*String) + no-restricted-syntax (new Intl.DateTimeFormat/NumberFormat); messages point to useFormatter().
+- Exceptions (scoped override, each commented): *.test.ts(x), src/lib/currency.ts, src/lib/automations/trigger-meta.ts (explicit locale param), src/lib/i18n/browser-time-zone.ts (time zone validity probe).
+- Files changed: eslint.config.mjs, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Negative case verified (toLocaleDateString in a component fails lint with the message), then reverted.
+  - `Intl.DateTimeFormat()` called WITHOUT `new` (browser-time-zone-provider.tsx, reads resolvedOptions().timeZone) is not caught by the rule; left as is.
+---
+## 2026-09-18 - US-017
+- Glossary written to glossary.md and applied to messages/pt.json values (106 values): modelo->template (except AI model: aiConfig.model/missingModel, Agents.usage.byModel), disparo->broadcast, CRM "caixa de entrada"->"inbox" ("no inbox"). Deal->negocio and Flow->fluxo were already applied (0 leftovers; only the DB identifier flow_runs.vars mentions "flow"). Email "caixa de entrada" (Signup/ForgotPassword) kept.
+- Files changed: messages/pt.json, glossary.md, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - pt.json round-trips byte-identically with json.dump(ensure_ascii=False, indent=2)+"\n", so a value-only json rewrite is safe there (not for en/ko).
+  - Checks: TZ=UTC npm test 1021 passed, typecheck clean, lint 0 errors / 41 warnings.
+  - Browser spot-check skipped (text-only change).
+---
+## 2026-09-18 - US-018
+- CLAUDE.md `**i18n.**` paragraph extended (only that paragraph): build-time locale, useTranslations rule + jsx-no-literals warn, useFormatter presets + no-restricted-syntax error (currency.ts/trigger-meta.ts exceptions, locale param for pure functions), four-catalogue rule, glossary pointer, browser vs server time zone.
+- Files changed: CLAUDE.md, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Docs-only story; typecheck run, browser check not applicable.
+---
+## 2026-09-18 - US-019 (partial)
+- .env.local em pt, stack Docker reconstruida e saudavel; 13 telas percorridas, resultado em verification.md. Corrigido: templates de automacao (lista/novo), preview dos passos do builder, etapas padrao de pipeline, modo/moeda na rail e overview (currencyName), descricoes de escopos de API key, "none" do Cabecalho no dialog de template, `&lt;key&gt;` (escape ICU `'<'key'>'`). docs/docker.md ganhou a nota do idioma via .env.local + rebuild.
+- Restante (passes segue false): mensagens de validacao de fluxos em ingles (src/lib/flows/validate.ts, ~60 msgs, usadas tambem pela rota de ativacao).
+- Checks: lint 0 erros/41 avisos, typecheck ok, TZ=UTC npm test 1021 ok, npm run build ok.
+- **Learnings for future iterations:**
+  - base-ui SelectValue mostra o value cru: passe o label como children (`<SelectValue>{label}</SelectValue>`).
+  - Em ICU, `&lt;` nao e decodificado; escape com apostrofo (`'<'`).
+  - Intl.DisplayNames(locale,{type:'currency'}) para nomes de moeda (en mantem o label curado).
+  - Seeds: messages.sender_type in customer|agent|bot; flows.trigger_type in keyword|first_inbound_message|manual.
+---
+## 2026-09-18 - US-019 (conclusao)
+- ValidationIssue ganhou `code` (54 codigos) e `params` opcional (aditivo); `message` ingles inalterado (rota /activate devolve igual). IssueLine (validation-panel.tsx, usado tambem por flow-builder) traduz `Flows.validation.issues.<code>` com fallback em `message` (tIssue.has). Chaves nos 4 catalogos, inseridas textualmente (en/ko nao fazem round-trip json.dump).
+- Testes novos (validate.codes.test.ts): todo code de validate.ts tem chave nos 4 catalogos, en renderizado com params == message (IntlMessageFormat), params ICU iguais em pt/es/ko.
+- Docker (pt) com fluxo semeado: painel em portugues; seed removido. Checks: lint 0 erros/41 avisos, typecheck, TZ=UTC npm test 1025, build ok.
+- **Learnings for future iterations:**
+  - Numeros grandes (limites) como params viram string para o ICU nao formatar "1.024"; plural com gramatica de verbo deve estar dentro do plural inteiro.
+  - `pkill -f "next dev"` mata o proprio shell da ferramenta; use kill pelo pid do ss.
+---

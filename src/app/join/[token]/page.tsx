@@ -26,7 +26,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
 import {
   AlertTriangle,
   CheckCircle,
@@ -80,6 +80,7 @@ export default function JoinPage() {
   const params = useParams<{ token: string }>();
   const token = params?.token;
   const t = useTranslations('JoinPage');
+  const format = useFormatter();
   // Role labels are shared with Settings → Members so the invite page
   // and the member list always agree on what a role is called.
   const tRoles = useTranslations('Settings.roles');
@@ -294,11 +295,7 @@ export default function JoinPage() {
       <CardDescription className="text-muted-foreground">
         {t.rich('joinAs', {
           role: tRoles(peek.role),
-          date: new Date(peek.expires_at).toLocaleDateString(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-          }),
+          date: format.dateTime(new Date(peek.expires_at), 'date'),
           badge: (chunks) => (
             <span className="inline-flex items-center gap-1 text-foreground">
               <ShieldCheck className="size-3.5 text-primary" />

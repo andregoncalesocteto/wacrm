@@ -2,13 +2,13 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronRight, Loader2 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 import { THEMES } from '@/lib/themes';
-import { CURRENCIES } from '@/lib/currency';
+import { CURRENCIES, currencyName } from '@/lib/currency';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -40,6 +40,8 @@ export function SettingsOverview({
     useAuth();
   const { mode, theme } = useTheme();
   const t = useTranslations('Settings.overview');
+  const tAppearance = useTranslations('Settings.appearance');
+  const locale = useLocale();
   const tRoles = useTranslations('Settings.roles');
   const tSections = useTranslations('Settings.sections');
 
@@ -146,10 +148,14 @@ export function SettingsOverview({
   const roleMeta = accountRole ? ROLE_META[accountRole] : null;
   const RoleIcon = roleMeta?.icon;
 
-  const currencyLabel =
-    CURRENCIES.find((c) => c.code === defaultCurrency)?.label ?? defaultCurrency;
+  const currencyOption = CURRENCIES.find((c) => c.code === defaultCurrency);
+  const currencyLabel = currencyOption ? currencyName(currencyOption, locale) : defaultCurrency;
   const themeName = THEMES.find((t) => t.id === theme)?.name ?? theme;
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  // en template starts with the mode ("Dark mode ·"), so it is capitalised
+  // there; other locales keep the catalogue's lowercase inside the sentence.
+  const modeName = tAppearance(`modes.${mode}`);
+  const modeLabel = locale === 'en' ? cap(modeName) : modeName;
 
   // Per-tile loading + subtitle. `null` counts render as a graceful
   // fallback so a single failed query never blanks a tile.
@@ -215,7 +221,7 @@ export function SettingsOverview({
     {
       section: 'appearance',
       loading: false,
-      subtitle: t('appearance', { mode: cap(mode), theme: themeName }),
+      subtitle: t('appearance', { mode: modeLabel, theme: themeName }),
     },
   ];
 

@@ -15,7 +15,7 @@ import {
   AvatarImage,
 } from '@/components/ui/avatar';
 import { Card, CardContent } from '@/components/ui/card';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
 import { SettingsPanelHead } from './settings-panel-head';
 import { BrowserNotificationsCard } from './browser-notifications-card';
 
@@ -34,6 +34,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function ProfileForm() {
   const t = useTranslations('Settings.profile');
+  const format = useFormatter();
   const { user, profile, refreshProfile } = useAuth();
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -200,11 +201,7 @@ export function ProfileForm() {
       removeAvatar);
 
   const joined = user?.created_at
-    ? new Date(user.created_at).toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      })
+    ? format.dateTime(new Date(user.created_at), 'dateLong')
     : '—';
 
   return (
@@ -220,7 +217,7 @@ export function ProfileForm() {
           <div className="flex flex-wrap items-center gap-5">
             <Avatar size="lg" className="size-16">
               {currentAvatar ? (
-                <AvatarImage src={currentAvatar} alt={fullName || 'Avatar'} />
+                <AvatarImage src={currentAvatar} alt={fullName || t('avatarAlt')} />
               ) : null}
               <AvatarFallback className="bg-primary/10 text-base text-primary">
                 {initial}
@@ -271,6 +268,7 @@ export function ProfileForm() {
               id="profile-full-name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
+              // Example name, intentionally not translated.
               placeholder="Ada Lovelace"
               maxLength={120}
               disabled={saving}

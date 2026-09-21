@@ -131,6 +131,16 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
 
 export function TemplateManager() {
   const t = useTranslations('Settings.templates');
+  const headerFormatLabel = (type: HeaderFormat) =>
+    type === 'none'
+      ? t('headerNone')
+      : type === 'text'
+        ? t('headerText')
+        : type === 'image'
+          ? t('headerImage')
+          : type === 'video'
+            ? t('headerVideo')
+            : t('headerDocument');
   const supabase = createClient();
   const { user, loading: authLoading } = useAuth();
 
@@ -784,7 +794,7 @@ export function TemplateManager() {
                 }
               >
                 <SelectTrigger className="w-full bg-muted border-border text-foreground">
-                  <SelectValue />
+                  <SelectValue>{headerFormatLabel(form.header_format)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-popover border-border">
                   {HEADER_FORMATS.map((type) => (
@@ -793,15 +803,7 @@ export function TemplateManager() {
                       value={type}
                       className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
                     >
-                      {type === 'none'
-                        ? t('headerNone')
-                        : type === 'text'
-                          ? t('headerText')
-                          : type === 'image'
-                            ? t('headerImage')
-                            : type === 'video'
-                              ? t('headerVideo')
-                              : t('headerDocument')}
+                      {headerFormatLabel(type)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -881,7 +883,7 @@ export function TemplateManager() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={form.header_media_url}
-                      alt="Header sample"
+                      alt={t('headerSampleAlt')}
                       className="max-h-28 rounded-md border border-border object-contain"
                     />
                   )}

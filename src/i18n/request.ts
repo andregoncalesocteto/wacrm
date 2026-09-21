@@ -1,4 +1,5 @@
 import { getRequestConfig } from 'next-intl/server';
+import { getFormats } from './formats';
 
 export default getRequestConfig(async () => {
   // Read the locale from the environment, defaulting to 'en'
@@ -14,6 +15,7 @@ export default getRequestConfig(async () => {
 
   return {
     locale,
-    messages
+    messages,
+    formats: getFormats(locale)
   };
 });

@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { formatCurrency } from "@/lib/currency";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 interface PipelineBoardProps {
   stages: PipelineStage[];
@@ -202,6 +202,7 @@ function StageColumn({
   onEditDeal: (deal: Deal) => void;
 }) {
   const t = useTranslations("Pipelines.board");
+  const locale = useLocale();
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
 
   return (
@@ -226,7 +227,7 @@ function StageColumn({
         </span>
       </div>
       <p className="text-xs text-muted-foreground">
-        {formatCurrency(totalValue, currency)}
+        {formatCurrency(totalValue, currency, locale)}
       </p>
 
       <div

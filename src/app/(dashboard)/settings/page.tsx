@@ -45,6 +45,7 @@ function SettingsPageInner() {
   const { defaultCurrency } = useAuth();
   const { mode } = useTheme();
   const t = useTranslations('Settings');
+  const tAppearance = useTranslations('Settings.appearance');
 
   // The URL (`?tab=`) is the single source of truth for the active
   // section — deep-linkable, and it keeps the existing links in the
@@ -63,10 +64,10 @@ function SettingsPageInner() {
   // already in context.
   const hints: Partial<Record<SettingsSection, ReactNode>> = useMemo(
     () => ({
-      appearance: mode.charAt(0).toUpperCase() + mode.slice(1),
+      appearance: tAppearance(`modes.${mode}`).charAt(0).toUpperCase() + tAppearance(`modes.${mode}`).slice(1),
       deals: defaultCurrency,
     }),
-    [mode, defaultCurrency],
+    [mode, defaultCurrency, tAppearance],
   );
 
   const panel: Record<SettingsSection, ReactNode> = {

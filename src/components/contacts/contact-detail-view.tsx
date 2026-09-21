@@ -40,7 +40,7 @@ import {
   DollarSign,
   LayoutTemplate,
 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { contactHandle } from '@/lib/whatsapp/wa-identity';
 
 interface ContactDetailViewProps {
@@ -57,6 +57,8 @@ export function ContactDetailView({
   onUpdated,
 }: ContactDetailViewProps) {
   const t = useTranslations('Contacts.detailView');
+  const format = useFormatter();
+  const locale = useLocale();
   const supabase = createClient();
   const { accountId, defaultCurrency } = useAuth();
 
@@ -361,7 +363,7 @@ export function ContactDetailView({
       toast.success(t('toastTemplateSent', { name: template.name }));
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'network error';
-      toast.error(`Failed to send template: ${reason}`);
+      toast.error(t('toastTemplateFailed', { reason }));
     } finally {
       setSendingTemplate(false);
     }
@@ -498,7 +500,7 @@ export function ContactDetailView({
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-muted-foreground text-xs">
-                      {t('phone')} <span className="text-red-400">*</span>
+                      {t('phone')} <span className="text-red-400">{"*"}</span>
                     </Label>
                     <Input
                       value={editPhone}
@@ -628,13 +630,7 @@ export function ContactDetailView({
                           </button>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1.5">
-                          {new Date(note.created_at).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          {format.dateTime(new Date(note.created_at), 'dateTimeShort')}
                         </p>
                       </div>
                     ))
@@ -726,6 +722,7 @@ export function ContactDetailView({
                             {formatCurrency(
                               deal.value ?? 0,
                               deal.currency || defaultCurrency,
+                              locale,
                             )}
                           </span>
                           {deal.status && deal.status !== 'open' && (

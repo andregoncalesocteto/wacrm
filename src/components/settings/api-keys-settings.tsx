@@ -37,10 +37,9 @@ import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
 import {
   API_SCOPES,
-  SCOPE_DESCRIPTIONS,
   type ApiScope,
 } from '@/lib/api-keys/scopes';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
 import { SettingsPanelHead } from './settings-panel-head';
 
 interface ApiKey {
@@ -54,12 +53,8 @@ interface ApiKey {
   created_at: string;
 }
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+function fmtDate(iso: string, format: ReturnType<typeof useFormatter>): string {
+  return format.dateTime(new Date(iso), 'date');
 }
 
 function keyStatus(k: ApiKey): 'active' | 'revoked' | 'expired' {
@@ -72,6 +67,7 @@ function keyStatus(k: ApiKey): 'active' | 'revoked' | 'expired' {
 export function ApiKeysSettings() {
   const { canEditSettings } = useAuth();
   const t = useTranslations('Settings.apiKeys');
+  const format = useFormatter();
 
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -211,7 +207,8 @@ export function ApiKeysSettings() {
                         )}
                       </div>
                       <p className="text-muted-foreground mt-0.5 font-mono text-xs">
-                        {k.key_prefix}…
+                        {k.key_prefix}
+                        {'…'}
                       </p>
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {k.scopes.length === 0 ? (
@@ -230,13 +227,13 @@ export function ApiKeysSettings() {
                         )}
                       </div>
                       <p className="text-muted-foreground mt-1.5 text-xs">
-                        {t('created', { date: fmtDate(k.created_at) })}
+                        {t('created', { date: fmtDate(k.created_at, format) })}
                         {' · '}
                         {k.last_used_at
-                          ? t('lastUsed', { date: fmtDate(k.last_used_at) })
+                          ? t('lastUsed', { date: fmtDate(k.last_used_at, format) })
                           : t('neverUsed')}
                         {k.expires_at && status !== 'expired'
-                          ? ` · ${t('expires', { date: fmtDate(k.expires_at) })}`
+                          ? ` · ${t('expires', { date: fmtDate(k.expires_at, format) })}`
                           : ''}
                       </p>
                     </div>
@@ -439,7 +436,7 @@ function CreateKeyDialog({
                           {scope}
                         </span>
                         <span className="text-muted-foreground block text-xs">
-                          {SCOPE_DESCRIPTIONS[scope]}
+                          {t(`scopeDescriptions.${scope}`)}
                         </span>
                       </span>
                     </label>

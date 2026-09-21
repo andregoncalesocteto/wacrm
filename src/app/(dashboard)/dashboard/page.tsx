@@ -34,12 +34,14 @@ import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
 import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 
-import { useTranslations } from 'next-intl'
+import { useFormatter, useLocale, useTranslations } from 'next-intl'
 
 type RangeDays = 7 | 30 | 90
 
 export default function DashboardPage() {
   const t = useTranslations('Dashboard.page')
+  const locale = useLocale()
+  const format = useFormatter()
   const { defaultCurrency } = useAuth()
   const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
@@ -139,11 +141,12 @@ export default function DashboardPage() {
           <>
             <MetricCard
               title={t('activeConversations')}
-              value={metrics.activeConversations.current.toLocaleString()}
+              value={format.number(metrics.activeConversations.current)}
               icon={MessageSquare}
               delta={{
                 sign: metrics.activeConversations.previous,
                 label: deltaLabel(
+                  format,
                   metrics.activeConversations.previous, 
                   t('newTodayVsYesterday'), 
                   t('noChange', { suffix: t('newTodayVsYesterday') })
@@ -152,12 +155,13 @@ export default function DashboardPage() {
             />
             <MetricCard
               title={t('newContactsToday')}
-              value={metrics.newContactsToday.current.toLocaleString()}
+              value={format.number(metrics.newContactsToday.current)}
               icon={UserPlus}
               delta={{
                 sign:
                   metrics.newContactsToday.current - metrics.newContactsToday.previous,
                 label: deltaLabel(
+                  format,
                   metrics.newContactsToday.current - metrics.newContactsToday.previous,
                   t('vsYesterday'),
                   t('noChange', { suffix: t('vsYesterday') })
@@ -166,18 +170,19 @@ export default function DashboardPage() {
             />
             <MetricCard
               title={t('openDealsValue')}
-              value={formatCurrency(metrics.openDealsValue, defaultCurrency)}
+              value={formatCurrency(metrics.openDealsValue, defaultCurrency, locale)}
               icon={DollarSign}
               subtitle={t('openDeals', { count: metrics.openDealsCount })}
             />
             <MetricCard
               title={t('messagesSentToday')}
-              value={metrics.messagesSentToday.current.toLocaleString()}
+              value={format.number(metrics.messagesSentToday.current)}
               icon={Send}
               delta={{
                 sign:
                   metrics.messagesSentToday.current - metrics.messagesSentToday.previous,
                 label: deltaLabel(
+                  format,
                   metrics.messagesSentToday.current - metrics.messagesSentToday.previous,
                   t('vsYesterday'),
                   t('noChange', { suffix: t('vsYesterday') })
@@ -227,8 +232,11 @@ export default function DashboardPage() {
 
 // ------------------------------------------------------------
 
-function deltaLabel(delta: number, suffix: string, noChangeLabel: string): string {
+function deltaLabel(
+  format: ReturnType<typeof useFormatter>,
+  delta: number, suffix: string, noChangeLabel: string,
+): string {
   if (delta === 0) return noChangeLabel
   const sign = delta > 0 ? '+' : ''
-  return `${sign}${delta.toLocaleString()} ${suffix}`
+  return `${sign}${format.number(delta)} ${suffix}`
 }

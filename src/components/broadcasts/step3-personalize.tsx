@@ -406,7 +406,7 @@ export function Step3Personalize({
         <div className="mb-3 flex items-center gap-2">
           <Eye className="h-4 w-4 text-primary" />
           <p className="text-sm font-medium text-foreground">{t('personalize.preview')}</p>
-          <span className="text-xs text-muted-foreground">({previewLabel})</span>
+          <span className="text-xs text-muted-foreground">{`(${previewLabel})`}</span>
           {loadingPreview && (
             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
           )}

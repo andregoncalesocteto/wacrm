@@ -18,8 +18,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { format } from "date-fns";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
+import { formatDateAndTime } from "@/lib/i18n/format-date-time";
 import { contactHandle } from "@/lib/whatsapp/wa-identity";
 
 interface ContactSidebarProps {
@@ -29,6 +29,7 @@ interface ContactSidebarProps {
 export function ContactSidebar({ contact }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
+  const intlFormat = useFormatter();
 
   const { accountId } = useAuth();
   const [copied, setCopied] = useState(false);
@@ -237,7 +238,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                     <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
                       <span>
                         {deal.currency ?? "$"}
-                        {deal.value.toLocaleString()}
+                        {intlFormat.number(deal.value)}
                       </span>
                       {deal.stage && (
                         <span
@@ -295,7 +296,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                       {note.note_text}
                     </p>
                     <p className="mt-1 text-[10px] text-muted-foreground">
-                      {format(new Date(note.created_at), "MMM d, yyyy HH:mm")}
+                      {formatDateAndTime(intlFormat, new Date(note.created_at))}
                     </p>
                   </div>
                 ))}

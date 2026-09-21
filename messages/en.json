@@ -121,6 +121,7 @@
       "ariaLabel": "Pipeline value by stage"
     },
     "responseTimeChart": {
+      "avgMinutes": "Avg minutes",
       "title": "Average First Response Time",
       "description": "Minutes to reply to a customer's first unreplied message, by weekday",
       "target": "target {minutes}m",
@@ -317,6 +318,9 @@
   },
   "Contacts": {
     "page": {
+      "filterByTag": "Filter by {name}",
+      "removeTagFilter": "Remove {name} filter",
+      "selectContact": "Select {name}",
       "title": "Contacts",
       "subtitle": "Manage your contact list. {count} total contacts.",
       "subtitleZero": "Manage your contact list.",
@@ -536,6 +540,13 @@
       "pipelineName": "Pipeline Name",
       "pipelineNamePlaceholder": "e.g., Enterprise Sales",
       "defaultStagesDesc": "Default stages (New Lead → Won) will be created automatically.",
+      "defaultStages": {
+        "newLead": "New Lead",
+        "qualified": "Qualified",
+        "proposalSent": "Proposal Sent",
+        "negotiation": "Negotiation",
+        "won": "Won"
+      },
       "cancel": "Cancel",
       "creating": "Creating...",
       "createPipelineBtn": "Create Pipeline",
@@ -597,6 +608,7 @@
       "toastDeleted": "Deal deleted"
     },
     "settings": {
+      "pickColor": "Pick color {color}",
       "managePipeline": "Manage Pipeline",
       "deletePipeline": "Delete Pipeline",
       "deletePipelineDesc": "This will archive all deals in this pipeline. This cannot be undone.",
@@ -669,6 +681,8 @@
       "unknown": "Unknown"
     },
     "detail": {
+      "unknownRecipient": "Unknown",
+      "unknownError": "Unknown error",
       "backToBroadcasts": "Back to Broadcasts",
       "notFound": "Broadcast not found",
       "template": "Template: {name}",
@@ -717,6 +731,7 @@
       "toastResumeFailed": "Could not resume: {error}"
     },
     "new": {
+      "failed": "Broadcast failed",
       "title": "New Broadcast",
       "subtitle": "Create and send a broadcast message to your contacts.",
       "steps": {
@@ -777,6 +792,8 @@
         "errorCsvParse": "Could not parse CSV file.",
         "errorCsvMissingPhone": "CSV must have a 'phone' column.",
         "audienceSummary": "Audience Summary",
+        "estimatedRecipients": "estimated recipients",
+        "selectTypeForEstimate": "Select an audience type to see the estimate.",
         "calculating": "Calculating…"
       },
       "personalize": {
@@ -842,11 +859,30 @@
   },
   "Automations": {
     "list": {
+      "loadError": "Failed to load automations",
       "title": "Automations",
       "subtitle": "Build workflows that react to WhatsApp® events automatically.",
       "create": "Create Automation",
       "retry": "Retry",
       "templatesTitle": "Quick-start templates",
+      "templates": {
+        "welcome_message": {
+          "name": "Welcome Message",
+          "description": "Auto-reply to first-time contacts with a greeting."
+        },
+        "out_of_office": {
+          "name": "Out of Office",
+          "description": "Auto-reply during off-hours so nobody is left waiting."
+        },
+        "lead_qualifier": {
+          "name": "Lead Qualifier",
+          "description": "Ask qualification questions to filter inbound leads."
+        },
+        "follow_up_reminder": {
+          "name": "Follow-up Reminder",
+          "description": "Send a nudge if a contact has not replied within 24 hours."
+        }
+      },
       "emptyTitle": "No automations yet",
       "emptyDesc": "Pick a template above or create one from scratch.",
       "runs": "{count} run",
@@ -1019,6 +1055,13 @@
       "kindCondition": "Condition",
       "kindWait": "Wait",
       "kindAction": "Action",
+      "preview": {
+        "noText": "no text yet",
+        "noBody": "no body yet",
+        "pickTemplate": "pick a template",
+        "noUrl": "no url",
+        "when": "when {subject}"
+      },
       "delete": "Delete",
       "config": {
         "messageText": "Message text",
@@ -1266,9 +1309,71 @@
     "validation": {
       "noIssues": "No issues. Ready to activate.",
       "summary": "{errorCount} {errorCount, plural, =1 {error} other {errors}}, {warningCount} {warningCount, plural, =1 {warning} other {warnings}}",
-      "jumpToNode": "Jump to node {key}"
+      "jumpToNode": "Jump to node {key}",
+      "issues": {
+        "nameRequired": "Flow name is required.",
+        "entryNodeRequired": "Pick an entry node before activating.",
+        "noNodes": "A flow needs at least one node before activation.",
+        "entryNodeMissing": "Entry node \"{key}\" doesn't exist.",
+        "duplicateNodeKey": "Duplicate node_key \"{key}\".",
+        "unreachableNode": "Node \"{key}\" is unreachable from the entry node.",
+        "keywordsRequired": "Keyword triggers need at least one keyword.",
+        "blankKeywords": "{count, plural, =1 {# keyword is} other {# keywords are}} blank — they won't match anything.",
+        "startNextRequired": "Start node must point to a next node.",
+        "startNextMissing": "Start points to non-existent node \"{key}\".",
+        "sendMessageTextRequired": "Send-message node needs a text body.",
+        "sendMessageNextRequired": "Send-message node must point to a next node.",
+        "sendMessageNextMissing": "Send-message points to non-existent node \"{key}\".",
+        "sendMediaType": "Send-media node needs a media type (image, video, or document).",
+        "sendMediaFile": "Send-media node needs a file (upload one before activating).",
+        "captionTooLong": "Caption exceeds {max} chars (WhatsApp limit).",
+        "sendMediaNextRequired": "Send-media node must point to a next node.",
+        "sendMediaNextMissing": "Send-media points to non-existent node \"{key}\".",
+        "sendButtonsText": "Send-buttons node needs a text body.",
+        "buttonsMin": "Send-buttons needs at least one button.",
+        "buttonsMax": "WhatsApp allows at most {max} buttons per message.",
+        "buttonReplyIdRequired": "Button {n} needs a reply id.",
+        "buttonReplyIdDuplicate": "Duplicate button reply id \"{id}\".",
+        "buttonTitleRequired": "Button {n} needs a title.",
+        "buttonTitleTooLong": "Button {n} title is over {max} chars (WhatsApp limit).",
+        "buttonNextRequired": "Button {n} needs a next node.",
+        "buttonNextMissing": "Button {n} points to non-existent node \"{key}\".",
+        "sendListText": "Send-list node needs a text body.",
+        "listButtonLabel": "Send-list needs a button label (the tap-to-expand text).",
+        "listRowsMin": "Send-list needs at least one row.",
+        "listRowsMax": "Send-list allows at most {max} rows total across sections.",
+        "rowReplyIdRequired": "Row {row} in section {section} needs a reply id.",
+        "rowReplyIdDuplicate": "Duplicate list row id \"{id}\".",
+        "rowTitleRequired": "Row {n} needs a title.",
+        "rowTitleTooLong": "Row {n} title exceeds {max} chars.",
+        "rowDescriptionTooLong": "Row {n} description exceeds {max} chars.",
+        "rowNextRequired": "Row {n} needs a next node.",
+        "rowNextMissing": "Row {n} points to non-existent node \"{key}\".",
+        "collectPromptRequired": "Collect-input needs a prompt to send the customer.",
+        "collectVarKeyRequired": "Collect-input needs a var_key to store the answer under.",
+        "collectVarKeyInvalid": "var_key \"{key}\" must be alphanumeric+underscore and start with a letter or underscore.",
+        "collectNextRequired": "Collect-input must point to a next node.",
+        "collectNextMissing": "Collect-input points to non-existent node \"{key}\".",
+        "conditionSubjectRequired": "Condition needs a subject (var / tag / contact_field).",
+        "conditionSubjectKeyRequired": "Condition needs a subject_key (var name, tag id, or field name).",
+        "conditionOperatorRequired": "Condition needs an operator.",
+        "conditionValueExpected": "Operator \"{operator}\" usually expects a comparison value — empty value will only match empty subjects.",
+        "conditionBranchRequired": "Condition needs a node for the \"{branch}\" branch.",
+        "conditionBranchMissing": "Condition's \"{branch}\" points to non-existent node \"{key}\".",
+        "setTagMode": "Set-tag needs a mode (add or remove).",
+        "setTagTagRequired": "Set-tag needs a tag to apply.",
+        "setTagNextRequired": "Set-tag must point to a next node.",
+        "setTagNextMissing": "Set-tag points to non-existent node \"{key}\".",
+        "unknownNodeType": "Unknown node type \"{type}\"."
+      }
     },
     "editorState": {
+      "saveFailed": "Save failed",
+      "saveFailedStatus": "Save failed: {status}",
+      "statusFailed": "Status update failed",
+      "statusFailedStatus": "Status update failed: {status}",
+      "deleteFailed": "Delete failed",
+      "deleteFailedStatus": "Delete failed: {status}",
       "saved": "Saved.",
       "fixIssues": "Fix the issues below before activating.",
       "statusActivated": "Flow activated.",
@@ -1369,6 +1474,7 @@
       "removeBtn": "Remove member"
     },
     "invite": {
+      "createFailed": "Failed to create invitation",
       "inviteCreated": "Invite created",
       "inviteCreatedDesc": "Share this link with your new teammate. They'll be able to sign up (or sign in) and join the account as <bold>{role}</bold>. The link is valid for <bold>{days} {days, plural, =1 {day} other {days}}</bold>.",
       "inviteLink": "Invite link",
@@ -1434,6 +1540,7 @@
       }
     },
     "templates": {
+      "headerSampleAlt": "Header sample",
       "title": "Message templates",
       "description": "Create templates and submit them to Meta for approval. Use \"Sync from Meta\" to pull templates approved elsewhere.",
       "syncFromMeta": "Sync from Meta",
@@ -1681,6 +1788,7 @@
       "workspace": "Workspace"
     },
     "profile": {
+      "avatarAlt": "Avatar",
       "title": "Your profile",
       "description": "How you show up across the app. Your avatar and name appear in the header, sidebar, and anywhere your teammates see you.",
       "changePhoto": "Change photo",
@@ -1742,7 +1850,19 @@
       "useMode": "Use {mode} mode",
       "active": "Active",
       "accentColor": "Accent color",
-      "useTheme": "Use {name} theme"
+      "useTheme": "Use {name} theme",
+      "themeId": "Theme id: {id}",
+      "modes": {
+        "light": "light",
+        "dark": "dark"
+      },
+      "taglines": {
+        "violet": "The default — confident, slightly playful.",
+        "emerald": "Growth-coded, nods at messaging without copying WhatsApp green.",
+        "cobalt": "Clean B2B-SaaS blue — calm and product-y.",
+        "amber": "Warm and friendly — feels good for SMB teams.",
+        "rose": "Bold and modern — D2C, creator-economy, lifestyle."
+      }
     },
     "security": {
       "title": "Login & security",
@@ -1774,8 +1894,17 @@
     },
     "apiKeys": {
       "title": "API keys",
-      "description": "Keys authenticate the public REST API (<apiCode>/api/v1</apiCode>) so you can build your own automations. Send them as <headerCode>Authorization: Bearer &lt;key&gt;</headerCode>.",
+      "description": "Keys authenticate the public REST API (<apiCode>/api/v1</apiCode>) so you can build your own automations. Send them as <headerCode>Authorization: Bearer '<'key'>'</headerCode>.",
       "newApiKey": "New API key",
+      "scopeDescriptions": {
+        "messages:send": "Send WhatsApp messages",
+        "messages:read": "Read messages and their delivery status",
+        "contacts:read": "List and read contacts",
+        "contacts:write": "Create and update contacts",
+        "conversations:read": "List and read conversations",
+        "broadcasts:send": "Launch broadcast campaigns",
+        "webhooks:manage": "Register and manage outbound event webhooks"
+      },
       "noApiKeys": "No API keys yet.",
       "createOneHint": "Click <bold>New API key</bold> to create one.",
       "askAdminHint": "Ask an admin to create one.",
@@ -1890,6 +2019,27 @@
       "editDoc": "Edit",
       "deleteDoc": "Delete",
       "loading": "Loading…"
+    },
+    "quickReplies": {
+      "title": "Quick replies",
+      "description": "Reusable snippets — plain text or a saved interactive message — that agents can insert from the inbox composer.",
+      "newButton": "New quick reply",
+      "empty": "No quick replies yet. Create one to reuse it across conversations.",
+      "editTitle": "Edit quick reply",
+      "newTitle": "New quick reply",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Business hours",
+      "kindText": "Text",
+      "kindInteractive": "Interactive",
+      "contentPlaceholder": "The message text to insert",
+      "cancel": "Cancel",
+      "save": "Save",
+      "confirmDelete": "Delete this quick reply?",
+      "toastNameRequired": "Give the quick reply a name.",
+      "toastSaveFailed": "Couldn't save the quick reply.",
+      "toastUpdated": "Quick reply updated.",
+      "toastCreated": "Quick reply created.",
+      "toastDeleteFailed": "Couldn't delete the quick reply."
     }
   },
   "SignupPage": {
@@ -2034,5 +2184,9 @@
   },
   "DashboardShell": {
     "loading": "Loading..."
+  },
+  "Ui": {
+    "close": "Close",
+    "gatedReadOnly": "Read-only — your role can't {reason}"
   }
 }

@@ -50,9 +50,13 @@ Tests are colocated (`foo.ts` + `foo.test.ts`), run in the `node` environment, w
 
 **Frontend.** `src/app/(dashboard)/*` pages with feature components in `src/components/<feature>/`; shadcn/base-ui primitives in `components/ui`. Realtime via `hooks/use-realtime.ts`; permission checks via `hooks/use-can.ts`.
 
-**i18n.** `next-intl`; the locale is a deployment-wide env var (`NEXT_PUBLIC_APP_LOCALE`, default `en`), not per-user. Dictionaries are `messages/{en,es,pt,ko}.json`; `src/i18n/*.test.ts` enforce key parity and ICU-safety, so adding a key to `en.json` means adding it to every locale.
+**i18n.** `next-intl`; the locale is a deployment-wide env var (`NEXT_PUBLIC_APP_LOCALE`, default `en`), not per-user. Dictionaries are `messages/{en,es,pt,ko}.json`; `src/i18n/*.test.ts` enforce key parity and ICU-safety, so adding a key to `en.json` means adding it to every locale. The locale is fixed at build time (client bundles inline it), so changing it needs a rebuild. Rules:
+  - All UI text goes through `useTranslations` (no hardcoded English in JSX, attributes such as `placeholder`/`aria-label`, or toasts). `react/jsx-no-literals` is a `warn` rule in `src/components` and `src/app`; it does not see attributes or expressions, so check those by hand. New keys go in all four catalogues, and Portuguese wording follows `.projects/i18n-pt-br/glossary.md`.
+  - Dates and numbers go through `useFormatter()` with the named presets in `src/i18n/formats.ts` (`format.dateTime(d, 'date')`, `format.number(n, 'compact')`). Never call `toLocale*String`, `new Intl.DateTimeFormat` or `new Intl.NumberFormat` directly: that is an `error` rule (`no-restricted-syntax`). Pure non-React functions take a `locale` parameter (and pass it to `date-fns`); `currency.ts` and `trigger-meta.ts` are the only exceptions.
+  - The client `NextIntlClientProvider` uses the browser time zone (`src/components/i18n/browser-time-zone-provider.tsx`), while SSR uses the server zone.
 
 ## Conventions
 
 - Commits/PRs: imperative, terse first line; run `npm run typecheck` and `npm run format` before pushing; one logical change per PR; branch off latest `main`. Follow `git log` style.
 - Docs for users live in `docs/` (`public-api.md`, `mcp.md`, `multi-waba.md`, …) — update them alongside API or MCP changes.
+- Spec-driven development (SDD) documents live in `.projects/`, the global folder for projects, and never at the repo root. **Each feature discussed gets its own subfolder** (`.projects/<feature-slug>/`, e.g. `channel-abstraction/`, `i18n-pt-br/`) holding that feature's triage (`triage.md`), BMAD artifacts (brief, PRD, architecture, epics/stories) and Spec Kit specs/plans/tasks. Point the tool's output folder at the feature's subfolder when installing or running it (BMAD: `output_folder`), and move anything a tool writes elsewhere (the triage skill writes `triage.md` at the root by default).

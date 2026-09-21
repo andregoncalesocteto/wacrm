@@ -46,6 +46,20 @@ export const CURRENCIES: CurrencyOption[] = [
 ];
 
 /**
+ * Localised currency name for pickers ("Dólar americano" in pt). `en` keeps
+ * the curated `label` so its output stays unchanged; other locales use
+ * Intl.DisplayNames and fall back to the label.
+ */
+export function currencyName(option: CurrencyOption, locale = "en"): string {
+  if (locale === "en") return option.label;
+  try {
+    return new Intl.DisplayNames(locale, { type: "currency" }).of(option.code) ?? option.label;
+  } catch {
+    return option.label;
+  }
+}
+
+/**
  * Format a deal value as a currency string. Whole-number output
  * (no minor units) — deal values are tracked to the dollar across
  * the app. `currency` defaults to USD so callers with nothing better
@@ -61,11 +75,12 @@ export const CURRENCIES: CurrencyOption[] = [
 export function formatCurrency(
   value: number,
   currency: string = DEFAULT_CURRENCY,
+  locale: string = "en",
 ): string {
   const code = (currency || DEFAULT_CURRENCY).trim();
   const amount = Number(value) || 0;
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: code,
       minimumFractionDigits: 0,
@@ -74,7 +89,7 @@ export function formatCurrency(
   } catch {
     // Invalid ISO code — show the raw code + grouped number so the
     // value is still legible instead of throwing.
-    return `${code} ${new Intl.NumberFormat(undefined, {
+    return `${code} ${new Intl.NumberFormat(locale, {
       maximumFractionDigits: 0,
     }).format(amount)}`;
   }
@@ -88,10 +103,11 @@ export function formatCurrency(
 export function formatCurrencyShort(
   value: number,
   currency: string = DEFAULT_CURRENCY,
+  locale: string = "en",
 ): string {
   const code = currency || DEFAULT_CURRENCY;
   const symbol = CURRENCIES.find((c) => c.code === code)?.symbol ?? `${code} `;
-  return `${symbol}${formatCompactNumber(value)}`;
+  return `${symbol}${formatCompactNumber(value, locale)}`;
 }
 
 /**
@@ -99,9 +115,15 @@ export function formatCurrencyShort(
  * 1_200_000 → "1.2M", 900 → "900". The unit-less core shared with
  * {@link formatCurrencyShort}.
  */
-export function formatCompactNumber(value: number): string {
+export function formatCompactNumber(value: number, locale: string = "en"): string {
   const v = Number(value || 0);
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`;
-  return v.toFixed(0);
+  const fmt = (n: number, digits: number) =>
+    new Intl.NumberFormat(locale, {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+      useGrouping: false,
+    }).format(n);
+  if (v >= 1_000_000) return `${fmt(v / 1_000_000, 1)}M`;
+  if (v >= 1_000) return `${fmt(v / 1_000, 1)}k`;
+  return fmt(v, 0);
 }

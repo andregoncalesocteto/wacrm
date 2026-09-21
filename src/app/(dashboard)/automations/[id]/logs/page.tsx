@@ -10,7 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 
 import { createClient } from "@/lib/supabase/client"
 import type {
@@ -31,6 +31,7 @@ export default function AutomationLogsPage({
   const router = useRouter()
   const t = useTranslations("Automations.logs")
   const tRelative = useTranslations("Automations.relative")
+  const locale = useLocale()
 
   const [automation, setAutomation] = useState<Automation | null>(null)
   const [logs, setLogs] = useState<AutomationLog[] | null>(null)
@@ -138,7 +139,7 @@ export default function AutomationLogsPage({
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {formatRelative(log.created_at, tRelative)}
+                    {formatRelative(log.created_at, tRelative, locale)}
                   </div>
                 </button>
                 {isOpen && (
