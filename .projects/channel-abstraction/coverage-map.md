@@ -1,4 +1,4 @@
-# Mapa de cobertura de testes — WhatsApp oficial (baseline para US-002..004)
+# Mapa de cobertura de testes — WhatsApp oficial (baseline para US-002..004; no prd.json: US-002 = recebimento/webhook, US-003 = envio, US-004 = motores e broadcast)
 
 Objetivo: saber o que os testes atuais garantem antes de refatorar o caminho do WhatsApp oficial para o contrato de provedor.
 Levantamento feito por leitura dos arquivos `*.test.ts` (nomes de `describe`/`it`) e dos módulos de produção; nenhum código foi alterado.
@@ -18,7 +18,7 @@ Legenda: **Coberto** = há teste do comportamento; **Parcial** = só parte (help
 | `src/lib/whatsapp/phone-utils.test.ts`, `wa-identity.test.ts` | Normalização de telefone; identidade inbound (telefone, BSUID, username, prioridade entre campos), alvo de envio e nome de exibição. |
 | `src/lib/whatsapp/meta-api.resumable.test.ts`, `encryption.test.ts`, `registration.test.ts`, `waba-pairing.test.ts`, `meta-error-explain.test.ts` | Upload resumível, criptografia AES-256-GCM dos tokens, registro/verificação de número, pareamento de WABA, tradução de erros da Meta. |
 
-**Lacunas de envio (US-002):**
+**Lacunas de envio (US-003):**
 - `sendMessageToConversation` no **caminho feliz** (texto, mídia, interativo, template): a chamada à Meta com credenciais da conta, o insert em `messages` (status `sent`, `message_id` = wamid, `content_type`, `media_url`), a atualização de `conversations` (last message/preview) e o comportamento quando a Meta falha (linha marcada `failed` + código de erro). Hoje só existem testes de validação e de destinatário.
 - `POST /api/whatsapp/react` (`sendReactionMessage`): nenhum teste da rota nem da função de envio de reação.
 - Rota `send` para `conversation_id` com texto/mídia (só o caminho de template por `contact_id` é testado), e a checagem de que uma conversa de outra conta é recusada.
@@ -43,7 +43,7 @@ Arquivo principal: `src/app/api/whatsapp/webhook/route.test.ts` (o módulo `webh
 | Webhooks de templates (`message_template_status_update` etc.) | **Coberto**: `template-webhook.test.ts` (status, motivo de rejeição, normalização PENDING_REVIEW, stub de template desconhecido por WABA, tenant ambíguo, retry em violação de unicidade, qualidade, components no-op, campo desconhecido) e a passagem de `entry.id` como `wabaId` na rota (#534). |
 | Conversa / reabertura | `resolve-conversation.test.ts` (telefone inválido, sem config, existente, criação, corrida de unicidade), `conversations/reopen.test.ts`. `findOrCreateConversation` do webhook em si: **lacuna** direta. |
 
-**Lacunas do webhook (US-003):** verificação GET, rota com assinatura inválida (401), tipos de conteúdo não cobertos (localização, contatos, sticker, interativo não-template, `unsupported`), escada de status e status fora de ordem, reação (inserir/remover/alvo ausente), atualização de contadores/`flagBroadcastReplyIfAny`, `findOrCreateConversation` (reabrir conversa fechada, resolução de canal/config por `phone_number_id`).
+**Lacunas do webhook (US-002):** verificação GET, rota com assinatura inválida (401), tipos de conteúdo não cobertos (localização, contatos, sticker, interativo não-template, `unsupported`), escada de status e status fora de ordem, reação (inserir/remover/alvo ausente), atualização de contadores/`flagBroadcastReplyIfAny`, `findOrCreateConversation` (reabrir conversa fechada, resolução de canal/config por `phone_number_id`).
 
 ## 3. Templates
 
@@ -102,6 +102,6 @@ Arquivo principal: `src/app/api/whatsapp/webhook/route.test.ts` (o módulo `webh
 
 ## 9. Resumo das lacunas a cobrir
 
-- **US-002 (envio):** `sendMessageToConversation` no caminho feliz e falha da Meta (texto, mídia, interativo, template), rota `send` com `conversation_id`, rota `react`, proxy de mídia.
-- **US-003 (webhook e templates):** GET de verificação, 401 por assinatura inválida na rota, tipos de conteúdo restantes, escada de status/status fora de ordem, reação, contadores de broadcast, `findOrCreateConversation`, rotas de templates (`submit`, `sync`, `[id]`).
+- **US-003 (envio):** `sendMessageToConversation` no caminho feliz e falha da Meta (texto, mídia, interativo, template), rota `send` com `conversation_id`, rota `react`, proxy de mídia.
+- **US-002 (webhook; templates ficam a critério da US-003/US-004):** GET de verificação, 401 por assinatura inválida na rota, tipos de conteúdo restantes, escada de status/status fora de ordem, reação, contadores de broadcast, `findOrCreateConversation`, rotas de templates (`submit`, `sync`, `[id]`).
 - **US-004 (broadcast, flows, automações, IA):** `deliverBroadcast` e `markBroadcastSending`, rotas de broadcast, execução de nós e retomada nos flows, `meta-send` de flows e automações, `resumePendingExecution`, envio da resposta da IA.
