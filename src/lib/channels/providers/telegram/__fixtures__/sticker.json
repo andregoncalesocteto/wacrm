@@ -1,0 +1,33 @@
+{
+  "update_id": 900007,
+  "message": {
+    "message_id": 16,
+    "from": {
+      "id": 555000111,
+      "is_bot": false,
+      "first_name": "Maria",
+      "last_name": "Silva",
+      "username": "Maria_S",
+      "language_code": "pt-br"
+    },
+    "chat": {
+      "id": 555000111,
+      "first_name": "Maria",
+      "last_name": "Silva",
+      "username": "Maria_S",
+      "type": "private"
+    },
+    "date": 1758450000,
+    "sticker": {
+      "width": 512,
+      "height": 512,
+      "emoji": "😀",
+      "is_animated": false,
+      "is_video": false,
+      "type": "regular",
+      "file_id": "CAACAgQAAxkBAAIF_stk",
+      "file_unique_id": "AgADstk",
+      "file_size": 20000
+    }
+  }
+}

@@ -924,8 +924,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 54,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Verified with fixtures, mocked fetch and a manual POST to the dev server (seeded telegram connection: 401 bad/missing secret, 200 + contact/identities/conversation/message rows, replay = duplicate, cleaned up). Real Telegram was NOT reachable: no real bot, no real getFile download, no real webhook delivery."
     },
     {
       "id": "US-049",

@@ -94,7 +94,7 @@ describe('capabilities and registry', () => {
     expect(telegramProvider.configSchema.safeParse([]).success).toBe(false);
   });
 
-  it('inbound/outbound are unsupported for now', async () => {
+  it('outbound is unsupported for now (inbound: US-048, inbound.test.ts)', async () => {
     await expect(async () =>
       telegramProvider.send(
         conn,
@@ -105,9 +105,6 @@ describe('capabilities and registry', () => {
         }
       )
     ).rejects.toMatchObject({ code: 'unsupported' });
-    expect(() => telegramProvider.parse(new Request('http://x'), conn)).toThrow(
-      ChannelError
-    );
   });
 });
 

@@ -1,0 +1,37 @@
+{
+  "update_id": 900015,
+  "my_chat_member": {
+    "chat": {
+      "id": 555000111,
+      "first_name": "Maria",
+      "last_name": "Silva",
+      "username": "Maria_S",
+      "type": "private"
+    },
+    "from": {
+      "id": 555000111,
+      "is_bot": false,
+      "first_name": "Maria",
+      "last_name": "Silva",
+      "username": "Maria_S",
+      "language_code": "pt-br"
+    },
+    "date": 1758450600,
+    "old_chat_member": {
+      "user": {
+        "id": 123456,
+        "is_bot": true,
+        "first_name": "Loja"
+      },
+      "status": "member"
+    },
+    "new_chat_member": {
+      "user": {
+        "id": 123456,
+        "is_bot": true,
+        "first_name": "Loja"
+      },
+      "status": "kicked"
+    }
+  }
+}

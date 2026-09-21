@@ -1,0 +1,48 @@
+{
+  "update_id": 900010,
+  "callback_query": {
+    "id": "4382bfdwdsb323b2d9",
+    "from": {
+      "id": 555000111,
+      "is_bot": false,
+      "first_name": "Maria",
+      "last_name": "Silva",
+      "username": "Maria_S",
+      "language_code": "pt-br"
+    },
+    "chat_instance": "-1",
+    "data": "opt_yes",
+    "message": {
+      "message_id": 20,
+      "from": {
+        "id": 123456,
+        "is_bot": true,
+        "first_name": "Loja",
+        "username": "loja_bot"
+      },
+      "chat": {
+        "id": 555000111,
+        "first_name": "Maria",
+        "last_name": "Silva",
+        "username": "Maria_S",
+        "type": "private"
+      },
+      "date": 1758450100,
+      "text": "Confirma?",
+      "reply_markup": {
+        "inline_keyboard": [
+          [
+            {
+              "text": "Sim, confirmo",
+              "callback_data": "opt_yes"
+            },
+            {
+              "text": "Não",
+              "callback_data": "opt_no"
+            }
+          ]
+        ]
+      }
+    }
+  }
+}

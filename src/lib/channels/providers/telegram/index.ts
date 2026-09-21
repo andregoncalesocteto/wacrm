@@ -6,11 +6,12 @@ import type {
   Target,
 } from '../../types';
 import { connect, deriveExternalId, disconnect, health } from './lifecycle';
+import { downloadMedia, parse, resolveConnection, verify } from './inbound';
 import { telegramConfigSchema, telegramCredentialsSchema } from './schemas';
 
 /**
- * Telegram Bot API provider. This story (US-047) covers capabilities and
- * lifecycle; inbound arrives with US-048 and outbound with US-049.
+ * Telegram Bot API provider. Capabilities and lifecycle (US-047), inbound
+ * (US-048); outbound arrives with US-049.
  */
 
 export const CHAT_ID_KIND = 'telegram:chat_id';
@@ -65,9 +66,10 @@ export const telegramProvider: ChannelProvider = {
   health,
   deriveExternalId,
 
-  resolveConnection: notYet('inbound'),
-  verify: notYet('inbound'),
-  parse: notYet('inbound'),
+  resolveConnection,
+  verify,
+  parse,
+  downloadMedia,
 
   resolveTarget,
   send: notYet('outbound'),

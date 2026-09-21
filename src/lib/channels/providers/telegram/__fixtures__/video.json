@@ -1,0 +1,33 @@
+{
+  "update_id": 900006,
+  "message": {
+    "message_id": 15,
+    "from": {
+      "id": 555000111,
+      "is_bot": false,
+      "first_name": "Maria",
+      "last_name": "Silva",
+      "username": "Maria_S",
+      "language_code": "pt-br"
+    },
+    "chat": {
+      "id": 555000111,
+      "first_name": "Maria",
+      "last_name": "Silva",
+      "username": "Maria_S",
+      "type": "private"
+    },
+    "date": 1758450000,
+    "caption": "clip",
+    "video": {
+      "duration": 5,
+      "width": 640,
+      "height": 360,
+      "file_name": "clip.mp4",
+      "mime_type": "video/mp4",
+      "file_id": "BAACAgQAAxkBAAIE_video",
+      "file_unique_id": "AgADvideo",
+      "file_size": 400000
+    }
+  }
+}
