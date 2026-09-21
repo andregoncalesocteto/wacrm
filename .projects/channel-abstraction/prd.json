@@ -888,7 +888,7 @@
       ],
       "priority": 52,
       "passes": false,
-      "notes": ""
+      "notes": "Após a US-034: a rota `POST /api/channels/connections` usa `external_id` do corpo, senão `config.phone_number_id`, senão 400 (não há gancho no provedor). O id do bot do Telegram só é conhecido com o token (`getMe`): acrescentar de forma aditiva ao contrato um método opcional `deriveExternalId(config, credentials)` que o POST chama quando o `external_id` não vem, e implementá-lo no provedor Telegram. Chaves secretas de configuração são filtradas por regex `/token|secret|password|api_?key|private/`; nomear chaves do Telegram de forma compatível."
     },
     {
       "id": "US-048",
