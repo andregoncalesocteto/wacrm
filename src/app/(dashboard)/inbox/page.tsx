@@ -183,9 +183,8 @@ function InboxPageInner() {
 
       if (!user) return;
 
-      // whatsapp_config is one-row-per-account post-multi-user, so
-      // the previous `.eq('user_id', user.id)` would miss the row
-      // for any teammate who didn't personally save the config —
+      // The connection is per-account, so filtering by user_id would
+      // miss it for any teammate who didn't personally save the config —
       // the "WhatsApp not connected" banner would show in the
       // shared inbox even though the admin had it configured.
       // Resolve account_id via the profile and query by that.
@@ -201,12 +200,14 @@ function InboxPageInner() {
       }
 
       const { data } = await supabase
-        .from("whatsapp_config")
-        .select("status")
+        .from("channel_connections")
+        .select("status, disabled_at")
         .eq("account_id", accountId)
-        .maybeSingle();
+        .eq("channel_type", "whatsapp_cloud");
 
-      setWhatsappConnected(data?.status === "connected");
+      setWhatsappConnected(
+        (data ?? []).some((c) => c.status === "connected" && !c.disabled_at)
+      );
     };
 
     checkConnection();

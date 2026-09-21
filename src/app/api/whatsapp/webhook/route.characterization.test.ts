@@ -20,7 +20,6 @@ const h = vi.hoisted(() => ({
   db: {} as Record<string, Row[]>,
   rpcCalls: [] as { name: string; args: Record<string, unknown> }[],
   seq: 0,
-  configs: [] as Row[],
   runAutomationsForTrigger: vi.fn(),
   dispatchInboundToFlows: vi.fn(),
   dispatchInboundToAiReply: vi.fn(),
@@ -166,12 +165,6 @@ vi.mock('@supabase/supabase-js', () => {
   return {
     createClient: () => ({
       from(table: string) {
-        if (table === 'whatsapp_config') {
-          // The fake keeps configs outside `db` so reset is trivial.
-          const q = new Query('whatsapp_config');
-          h.db.whatsapp_config = h.configs;
-          return q;
-        }
         return new Query(table);
       },
       rpc(name: string, args: Record<string, unknown>) {
@@ -279,16 +272,27 @@ beforeEach(() => {
   h.rpcCalls = [];
   h.seq = 0;
   h.afterCallbacks = [];
-  h.configs = [
+  h.db.accounts = [{ id: ACCOUNT, owner_user_id: 'user-1' }];
+  h.db.channel_connections = [
     {
-      id: 'cfg-1',
+      id: 'conn-1',
       account_id: ACCOUNT,
-      user_id: 'user-1',
-      phone_number_id: 'pn-1',
-      access_token: encrypt('plain-token'),
-      verify_token: encrypt('my-verify-token'),
-      // Off: keeps the media mirror out of the way (proxy URL is stored).
-      mirror_inbound_media: false,
+      channel_type: 'whatsapp_cloud',
+      external_id: 'pn-1',
+      status: 'connected',
+      disabled_at: null,
+      config: {
+        verify_token: encrypt('my-verify-token'),
+        // Off: keeps the media mirror out of the way (proxy URL is stored).
+        mirror_inbound_media: false,
+      },
+    },
+  ];
+  h.db.channel_connection_credentials = [
+    {
+      connection_id: 'conn-1',
+      secrets_encrypted: encrypt('plain-token'),
+      secrets_format: 'wa_token_v0',
     },
   ];
   h.dispatchInboundToFlows.mockResolvedValue({ consumed: false });
@@ -376,8 +380,13 @@ describe('webhook POST: signature and payload guards', () => {
     expect(table('messages')).toHaveLength(1);
   });
 
+  it('stamps a new conversation with the connection that received the message', async () => {
+    await inbound(TEXT, ADA);
+    expect(table('conversations')[0].connection_id).toBe('conn-1');
+  });
+
   it('drops a delivery whose phone_number_id has no config', async () => {
-    h.configs = [];
+    h.db.channel_connections = [];
     await inbound(TEXT, ADA);
     expect(table('contacts')).toHaveLength(0);
     expect(table('messages')).toHaveLength(0);

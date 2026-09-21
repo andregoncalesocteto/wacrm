@@ -13,7 +13,7 @@ import { SendMessageError } from './send-message';
 type ContactRow = { id: string; phone: string; name?: string | null };
 
 interface Script {
-  config?: { user_id: string } | null; // config owner (whatsapp_config, via resolveAuditUserId); present also => the account has a whatsapp_cloud connection
+  config?: { user_id: string } | null; // audit user (accounts.owner_user_id, via resolveAuditUserId); present also => the account has a whatsapp_cloud connection
   contactCandidates?: ContactRow[]; // contacts .like (same every call)
   /** Per-call `.like` results — overrides contactCandidates. Lets a
    *  test simulate "miss, then hit" for the unique-race path. */
@@ -67,10 +67,12 @@ function makeDb(script: Script): SupabaseClient {
       return Promise.resolve({ data, error: null });
     },
     maybeSingle: () => {
-      // resolveAuditUserId (api/v1/contacts.ts, not migrated in US-014)
-      // still reads the config owner from whatsapp_config.
-      if (table === 'whatsapp_config')
-        return Promise.resolve({ data: script.config ?? null, error: null });
+      // resolveAuditUserId (api/v1/contacts.ts) reads the account owner.
+      if (table === 'accounts')
+        return Promise.resolve({
+          data: script.config ? { owner_user_id: script.config.user_id } : null,
+          error: null,
+        });
       return Promise.resolve({ data: null, error: null });
     },
     single: () => {

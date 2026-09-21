@@ -230,3 +230,16 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Remaining whatsapp_config readers: contacts.ts resolveAuditUserId, webhook route, config routes, inbox page, settings components, verify-registration, meta-api/encryption (comments).
   - Baseline: 104 files / 1291 tests, lint 41 warnings.
 ---
+
+## 2026-09-21 - US-017
+- Webhook route (GET + POST), lib/api/v1/contacts.ts (resolveAuditUserId) and inbox/page.tsx no longer read whatsapp_config.
+  - GET: iterates channel_connections (whatsapp_cloud, skips disabled) and decrypts config.verify_token (same encrypted format the dual-write/backfill copy from whatsapp_config); same per-row try/catch, first match wins; legacy CBC->GCM upgrade now rewrites config.verify_token on the connection.
+  - POST: getConnectionByExternalId('whatsapp_cloud', phone_number_id, route's own admin client) + getConnectionCredentials (token) + config.mirror_inbound_media; no credentials/connection = logged and skipped. findOrCreateConversation now inserts connection_id (existing conversations with NULL connection_id are NOT backfilled).
+  - Audit user_id (webhook contacts/conversations, resolveAuditUserId) is now accounts.owner_user_id (connections carry no user; legacy was whatsapp_config.user_id). Attribution of NEW rows can change for accounts whose config was saved by a non-owner admin.
+  - Inbox banner: channel_connections (RLS member read), connected = any enabled whatsapp_cloud row with status connected.
+- Tests edited (doubles/seed only): webhook route.test.ts, route.characterization.test.ts (+1 new test: conversation gets connection_id), resolve-conversation.test.ts.
+- **Learnings for future iterations:**
+  - Passing the route's own client to getConnectionByExternalId keeps test doubles simple; getConnectionCredentials always uses channels/admin-client (also backed by the mocked createClient).
+  - route.test.ts is NOT prettier-formatted: never run prettier over it (huge diff).
+  - Baseline: 104 files / 1292 tests, lint 41 warnings.
+---

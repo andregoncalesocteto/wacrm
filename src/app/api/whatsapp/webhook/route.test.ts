@@ -19,7 +19,7 @@ const h = vi.hoisted(() => ({
     afterCallbacks: [] as (() => Promise<void> | void)[],
     automationStarted: 0,
     automationCompleted: 0,
-    /** whatsapp_config.mirror_inbound_media for the matched row (#466). */
+    /** channel_connections.config.mirror_inbound_media for the matched row (#466). */
     mirrorInboundMedia: true as boolean | undefined,
     /** Objects the inbound-media mirror pushed into chat-media. */
     storageUploads: [] as {
@@ -57,21 +57,57 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     from(table: string) {
       switch (table) {
-        case 'whatsapp_config':
+        case 'channel_connections':
+          // getConnectionByExternalId: select().eq().eq().maybeSingle()
           return {
             select: () => ({
-              eq: () =>
-                Promise.resolve({
-                  data: [
-                    {
-                      account_id: 'acc-1',
-                      user_id: 'user-1',
-                      access_token: 'enc',
-                      mirror_inbound_media: h.state.mirrorInboundMedia,
-                    },
-                  ],
-                  error: null,
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: () =>
+                    Promise.resolve({
+                      data: {
+                        id: 'conn-1',
+                        account_id: 'acc-1',
+                        config: {
+                          mirror_inbound_media: h.state.mirrorInboundMedia,
+                        },
+                      },
+                      error: null,
+                    }),
                 }),
+              }),
+            }),
+          }
+        case 'channel_connection_credentials':
+          // getConnectionCredentials: select().eq().maybeSingle()
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data: {
+                      secrets_encrypted: 'enc',
+                      secrets_format: 'wa_token_v0',
+                    },
+                    error: null,
+                  }),
+              }),
+            }),
+            update: () => ({
+              eq: () => ({ eq: () => Promise.resolve({ error: null }) }),
+            }),
+          }
+        case 'accounts':
+          // owner lookup: select().eq().maybeSingle()
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data: { owner_user_id: 'user-1' },
+                    error: null,
+                  }),
+              }),
             }),
           }
         case 'conversations':
