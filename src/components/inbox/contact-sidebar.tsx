@@ -20,7 +20,12 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useFormatter, useTranslations } from "next-intl";
 import { formatDateAndTime } from "@/lib/i18n/format-date-time";
-import { contactHandle } from "@/lib/whatsapp/wa-identity";
+import {
+  contactDisplayName,
+  contactInitial,
+  contactSubtitle,
+  primaryIdentity,
+} from "@/lib/contacts/display-name";
 import { ContactConversations } from "./contact-conversations";
 
 interface ContactSidebarProps {
@@ -38,6 +43,7 @@ export function ContactSidebar({
 }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
+  const tChannel = useTranslations("Settings.channels.type");
   const intlFormat = useFormatter();
 
   const { accountId } = useAuth();
@@ -94,7 +100,9 @@ export function ContactSidebar({
   const handleCopyPhone = useCallback(async () => {
     // Copies whatever the row displays — a BSUID-only contact has no
     // phone number to copy, but its @username still identifies them.
-    const handle = contact ? contactHandle(contact) : '';
+    const handle = contact
+      ? contactSubtitle(contact, contact.identities)
+      : '';
     if (!handle) return;
     await navigator.clipboard.writeText(handle);
     setCopied(true);
@@ -141,8 +149,19 @@ export function ContactSidebar({
     );
   }
 
-  const displayName = contact.name || contactHandle(contact);
-  const initials = displayName.charAt(0).toUpperCase();
+  const displayName =
+    contactDisplayName(contact, contact.identities) || tThread("unknown");
+  const initials = contactInitial(displayName);
+  // Phone row: the phone as always; without one, the primary identity with its
+  // channel ("@maria · Telegram"). No row at all when there is nothing to show.
+  const handle = contactSubtitle(contact, contact.identities);
+  const primary = contact.phone?.trim()
+    ? null
+    : primaryIdentity(contact, contact.identities);
+  const handleText =
+    primary?.channelType && tChannel.has(primary.channelType)
+      ? `${handle} · ${tChannel(primary.channelType)}`
+      : handle;
 
   return (
     <div className="flex h-full w-70 flex-col border-l border-border bg-card">
@@ -171,13 +190,14 @@ export function ContactSidebar({
 
           {/* Phone */}
           <div className="mt-4 space-y-2">
+            {handle && (
             <button
               onClick={handleCopyPhone}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted"
             >
               <Phone className="h-4 w-4 text-muted-foreground" />
               <span className="flex-1 text-left">
-                {contactHandle(contact)}
+                {handleText}
               </span>
               {copied ? (
                 <Check className="h-3 w-3 text-primary" />
@@ -185,6 +205,7 @@ export function ContactSidebar({
                 <Copy className="h-3 w-3 text-muted-foreground" />
               )}
             </button>
+            )}
 
             {contact.email && (
               <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground">

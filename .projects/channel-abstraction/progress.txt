@@ -674,3 +674,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - engine.channel.test.ts registers a stand-in telegram; new tests there call resetRegistryForTests + registerBuiltinProviders in their own beforeEach.
   - Checks: typecheck clean, lint 0 errors/40 warnings, TZ=UTC 144 files/1765 tests, build OK.
 ---
+
+## 2026-09-21 - US-052
+- Inbox shows contacts without phone via one client-safe helper module src/lib/contacts/display-name.ts (contactDisplayName moved here, re-exported from channels/identity.ts; plus primaryIdentity, contactSubtitle, contactInitial, matchesContactSearch, sortIdentities). CONVERSATION_SELECT now embeds contact_identities(kind, external_id, handle); normalizeConversation maps them to contact.identities (camelCase, tolerant of a missing embed). Used in conversation-list (name, avatar initial, search now matches identity handles/ids), message-thread (header name + subtitle line only when non-empty, reply author label), contact-sidebar (phone row only when something to show; without phone: "@maria · Telegram" via Settings.channels.type), browser notifications title. WhatsApp contacts with a phone render as before.
+- Files changed: display-name.ts(+test), telegram-contact.test.tsx (renders ConversationItem + ContactSidebar via renderToStaticMarkup + NextIntlClientProvider), identity.ts, conversations.ts, types/index.ts, conversation-list, message-thread, contact-sidebar, use-browser-notifications, prd.json, progress.txt. No i18n keys added.
+- **Learnings for future iterations:**
+  - Component test pattern: renderToStaticMarkup + NextIntlClientProvider with messages/en.json, vi.mock supabase client/use-auth/ContactConversations (effects do not run, so props drive output).
+  - The QA account had no store/connection; conversations.connection_id is NOT NULL, so seeding needs store + channel_connection first.
+  - pickContactDisplayName (notifications/browser-notify.ts) is now unused by the hook but kept with its tests.
+  - Baseline: 146 files / 1780 tests, lint 41 warnings.
+---

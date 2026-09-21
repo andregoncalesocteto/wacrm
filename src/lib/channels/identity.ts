@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
-import { contactHandle } from '@/lib/whatsapp/wa-identity';
+import { sortIdentities } from '@/lib/contacts/display-name';
 import type { ContactIdentity, IdentityCandidate } from './types';
 
 /**
@@ -18,6 +18,9 @@ import type { ContactIdentity, IdentityCandidate } from './types';
  *
  * `db` must be a service-role client (webhook / engines have no user session).
  */
+
+// Pure display helpers live in a client-safe module; re-exported for old imports.
+export { contactDisplayName } from '@/lib/contacts/display-name';
 
 export const WA_PHONE_KIND = 'whatsapp:phone';
 export const WA_BSUID_KIND = 'whatsapp:bsuid';
@@ -75,61 +78,13 @@ function usernameOf(c: IdentityCandidate | undefined): string | null {
   return v || null;
 }
 
-/** Lower rank = more recognisable to a human. */
-function rank(kind: string, handle?: string | null): number {
-  if (kind.endsWith(':username') || handle?.startsWith('@')) return 0;
-  if (kind.endsWith(':phone')) return 1;
-  if (kind.endsWith(':bsuid')) return 2;
-  return 3;
-}
-
-function sorted<T extends { kind: string; handle?: string | null }>(
-  list: T[]
-): T[] {
-  return [...list].sort(
-    (a, b) => rank(a.kind, a.handle) - rank(b.kind, b.handle)
-  );
-}
-
-/** How an identity reads to a person: `@username`, phone, BSUID, chat id. */
-function identityLabel(i: ContactIdentity): string {
-  if (i.kind.endsWith(':username')) {
-    const u = (i.handle ?? i.externalId).trim().replace(/^@/, '');
-    return u ? `@${u}` : '';
-  }
-  return (i.handle?.trim() || i.externalId).trim();
-}
-
-/**
- * Name to show for a contact: its own name, else the primary identity
- * (`@username`, phone, BSUID, Telegram handle / chat id), else the legacy
- * `wa_*` columns. Empty only when the contact carries no identity at all.
- * Generalises `contactHandle` (wa-identity.ts), which stays for old callers.
- */
-export function contactDisplayName(
-  contact: {
-    name?: string | null;
-    phone?: string | null;
-    wa_username?: string | null;
-    wa_user_id?: string | null;
-  },
-  identities: ContactIdentity[] = []
-): string {
-  if (contact.name?.trim()) return contact.name.trim();
-  for (const i of sorted(identities)) {
-    const label = identityLabel(i);
-    if (label) return label;
-  }
-  return contactHandle(contact);
-}
-
 /** Name for a brand-new contact row: profile name, else username, phone, BSUID, id. */
 function newContactName(
   candidates: IdentityCandidate[],
   senderName?: string | null
 ): string {
   if (senderName?.trim()) return senderName.trim();
-  const first = sorted(candidates)[0];
+  const first = sortIdentities(candidates)[0];
   if (!first) return '';
   if (first.kind.endsWith(':username')) return usernameOf(first) ?? '';
   return first.externalId;
@@ -257,7 +212,14 @@ export async function resolveOrCreateContact(
   const existing = await findContact(db, accountId, candidates);
   if (existing)
     return {
-      contact: await enrich(db, accountId, existing, candidates, senderName, parentExternalId),
+      contact: await enrich(
+        db,
+        accountId,
+        existing,
+        candidates,
+        senderName,
+        parentExternalId
+      ),
       wasCreated: false,
     };
 
@@ -282,7 +244,14 @@ export async function resolveOrCreateContact(
       const raced = await findContact(db, accountId, candidates);
       if (raced) {
         return {
-          contact: await enrich(db, accountId, raced, candidates, senderName, parentExternalId),
+          contact: await enrich(
+            db,
+            accountId,
+            raced,
+            candidates,
+            senderName,
+            parentExternalId
+          ),
           wasCreated: false,
         };
       }

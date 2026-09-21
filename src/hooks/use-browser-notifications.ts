@@ -3,6 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { contactDisplayName } from "@/lib/contacts/display-name";
 import { createClient } from "@/lib/supabase/client";
 import type { Message } from "@/types";
 import {
@@ -10,7 +11,6 @@ import {
   buildNotificationContent,
   conversationHref,
   getNotificationPermission,
-  pickContactDisplayName,
   readBrowserNotifyPref,
   shouldNotifyForMessage,
   subscribeBrowserNotifyPref,
@@ -85,17 +85,38 @@ export function useBrowserNotifications(): void {
       // failure here just means the generic fallback title.
       const { data } = await supabase
         .from("conversations")
-        .select("contact:contacts(name, wa_username, phone)")
+        .select(
+          "contact:contacts(name, wa_username, wa_user_id, phone, contact_identities(kind, external_id, handle))",
+        )
         .eq("id", msg.conversation_id)
         .maybeSingle();
       if (cancelled) return;
 
       const contact = (data as {
-        contact?: { name?: string | null; wa_username?: string | null; phone?: string | null } | null;
+        contact?: {
+          name?: string | null;
+          wa_username?: string | null;
+          wa_user_id?: string | null;
+          phone?: string | null;
+          contact_identities?: {
+            kind: string;
+            external_id: string;
+            handle?: string | null;
+          }[];
+        } | null;
       } | null)?.contact;
       const { title, body } = buildNotificationContent(
         msg,
-        pickContactDisplayName(contact),
+        contact
+          ? contactDisplayName(
+              contact,
+              (contact.contact_identities ?? []).map((i) => ({
+                kind: i.kind,
+                externalId: i.external_id,
+                handle: i.handle ?? null,
+              })),
+            ) || null
+          : null,
         labelsRef.current,
       );
 

@@ -63,7 +63,11 @@ import {
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { renderTemplateBody } from "@/lib/whatsapp/template-body";
-import { contactHandle } from "@/lib/whatsapp/wa-identity";
+import {
+  contactDisplayName,
+  contactInitial,
+  contactSubtitle,
+} from "@/lib/contacts/display-name";
 import { toast } from "sonner";
 
 interface ReplyDraft {
@@ -792,8 +796,9 @@ export function MessageThread({
     return map;
   }, [reactions]);
 
-  const contactDisplayName =
-    contact?.name || (contact ? contactHandle(contact) : "") || t("customer");
+  const contactName =
+    (contact && contactDisplayName(contact, contact.identities)) ||
+    t("customer");
 
   // Author label for a quoted message: "You" when we sent the parent,
   // contact name when the customer sent it.
@@ -801,9 +806,9 @@ export function MessageThread({
     (m: Message): string => {
       const isAgentMsg =
         m.sender_type === "agent" || m.sender_type === "bot";
-      return isAgentMsg ? "You" : contactDisplayName;
+      return isAgentMsg ? "You" : contactName;
     },
-    [contactDisplayName],
+    [contactName],
   );
 
   const handleStartReply = useCallback(
@@ -925,7 +930,9 @@ export function MessageThread({
     );
   }
 
-  const displayName = contact.name || contactHandle(contact);
+  const displayName =
+    contactDisplayName(contact, contact.identities) || t("unknown");
+  const subtitle = contactSubtitle(contact, contact.identities);
   const messageGroups = groupMessagesByDate(messages);
   const currentStatus = STATUS_OPTIONS.find(
     (s) => s.value === conversation.status
@@ -963,13 +970,15 @@ export function MessageThread({
             </button>
           )}
           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-            {displayName.charAt(0).toUpperCase()}
+            {contactInitial(displayName)}
           </div>
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-            <p className="truncate text-xs text-muted-foreground">
-              {contactHandle(contact)}
-            </p>
+            {subtitle && (
+              <p className="truncate text-xs text-muted-foreground">
+                {subtitle}
+              </p>
+            )}
             {showScopeUi && conversation.connection && (
               <ConversationScopeBadge
                 connection={conversation.connection}
@@ -1167,7 +1176,7 @@ export function MessageThread({
                           authorLabel:
                             parent.sender_type === "agent" || parent.sender_type === "bot"
                               ? t("me") 
-                              : contact?.name || contact?.phone || t("unknown"),
+                              : contactName,
                           preview: buildReplyPreview(parent, tQuote),
                         }
                       : null;
@@ -1273,7 +1282,7 @@ export function MessageThread({
         items={mediaGallery}
         activeId={mediaMessageId}
         onActiveIdChange={handleMediaChange}
-        contactLabel={contactDisplayName}
+        contactLabel={contactName}
       />
     </div>
   );

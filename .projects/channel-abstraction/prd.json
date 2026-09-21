@@ -1028,8 +1028,8 @@
         "Verify in browser using dev-browser skill (um contato sem telefone no inbox)"
       ],
       "priority": 60,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser check done on :3100 (pt) with seeded Telegram contacts (@username + chat_id only) and a WhatsApp contact; component test renders ConversationItem and ContactSidebar with a Telegram contact. Message-thread header covered by browser only (component too heavy to render statically)."
     },
     {
       "id": "US-053",

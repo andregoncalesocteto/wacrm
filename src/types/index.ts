@@ -1,3 +1,4 @@
+import type { ContactIdentity } from "@/lib/channels/types";
 import type { AccountRole } from "@/lib/auth/roles";
 import type { InteractiveMessagePayload } from "@/lib/whatsapp/interactive";
 
@@ -119,6 +120,8 @@ export interface Contact {
   email?: string;
   company?: string;
   avatar_url?: string;
+  /** Hydrated by queries that embed `contact_identities` (inbox). */
+  identities?: ContactIdentity[];
   created_at: string;
   updated_at: string;
   /** Hydrated by queries that embed `contact_tags(tags(*))` (e.g. the

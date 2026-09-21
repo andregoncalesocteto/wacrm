@@ -13,10 +13,17 @@ import type {
  * connection with its store, for the store / connection / channel filters.
  */
 export const CONVERSATION_SELECT =
-  '*, contact:contacts(*, contact_tags(tags(*))), connection:channel_connections(id, channel_type, display_name, status, disabled_at, store_id, store:stores(id, name))';
+  '*, contact:contacts(*, contact_tags(tags(*)), contact_identities(kind, external_id, handle)), connection:channel_connections(id, channel_type, display_name, status, disabled_at, store_id, store:stores(id, name))';
 
 /** Raw shape returned by {@link CONVERSATION_SELECT} before flattening. */
-type RawContact = Contact & { contact_tags?: { tags: Tag | null }[] };
+type RawContact = Contact & {
+  contact_tags?: { tags: Tag | null }[];
+  contact_identities?: {
+    kind: string;
+    external_id: string;
+    handle?: string | null;
+  }[];
+};
 type RawConversation = Omit<Conversation, 'contact'> & {
   contact?: RawContact | null;
 };
@@ -51,11 +58,19 @@ export function normalizeConversation(raw: RawConversation): Conversation {
   const rawContact = raw.contact;
   if (!rawContact) return withConnection as Conversation;
 
-  const { contact_tags, ...contact } = rawContact;
+  const { contact_tags, contact_identities, ...contact } = rawContact;
   return {
     ...withConnection,
     contact: {
       ...contact,
+      // Absent embed (e.g. a select without it): keep whatever was there.
+      ...(contact_identities && {
+        identities: contact_identities.map((i) => ({
+          kind: i.kind,
+          externalId: i.external_id,
+          handle: i.handle ?? null,
+        })),
+      }),
       tags: (contact_tags ?? [])
         .map((ct) => ct.tags)
         .filter((t): t is Tag => t != null),

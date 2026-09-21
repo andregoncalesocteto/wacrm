@@ -13,6 +13,11 @@ import {
 } from "@/lib/inbox/conversations";
 import { ConversationScopeBadge } from "./conversation-scope-badge";
 import { cn } from "@/lib/utils";
+import {
+  contactDisplayName,
+  contactInitial,
+  matchesContactSearch,
+} from "@/lib/contacts/display-name";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
 import { Search, ChevronDown, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -210,10 +215,8 @@ export function ConversationList({
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((c) => {
-        const name = c.contact?.name?.toLowerCase() ?? "";
-        const phone = c.contact?.phone?.toLowerCase() ?? "";
         const lastMsg = c.last_message_text?.toLowerCase() ?? "";
-        return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
+        return matchesContactSearch(c.contact, q) || lastMsg.includes(q);
       });
     }
 
@@ -533,7 +536,7 @@ interface ConversationItemProps {
   t: ReturnType<typeof useTranslations>;
 }
 
-function ConversationItem({
+export function ConversationItem({
   conversation,
   isActive,
   onSelect,
@@ -542,8 +545,10 @@ function ConversationItem({
 }: ConversationItemProps) {
   const locale = useLocale();
   const contact = conversation.contact;
-  const displayName = contact?.name || contact?.phone || t("unknown");
-  const initials = displayName.charAt(0).toUpperCase();
+  const displayName =
+    (contact && contactDisplayName(contact, contact.identities)) ||
+    t("unknown");
+  const initials = contactInitial(displayName);
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
