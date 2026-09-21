@@ -25,6 +25,7 @@ import {
   type StoreRef,
 } from '@/lib/channels/ui';
 import { getChannelUi } from '@/lib/channels/ui-registry';
+import { CredentialsPanel } from '@/components/channels/credentials-panel';
 import { connectionChipState, type ConnectionChipState } from '@/lib/stores/ui';
 
 const CHIP_TONE: Record<ConnectionChipState, string> = {
@@ -373,6 +374,14 @@ export function ConnectionDetail({
           key={c.id}
           connection={c}
           storeId={c.store_id}
+          onChanged={onChanged}
+        />
+      ) : ui?.kind === 'form' ? (
+        <CredentialsPanel
+          key={c.id}
+          connection={c}
+          channelType={c.channel_type}
+          fields={ui.fields}
           onChanged={onChanged}
         />
       ) : null}

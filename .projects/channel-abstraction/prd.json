@@ -958,8 +958,8 @@
         "Verify in browser using dev-browser skill (o cartão do Telegram e o formulário; a conexão real depende de um bot e de um túnel, e fica como verificação manual)"
       ],
       "priority": 56,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser (pt, :3100): Telegram card with chips; generic form with masked token, pattern validation, hint + docs link; fake well-formed token -> POST 400 invalid_credentials shown as a translated message (Telegram was reachable). Seeded connection detail: token 'informado' + Substituir; Reconectar and replace show the https-guard reason. Wizard step 4 with the https-guard failure (Tentar de novo + fix hint) NOT reached in the browser: it needs a real bot token so getMe succeeds at creation; the code path is shared with WhatsApp. Real bot + tunnel = manual verification."
     },
     {
       "id": "US-051",

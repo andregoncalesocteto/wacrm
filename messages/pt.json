@@ -1940,6 +1940,17 @@
       "lastInbound": "Último recebimento {time}",
       "neverReceived": "Nada recebido ainda",
       "configure": "Configurar",
+      "credentials": {
+        "title": "Credenciais",
+        "provided": "informado",
+        "replace": "Substituir",
+        "help": "O segredo nunca é exibido de novo. Substituir salva o novo valor e reconecta o canal.",
+        "saveAndReconnect": "Salvar e reconectar",
+        "cancel": "Cancelar",
+        "saveFailed": "Não foi possível salvar as credenciais.",
+        "replacedOk": "Credenciais substituídas e canal reconectado.",
+        "replacedNotConnected": "Credenciais substituídas, mas o canal não reconectou: {reason}"
+      },
       "detail": {
         "reasonDisabled": "Conexão desativada: não envia nem recebe até ser ativada de novo.",
         "lastError": "Último erro",
@@ -2414,8 +2425,14 @@
         "fields": {
           "bot_token": {
             "label": "Token do bot",
-            "help": "Crie um bot com o @BotFather e cole o token. O webhook exige uma URL pública HTTPS."
+            "help": "Crie um bot com o @BotFather e cole o token (formato 123456789:AA...). Ele é guardado criptografado e nunca é exibido de novo."
           }
+        },
+        "connectHint": "Conectar registra um webhook, e o Telegram só entrega webhooks em uma URL pública HTTPS. Defina antes a NEXT_PUBLIC_SITE_URL com esse endereço (em desenvolvimento, use um túnel como cloudflared ou ngrok).",
+        "docsLabel": "Como criar o bot e o túnel",
+        "fix": {
+          "auth": "O Telegram recusou o token. Copie-o de novo no @BotFather (/mybots, depois API Token) e substitua na conexão.",
+          "invalid": "Defina a NEXT_PUBLIC_SITE_URL com o seu endereço público https:// (em desenvolvimento, um túnel como cloudflared ou ngrok; refaça o build do app no Docker) e clique em Tentar de novo."
         }
       }
     }

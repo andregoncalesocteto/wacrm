@@ -1950,6 +1950,17 @@
       "lastInbound": "Last received {time}",
       "neverReceived": "Nothing received yet",
       "configure": "Configure",
+      "credentials": {
+        "title": "Credentials",
+        "provided": "provided",
+        "replace": "Replace",
+        "help": "The secret is never shown again. Replacing it saves the new value and reconnects the channel.",
+        "saveAndReconnect": "Save and reconnect",
+        "cancel": "Cancel",
+        "saveFailed": "Could not save the credentials.",
+        "replacedOk": "Credentials replaced and channel reconnected.",
+        "replacedNotConnected": "Credentials replaced, but the channel did not reconnect: {reason}"
+      },
       "detail": {
         "reasonDisabled": "Connection disabled: it neither sends nor receives until enabled again.",
         "lastError": "Last error",
@@ -2426,8 +2437,14 @@
         "fields": {
           "bot_token": {
             "label": "Bot token",
-            "help": "Create a bot with @BotFather and paste its token. The webhook needs a public HTTPS URL."
+            "help": "Create a bot with @BotFather and paste its token (format 123456789:AA...). It is stored encrypted and never shown again."
           }
+        },
+        "connectHint": "Connecting registers a webhook, and Telegram only delivers webhooks to a public HTTPS URL. Set NEXT_PUBLIC_SITE_URL to that address first (in development, use a tunnel such as cloudflared or ngrok).",
+        "docsLabel": "How to create the bot and the tunnel",
+        "fix": {
+          "auth": "Telegram rejected the token. Copy it again from @BotFather (/mybots, then API Token) and replace it on the connection.",
+          "invalid": "Set NEXT_PUBLIC_SITE_URL to your public https:// address (a tunnel such as cloudflared or ngrok in development; rebuild the Docker app), then press Try again."
         }
       }
     }

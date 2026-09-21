@@ -211,7 +211,10 @@ export function ConnectChannelWizard({
         setCreateError(
           data.code === 'duplicate_connection'
             ? t('duplicate')
-            : (data.error ?? t('createFailed'))
+            : data.code === 'invalid_credentials' &&
+                tp.has(`${channelType}.fix.auth`)
+              ? tp(`${channelType}.fix.auth`)
+              : (data.error ?? t('createFailed'))
         );
         return;
       }
@@ -405,6 +408,7 @@ export function ConnectChannelWizard({
                     ? ui.fields
                     : provider?.descriptor.fields) ?? []) as DescriptorField[]
                 }
+                docsUrl={ui?.kind === 'form' ? ui.docsUrl : undefined}
                 submitting={creating}
                 onSubmit={(p) => void handleDescriptorSubmit(p)}
               />
@@ -437,7 +441,12 @@ export function ConnectChannelWizard({
                   </AlertTitle>
                   <AlertDescription className="text-sm text-red-100/80">
                     <p>{t('reason', { reason: outcome.reason })}</p>
-                    <p>{t(`fix.${outcome.hint}`)}</p>
+                    <p>
+                      {channelType &&
+                      tp.has(`${channelType}.fix.${outcome.hint}`)
+                        ? tp(`${channelType}.fix.${outcome.hint}`)
+                        : t(`fix.${outcome.hint}`)}
+                    </p>
                     <p className="text-red-100/60">{t('keptInList')}</p>
                   </AlertDescription>
                 </div>

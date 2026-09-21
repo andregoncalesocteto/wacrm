@@ -636,3 +636,11 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: typecheck clean, lint 0 errors/40 warnings, TZ=UTC tests 141 files/1736 green. Build not run (no routing/config change). No browser criteria.
 - **Learnings:** media by URL requires the URL to be publicly fetchable by Telegram; uploading multipart is the fallback if that bites for private storage URLs (US later).
 ---
+
+## 2026-09-21 - US-050
+- Telegram in the UI. Descriptor moved to client-safe telegram/descriptor.ts (bot_token secret, required, pattern ^\d+:[A-Za-z0-9_-]{30,}$), used by the provider AND the ui-registry (`kind:'form'`, fields + docsUrl). validateValues now applies `pattern` to `secret` too. i18n x4: Channels.providers.telegram.{connectHint,docsLabel,fix.auth,fix.invalid} + help reworded, Settings.channels.credentials.* (panel). Wizard: provider-specific fix hint overrides (`Channels.providers.<type>.fix.<hint>` when present), invalid_credentials from create shown as that channel's fix.auth text, DescriptorForm shows connectHint + docs link.
+- Existing connection: new components/channels/credentials-panel.tsx rendered by connection-detail for registry `form` entries: secret "informado" + Substituir -> PATCH credentials then POST connect (PATCH replaces the WHOLE credentials blob, dropping secret_token, so reconnect is mandatory to regenerate it).
+- docs/telegram.md (BotFather, connection model, cloudflared/ngrok, NEXT_PUBLIC_SITE_URL rebuild, fixtures + curl, limitations incl. "started the bot" NOT confirmed, security); linked from README and docs/docker.md.
+- Tests: telegram/descriptor.test.ts (pattern, payload, chips). Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC 142 files/1740 tests. Build not run (no routing/config change).
+- **Learnings:** dev-browser scripts time out at 30s: split them and use short click timeouts. Wizard buttons are "Continuar" (not Avançar). The QA account's stores must use the profile account_id (52762fb0...), not the one in older seed scripts. A fake token never reaches wizard step 4 (getMe fails at create with 400 invalid_credentials); the https guard message was seen via Reconectar/Substituir in the detail. Screenshots land in ~/.dev-browser/tmp.
+---

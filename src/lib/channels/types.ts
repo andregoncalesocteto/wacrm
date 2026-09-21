@@ -353,7 +353,7 @@ export interface DescriptorField {
   required?: boolean;
   /** `select` only: the allowed values (labels come from i18n). */
   options?: string[];
-  /** `text` only: a regular expression the value must match. */
+  /** `text` and `secret`: a regular expression the value must match. */
   pattern?: string;
 }
 

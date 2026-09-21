@@ -35,7 +35,7 @@ export function validateValues(
       errors[f.name] = 'pattern';
       continue;
     }
-    if (f.type === 'text' && f.pattern) {
+    if ((f.type === 'text' || f.type === 'secret') && f.pattern) {
       let ok = true;
       try {
         ok = new RegExp(f.pattern).test(v);

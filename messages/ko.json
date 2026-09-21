@@ -1950,6 +1950,17 @@
       "lastInbound": "마지막 수신 {time}",
       "neverReceived": "아직 수신된 내용 없음",
       "configure": "설정",
+      "credentials": {
+        "title": "자격 증명",
+        "provided": "입력됨",
+        "replace": "교체",
+        "help": "비밀 값은 다시 표시되지 않습니다. 교체하면 새 값을 저장하고 채널을 다시 연결합니다.",
+        "saveAndReconnect": "저장 후 다시 연결",
+        "cancel": "취소",
+        "saveFailed": "자격 증명을 저장하지 못했습니다.",
+        "replacedOk": "자격 증명을 교체하고 채널을 다시 연결했습니다.",
+        "replacedNotConnected": "자격 증명을 교체했지만 채널이 다시 연결되지 않았습니다: {reason}"
+      },
       "detail": {
         "reasonDisabled": "연결이 비활성화되었습니다. 다시 활성화할 때까지 보내지도 받지도 않습니다.",
         "lastError": "마지막 오류",
@@ -2426,8 +2437,14 @@
         "fields": {
           "bot_token": {
             "label": "봇 토큰",
-            "help": "@BotFather로 봇을 만들고 토큰을 붙여넣으세요. 웹훅에는 공개 HTTPS URL이 필요합니다."
+            "help": "@BotFather로 봇을 만들고 토큰(형식 123456789:AA...)을 붙여넣으세요. 암호화되어 저장되며 다시 표시되지 않습니다."
           }
+        },
+        "connectHint": "연결하면 웹훅이 등록되며, Telegram은 공개 HTTPS URL로만 웹훅을 전달합니다. 먼저 NEXT_PUBLIC_SITE_URL을 해당 주소로 설정하세요(개발 환경에서는 cloudflared나 ngrok 같은 터널을 사용).",
+        "docsLabel": "봇과 터널 설정 방법",
+        "fix": {
+          "auth": "Telegram이 토큰을 거부했습니다. @BotFather(/mybots, API Token)에서 다시 복사해 연결의 토큰을 교체하세요.",
+          "invalid": "NEXT_PUBLIC_SITE_URL을 공개 https:// 주소로 설정한 뒤(개발 환경은 cloudflared나 ngrok 터널, Docker 앱은 재빌드) 다시 시도를 누르세요."
         }
       }
     }

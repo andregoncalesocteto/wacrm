@@ -94,6 +94,9 @@ deletes them).
   `META_APP_SECRET`, …) is read at **runtime** from `.env.local` via
   `env_file` and is never baked into the image — safe to change with
   just a container restart.
+- Connecting a Telegram bot needs `NEXT_PUBLIC_SITE_URL` to be a public
+  `https://` URL, so changing it means a rebuild. See
+  [docs/telegram.md](./telegram.md).
 
 ## Plain Docker (no Compose)
 

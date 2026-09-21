@@ -28,6 +28,8 @@ interface Props {
   fields: DescriptorField[];
   submitting: boolean;
   disabled?: boolean;
+  /** Optional docs page linked from the provider's connect hint. */
+  docsUrl?: string;
   onSubmit: (payload: DescriptorFormSubmit) => void;
 }
 
@@ -42,6 +44,7 @@ export function DescriptorForm({
   fields,
   submitting,
   disabled,
+  docsUrl,
   onSubmit,
 }: Props) {
   const t = useTranslations('Settings.channels.wizard');
@@ -78,6 +81,24 @@ export function DescriptorForm({
 
   return (
     <form onSubmit={submit} className="max-w-xl space-y-4" noValidate>
+      {tp.has('connectHint') ? (
+        <p className="border-border bg-muted/40 text-muted-foreground rounded-md border p-3 text-xs">
+          {tp('connectHint')}
+          {docsUrl && tp.has('docsLabel') ? (
+            <>
+              {' '}
+              <a
+                href={docsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                {tp('docsLabel')}
+              </a>
+            </>
+          ) : null}
+        </p>
+      ) : null}
       <div className="space-y-1.5">
         <Label htmlFor="df-display-name">{t('displayName')}</Label>
         <Input

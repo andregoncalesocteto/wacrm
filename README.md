@@ -170,6 +170,8 @@ Key pages:
   trace id to quote to Meta support
 - [Several WABAs on one deployment](./docs/multi-waba.md) — one Meta
   App or several; how `META_APP_SECRET` takes a comma-separated list
+- [Telegram channel](./docs/telegram.md) — create the bot, test on
+  `localhost` with a public HTTPS tunnel, and the channel's limitations
 
 ## Stack
 

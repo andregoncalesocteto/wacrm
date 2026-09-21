@@ -9,6 +9,7 @@ import {
 } from './outbound';
 import { connect, deriveExternalId, disconnect, health } from './lifecycle';
 import { downloadMedia, parse, resolveConnection, verify } from './inbound';
+import { telegramDescriptor } from './descriptor';
 import { telegramConfigSchema, telegramCredentialsSchema } from './schemas';
 
 /**
@@ -35,17 +36,7 @@ export const telegramCapabilities: Capabilities = {
 
 export const telegramProvider: ChannelProvider = {
   type: 'telegram',
-  descriptor: {
-    panel: 'form',
-    fields: [
-      {
-        name: 'bot_token',
-        target: 'credentials',
-        type: 'secret',
-        required: true,
-      },
-    ],
-  },
+  descriptor: telegramDescriptor,
   identityKinds: [CHAT_ID_KIND],
   capabilities: telegramCapabilities,
   configSchema: telegramConfigSchema,

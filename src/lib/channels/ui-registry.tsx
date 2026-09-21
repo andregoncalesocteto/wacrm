@@ -3,6 +3,7 @@ import { MessageCircle, Send, type LucideIcon } from 'lucide-react';
 
 import type { DescriptorField } from './types';
 import type { ChannelConnectionRow } from './ui';
+import { telegramDescriptor } from './providers/telegram/descriptor';
 import { WhatsAppConnectionPanel } from './providers/whatsapp-cloud/ui/whatsapp-connection-panel';
 
 /**
@@ -37,6 +38,8 @@ export interface PanelEntry extends EntryBase {
 export interface FormEntry extends EntryBase {
   kind: 'form';
   fields: DescriptorField[];
+  /** Public docs page the connect step links to (optional). */
+  docsUrl?: string;
 }
 
 export type ChannelUiEntry = PanelEntry | FormEntry;
@@ -47,7 +50,13 @@ const REGISTRY: Record<string, ChannelUiEntry> = {
     icon: MessageCircle,
     Panel: WhatsAppConnectionPanel,
   },
-  telegram: { kind: 'form', icon: Send, fields: [] },
+  telegram: {
+    kind: 'form',
+    icon: Send,
+    fields: telegramDescriptor.fields,
+    docsUrl:
+      'https://github.com/andregoncalesocteto/wacrm/blob/main/docs/telegram.md',
+  },
 };
 
 export function getChannelUi(channelType: string): ChannelUiEntry | null {
