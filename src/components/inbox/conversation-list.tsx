@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
   deriveScopeOptions,
+  unreadByStore,
   matchesContactFilters,
   matchesConversationScope,
   NO_SCOPE_FILTERS,
@@ -174,6 +175,8 @@ export function ConversationList({
     (type: string) => (tChannel.has(type) ? tChannel(type) : type),
     [tChannel]
   );
+  // Unread conversations per store (only surfaced with more than one connection).
+  const unreadStores = useMemo(() => unreadByStore(conversations), [conversations]);
   // The filters only apply while their UI is visible.
   const effectiveScope = showScopeUi ? scope : NO_SCOPE_FILTERS;
 
@@ -384,10 +387,13 @@ export function ConversationList({
                 label={t("store")}
                 allLabel={t("allStores")}
                 selected={scope.storeId}
-                options={scopeOptions.stores.map((s) => ({
-                  value: s.id,
-                  label: s.name,
-                }))}
+                options={scopeOptions.stores.map((s) => {
+                  const n = unreadStores.get(s.id) ?? 0;
+                  return {
+                    value: s.id,
+                    label: n > 0 ? `${s.name} (${n})` : s.name,
+                  };
+                })}
                 onChange={(storeId) => setScope((p) => ({ ...p, storeId }))}
               />
               <ScopeDropdown
@@ -417,6 +423,35 @@ export function ConversationList({
             </>
           )}
         </div>
+
+        {showScopeUi && unreadStores.size > 0 && (
+          <div
+            className="flex flex-wrap items-center gap-1 px-1 pt-1.5"
+            data-testid="unread-by-store"
+          >
+            <span className="text-[11px] text-muted-foreground">
+              {t("unreadByStore")}
+            </span>
+            {scopeOptions.stores
+              .filter((s) => unreadStores.has(s.id))
+              .map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() =>
+                    setScope((p) => ({
+                      ...p,
+                      storeId: p.storeId === s.id ? null : s.id,
+                    }))
+                  }
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary hover:bg-primary/20"
+                >
+                  <span className="max-w-24 truncate">{s.name}</span>
+                  <span className="font-semibold">{unreadStores.get(s.id)}</span>
+                </button>
+              ))}
+          </div>
+        )}
 
         {hasContactFilters && (
           <div className="flex flex-wrap items-center gap-1">

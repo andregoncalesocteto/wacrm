@@ -136,7 +136,10 @@
   },
   "Inbox": {
     "page": {
-      "whatsappNotConnected": "O WhatsApp® não está conectado. Vá em Configurações para conectar sua conta."
+      "whatsappNotConnected": "O WhatsApp® não está conectado. Vá em Configurações para conectar sua conta.",
+      "connectionDisconnected": "A loja {store} está desconectada — mensagens dessa loja podem não estar chegando.",
+      "connectionNeedsAction": "A loja {store} precisa de ação na conexão — mensagens dessa loja podem não estar chegando.",
+      "connectionWarningLink": "Ver canais"
     },
     "conversationList": {
       "searchPlaceholder": "Buscar conversas...",
@@ -158,9 +161,12 @@
       "allConnections": "Todas as conexões",
       "channel": "Canal",
       "allChannels": "Todos os canais",
-      "disabled": "Desativada"
+      "disabled": "Desativada",
+      "unreadByStore": "Não lidas por loja"
     },
     "messageThread": {
+      "connectionDisabled": "Esta conexão está desativada; reative-a em Configurações → Canais para responder",
+      "connectionDisabledLink": "Abrir Canais",
       "backToConversations": "Voltar às conversas",
       "hideContactPanel": "Ocultar painel do contato",
       "showContactPanel": "Mostrar painel do contato",

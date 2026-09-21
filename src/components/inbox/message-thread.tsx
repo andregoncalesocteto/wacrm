@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
+import { useCan } from "@/hooks/use-can";
+import { isConversationConnectionDisabled } from "@/lib/inbox/conversations";
 import { usePresence } from "@/hooks/use-presence";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
@@ -27,6 +30,7 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  PowerOff,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useFormatter, useTranslations } from "next-intl";
@@ -179,6 +183,9 @@ export function MessageThread({
   const tQuote = useTranslations("Inbox.replyQuote");
 
   const { user } = useAuth();
+  const canEditSettings = useCan("edit-settings");
+  // A disabled connection keeps its history readable but cannot send.
+  const connectionDisabled = isConversationConnectionDisabled(conversation);
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -475,7 +482,7 @@ export function MessageThread({
 
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
-      if (!conversation) return;
+      if (!conversation || connectionDisabled) return;
 
       const tempId = `temp-${Date.now()}`;
 
@@ -527,12 +534,12 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, t]
+    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t]
   );
 
   const handleSendMedia = useCallback(
     async (payload: SendMediaPayload) => {
-      if (!conversation) return;
+      if (!conversation || connectionDisabled) return;
 
       // Documents show their filename in our own bubble (and to the
       // recipient as the Meta caption when no caption was typed); other
@@ -593,12 +600,12 @@ export function MessageThread({
         void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, t],
+    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t],
   );
 
   const handleSendInteractive = useCallback(
     async (payload: InteractiveMessagePayload, replyToId?: string) => {
-      if (!conversation) return;
+      if (!conversation || connectionDisabled) return;
 
       const tempId = `temp-${Date.now()}`;
       // Optimistic bubble — renders the buttons/list immediately via the
@@ -646,7 +653,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, t],
+    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t],
   );
 
   const handleStatusChange = useCallback(
@@ -677,7 +684,7 @@ export function MessageThread({
         buttonParams?: Record<number, string>;
       },
     ) => {
-      if (!conversation) return;
+      if (!conversation || connectionDisabled) return;
 
       const renderedBody = renderTemplateBody(template.body_text, values.body);
       const tempId = `temp-${Date.now()}`;
@@ -735,7 +742,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, t],
+    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -1191,18 +1198,38 @@ export function MessageThread({
         }}
       />
 
-      {/* Composer */}
-      <MessageComposer
-        conversationId={conversation.id}
-        storeId={conversation.connection?.store_id ?? null}
-        sessionExpired={sessionInfo.expired}
-        onSend={handleSend}
-        onSendMedia={handleSendMedia}
-        onSendInteractive={handleSendInteractive}
-        onOpenTemplates={handleOpenTemplates}
-        replyTo={replyTo}
-        onClearReply={() => setReplyTo(null)}
-      />
+      {/* Composer — replaced by a read-only notice when the conversation's
+          connection is disabled (history stays readable, nothing is sent). */}
+      {connectionDisabled ? (
+        <div
+          role="status"
+          data-testid="composer-connection-disabled"
+          className="flex shrink-0 flex-wrap items-center justify-center gap-x-2 gap-y-1 border-t border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+        >
+          <PowerOff className="h-4 w-4 shrink-0" />
+          <span>{t("connectionDisabled")}</span>
+          {canEditSettings && (
+            <Link
+              href="/settings?tab=channels"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              {t("connectionDisabledLink")}
+            </Link>
+          )}
+        </div>
+      ) : (
+        <MessageComposer
+          conversationId={conversation.id}
+          storeId={conversation.connection?.store_id ?? null}
+          sessionExpired={sessionInfo.expired}
+          onSend={handleSend}
+          onSendMedia={handleSendMedia}
+          onSendInteractive={handleSendInteractive}
+          onOpenTemplates={handleOpenTemplates}
+          replyTo={replyTo}
+          onClearReply={() => setReplyTo(null)}
+        />
+      )}
 
       <TemplatePicker
         open={templateModalOpen}

@@ -1,11 +1,13 @@
 "use client";
 
-import { Suspense, useState, useCallback, useEffect, useRef } from "react";
+import { Suspense, useState, useCallback, useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
+  downConnections,
   normalizeConversation,
   shouldShowScopeUi,
 } from "@/lib/inbox/conversations";
@@ -21,6 +23,15 @@ import { cn } from "@/lib/utils";
 // Remembers the agent's show/hide choice for the desktop contact panel
 // across reloads and sessions (device-scoped, like the theme prefs).
 const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
+
+interface ConnectionRow {
+  id: string;
+  channel_type: string;
+  display_name: string;
+  status: string;
+  disabled_at: string | null;
+  store: { name: string } | null;
+}
 
 // `useSearchParams` (the `?c=<id>` deep link below) requires a Suspense
 // boundary or the production build bails to CSR and errors out. Thin
@@ -54,8 +65,43 @@ function InboxPageInner() {
   );
   // All of the account's connections (any status), to decide whether the
   // store/channel badges and filters are worth showing (more than one).
-  const [connectionIds, setConnectionIds] = useState<string[] | null>(null);
-  const showScopeUi = shouldShowScopeUi(connectionIds);
+  const [connections, setConnections] = useState<ConnectionRow[] | null>(null);
+  const showScopeUi = shouldShowScopeUi(connections);
+  const down = downConnections(connections);
+  // The embedded `conversation.connection` is fetched once and realtime
+  // conversation payloads never carry it, so overlay the live status /
+  // disabled state from the connections list (kept fresh by its own
+  // realtime subscription) to keep badges and the composer lock current.
+  const withLiveConnection = useCallback(
+    (c: Conversation): Conversation => {
+      const live = connections?.find(
+        (x) => x.id === (c.connection?.id ?? c.connection_id)
+      );
+      if (!live || !c.connection) return c;
+      if (
+        live.status === c.connection.status &&
+        live.disabled_at === c.connection.disabled_at
+      )
+        return c;
+      return {
+        ...c,
+        connection: {
+          ...c.connection,
+          status: live.status,
+          disabled_at: live.disabled_at,
+        },
+      };
+    },
+    [connections]
+  );
+  const liveConversations = useMemo(
+    () => conversations.map(withLiveConnection),
+    [conversations, withLiveConnection]
+  );
+  const liveActiveConversation = useMemo(
+    () => (activeConversation ? withLiveConnection(activeConversation) : null),
+    [activeConversation, withLiveConnection]
+  );
   /**
    * Bumped whenever we want children (ConversationList, MessageThread)
    * to refetch from the DB — used as a safety net against missed
@@ -181,15 +227,21 @@ function InboxPageInner() {
     }
   }, []);
 
-  // Check WhatsApp connection status on mount
-  useEffect(() => {
-    const checkConnection = async () => {
-      const supabase = createClient();
+  // Account id, resolved once; the connection loader below reuses it.
+  const accountIdRef = useRef<string | null>(null);
+
+  // Load the account's connections (any status). Drives the "WhatsApp not
+  // connected" banner, the down-connection warning and whether the
+  // store/channel UI is shown. Called on mount, on every change of
+  // `channel_connections` (realtime, below) and on each resync (tab focus,
+  // realtime reconnect).
+  const loadConnections = useCallback(async () => {
+    const supabase = createClient();
+    if (!accountIdRef.current) {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       const user = session?.user;
-
       if (!user) return;
 
       // The connection is per-account, so filtering by user_id would
@@ -207,26 +259,54 @@ function InboxPageInner() {
         setWhatsappConnected(false);
         return;
       }
+      accountIdRef.current = accountId;
+    }
 
-      const { data } = await supabase
-        .from("channel_connections")
-        .select("status, disabled_at")
-        .eq("account_id", accountId)
-        .eq("channel_type", "whatsapp_cloud");
-
-      setWhatsappConnected(
-        (data ?? []).some((c) => c.status === "connected" && !c.disabled_at)
-      );
-
-      const { data: all } = await supabase
-        .from("channel_connections")
-        .select("id")
-        .eq("account_id", accountId);
-      setConnectionIds((all ?? []).map((c) => c.id as string));
-    };
-
-    checkConnection();
+    const { data } = await supabase
+      .from("channel_connections")
+      .select(
+        "id, channel_type, display_name, status, disabled_at, store:stores(name)"
+      )
+      .eq("account_id", accountIdRef.current);
+    const rows = ((data ?? []) as unknown[]).map((r) => {
+      const row = r as ConnectionRow & { store?: unknown };
+      const store = Array.isArray(row.store) ? row.store[0] : row.store;
+      return { ...row, store: (store as ConnectionRow["store"]) ?? null };
+    });
+    setConnections(rows);
+    setWhatsappConnected(
+      rows.some(
+        (c) =>
+          c.channel_type === "whatsapp_cloud" &&
+          c.status === "connected" &&
+          !c.disabled_at
+      )
+    );
   }, []);
+
+  useEffect(() => {
+    void loadConnections();
+  }, [loadConnections, resyncToken]);
+
+  // Connection status changes (disconnect, needs_action, disable) refresh the
+  // warning live. RLS scopes the events to the account; any event just
+  // refetches the (small) connection list.
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("inbox-connections-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "channel_connections" },
+        () => {
+          void loadConnections();
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadConnections]);
 
   // Handle realtime message events
   const handleMessageEvent = useCallback(
@@ -581,12 +661,43 @@ function InboxPageInner() {
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
-      {whatsappConnected === false && (
+      {whatsappConnected === false && !(showScopeUi && down.length > 0) && (
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
           <WifiOff className="h-4 w-4 text-amber-400" />
           <p className="text-xs text-amber-400">
             {t("whatsappNotConnected")}
           </p>
+        </div>
+      )}
+
+      {/* With several connections: name every store that is not receiving
+          (disconnected / needs action, not disabled). With one connection the
+          banner above keeps its historical behaviour. */}
+      {showScopeUi && down.length > 0 && (
+        <div
+          role="alert"
+          data-testid="down-connections-banner"
+          className="flex shrink-0 flex-col items-center justify-center gap-0.5 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2"
+        >
+          {down.map((c) => (
+            <div key={c.id} className="flex items-center gap-2">
+              <WifiOff className="h-4 w-4 shrink-0 text-amber-400" />
+              <p className="text-xs text-amber-400">
+                {t(
+                  c.status === "needs_action"
+                    ? "connectionNeedsAction"
+                    : "connectionDisconnected",
+                  { store: c.store?.name ?? c.display_name }
+                )}{" "}
+                <Link
+                  href="/settings?tab=channels"
+                  className="underline underline-offset-2"
+                >
+                  {t("connectionWarningLink")}
+                </Link>
+              </p>
+            </div>
+          ))}
         </div>
       )}
 
@@ -603,7 +714,7 @@ function InboxPageInner() {
           <ConversationList
             activeConversationId={activeConversation?.id ?? null}
             onSelect={handleSelectConversation}
-            conversations={conversations}
+            conversations={liveConversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
             showScopeUi={showScopeUi}
@@ -627,7 +738,7 @@ function InboxPageInner() {
           )}
         >
           <MessageThread
-            conversation={activeConversation}
+            conversation={liveActiveConversation}
             contact={activeContact}
             messages={messages}
             onMessagesLoaded={handleMessagesLoaded}

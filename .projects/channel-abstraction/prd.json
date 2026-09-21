@@ -836,8 +836,8 @@
         "Verify in browser using dev-browser skill (aviso, contagens por loja e conexão desativada)"
       ],
       "priority": 49,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Unread per store = conversations with unread (same unit as sidebar total). Down banner only with >1 connection; with one connection the old whatsappNotConnected banner is unchanged. Reactions/other non-composer send paths are not gated (out of scope)."
     },
     {
       "id": "US-045",

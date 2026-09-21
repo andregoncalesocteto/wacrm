@@ -208,3 +208,52 @@ export function filterQuickRepliesForStore<
     (r) => r.store_id == null || (storeId != null && r.store_id === storeId)
   );
 }
+
+/**
+ * Conversations with unread messages, grouped by store id. Same unit as the
+ * sidebar total (`useTotalUnread`): a conversation counts once when its
+ * `unread_count` is above zero. Conversations without a known store are left
+ * out. Stores with nothing unread are absent from the map.
+ */
+export function unreadByStore(
+  conversations: readonly Conversation[]
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const c of conversations) {
+    if ((c.unread_count ?? 0) <= 0) continue;
+    const storeId = c.connection?.store_id;
+    if (!storeId) continue;
+    counts.set(storeId, (counts.get(storeId) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export interface ConnectionHealth {
+  id: string;
+  status: string;
+  disabled_at?: string | null;
+  display_name?: string;
+  store?: { name: string } | null;
+}
+
+/**
+ * Connections that should be receiving but are not: status `disconnected` or
+ * `needs_action`, and NOT disabled (a disabled connection is intentionally
+ * off, not broken).
+ */
+export function downConnections<T extends ConnectionHealth>(
+  connections: readonly T[] | null | undefined
+): T[] {
+  return (connections ?? []).filter(
+    (c) =>
+      !c.disabled_at &&
+      (c.status === 'disconnected' || c.status === 'needs_action')
+  );
+}
+
+/** Whether the conversation's connection is disabled (read-only history). */
+export function isConversationConnectionDisabled(
+  conversation: Pick<Conversation, 'connection'> | null | undefined
+): boolean {
+  return !!conversation?.connection?.disabled_at;
+}
