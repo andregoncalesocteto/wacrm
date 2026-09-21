@@ -210,6 +210,15 @@ BEGIN
     RAISE EXCEPTION 'the old unique indexes must be gone (migration 047)';
   END IF;
 
+  -- 048: filter_contacts_by_tags searches contact_identities.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc
+    WHERE oid = 'public.filter_contacts_by_tags(uuid[], text, integer, integer)'::regprocedure
+      AND pg_get_functiondef(oid) LIKE '%contact_identities%'
+  ) THEN
+    RAISE EXCEPTION 'filter_contacts_by_tags must search contact_identities (migration 048)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

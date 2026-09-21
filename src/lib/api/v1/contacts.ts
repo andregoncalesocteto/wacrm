@@ -9,7 +9,11 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
+import {
+  ensurePhoneIdentity,
+  findDuplicateContact,
+  isUniqueViolation,
+} from '@/lib/contacts/dedupe';
 import { resolveImportTagIds } from '@/lib/contacts/resolve-import-tags';
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
@@ -92,7 +96,8 @@ export interface ContactInput {
 }
 
 /**
- * Find (by fuzzy phone match) or create a contact in `accountId`.
+ * Find (by fuzzy phone match, on the column or a whatsapp:phone identity)
+ * or create a contact in `accountId`.
  * Returns the contact id and whether it was created. Reuses the shared
  * `findExistingContact` dedupe + unique-violation race backstop so an
  * API-created contact is indistinguishable from a webhook-created one.
@@ -111,7 +116,7 @@ export async function findOrCreateContact(
     );
   }
 
-  const existing = await findExistingContact(db, accountId, sanitized);
+  const existing = await findDuplicateContact(db, accountId, sanitized);
   if (existing) return { id: existing.id, created: false };
 
   const { data: created, error } = await db
@@ -131,13 +136,14 @@ export async function findOrCreateContact(
     // Lost a race against a concurrent create — the unique index
     // rejected the duplicate. Re-resolve to the winner.
     if (isUniqueViolation(error)) {
-      const raced = await findExistingContact(db, accountId, sanitized);
+      const raced = await findDuplicateContact(db, accountId, sanitized);
       if (raced) return { id: raced.id, created: false };
     }
     console.error('[api/v1/contacts] create error:', error);
     throw new ContactError('Failed to create contact', 500);
   }
 
+  await ensurePhoneIdentity(db, accountId, created.id, sanitized);
   return { id: created.id, created: true };
 }
 
@@ -185,9 +191,7 @@ export async function setContactTags(
   if (readErr) {
     throw new ContactError('Failed to read contact tags', 500);
   }
-  const existing = new Set(
-    (current ?? []).map((r) => r.tag_id as string)
-  );
+  const existing = new Set((current ?? []).map((r) => r.tag_id as string));
 
   const toAdd = [...desired].filter((id) => !existing.has(id));
   const toRemove = [...existing].filter((id) => !desired.has(id));

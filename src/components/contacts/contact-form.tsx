@@ -7,7 +7,8 @@ import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag } from '@/types';
 import {
-  findExistingContact,
+  ensurePhoneIdentity,
+  findDuplicateContact,
   isExactMatch,
   isUniqueViolation,
   type ExistingContact,
@@ -95,7 +96,7 @@ export function ContactForm({
     }
     setCheckingDup(true);
     try {
-      const existing = await findExistingContact(supabase, accountId, value);
+      const existing = await findDuplicateContact(supabase, accountId, value);
       setDupMatch(
         existing
           ? { contact: existing, exact: isExactMatch(existing, value) }
@@ -168,6 +169,14 @@ export function ContactForm({
           })
           .eq('id', contactId);
         if (error) throw error;
+        if (showPhone) {
+          await ensurePhoneIdentity(
+            supabase,
+            accountId,
+            contactId,
+            phone.trim()
+          );
+        }
       } else {
         const { data, error } = await supabase
           .from('contacts')
@@ -183,6 +192,7 @@ export function ContactForm({
           .single();
         if (error) throw error;
         contactId = data.id;
+        await ensurePhoneIdentity(supabase, accountId, data.id, phone.trim());
       }
 
       // Sync tags
@@ -215,7 +225,7 @@ export function ContactForm({
       if (isUniqueViolation(err)) {
         toast.error(t('toastConflict'));
         if (!isEdit && accountId) {
-          const existing = await findExistingContact(
+          const existing = await findDuplicateContact(
             supabase,
             accountId,
             phone.trim()
@@ -291,7 +301,11 @@ export function ContactForm({
                         className="font-medium underline underline-offset-2 hover:no-underline"
                       >
                         {t('viewExisting', {
-                          name: dupMatch.contact.name || dupMatch.contact.phone,
+                          name:
+                            dupMatch.contact.name ||
+                            dupMatch.contact.phone ||
+                            dupMatch.contact.matchedPhone ||
+                            '',
                         })}
                       </button>
                     )}

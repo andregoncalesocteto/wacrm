@@ -61,7 +61,6 @@ import { useContactDisplay } from '@/hooks/use-contact-display';
 import { identitiesFromRows } from '@/lib/contacts/display-name';
 
 const PAGE_SIZE = 25;
-const IDENTITY_SEARCH_LIMIT = 200;
 
 interface ContactWithTags extends Contact {
   tags?: Tag[];
@@ -138,11 +137,13 @@ export default function ContactsPage() {
     let contactRows: Contact[];
     let count: number;
 
-    if (selectedTagIds.length > 0) {
-      // Tag filter active — resolve it server-side (join + distinct +
+    if (selectedTagIds.length > 0 || term) {
+      // Tag filter and/or search — resolve it server-side (join + distinct +
       // windowed total count + pagination) so a tag covering many
       // contacts can't silently truncate the result or overflow an IN
-      // clause. See migration 025_filter_contacts_by_tags.
+      // clause. The search also matches contact_identities (handle /
+      // external id) through an EXISTS subquery; an empty tag list means "no
+      // tag filter". See migrations 025 and 048 (filter_contacts_by_tags).
       const { data, error } = await supabase.rpc('filter_contacts_by_tags', {
         p_tag_ids: selectedTagIds,
         p_search: term || null,
@@ -159,34 +160,11 @@ export default function ContactsPage() {
       contactRows = rows.map((r) => r.contact);
       count = rows.length > 0 ? Number(rows[0].total_count) : 0;
     } else {
-      let query = supabase
+      const query = supabase
         .from('contacts')
         .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
         .range(from, to);
-
-      if (term) {
-        const like = `%${term}%`;
-        // Also match contacts by identity handle / external id (a Telegram
-        // contact has no phone to match). Server-side pre-lookup of the ids,
-        // capped: beyond IDENTITY_SEARCH_LIMIT identity matches the rest are
-        // not searchable by handle (name/email/phone still are). The tag-filter
-        // RPC (p_search) only knows name/phone/email.
-        const { data: idHits } = await supabase
-          .from('contact_identities')
-          .select('contact_id')
-          .or(`handle.ilike.${like},external_id.ilike.${like}`)
-          .limit(IDENTITY_SEARCH_LIMIT);
-        const idList = [...new Set((idHits ?? []).map((r) => r.contact_id))];
-        query = query.or(
-          [
-            `name.ilike.${like}`,
-            `phone.ilike.${like}`,
-            `email.ilike.${like}`,
-            ...(idList.length > 0 ? [`id.in.(${idList.join(',')})`] : []),
-          ].join(',')
-        );
-      }
 
       const { data, count: exactCount, error } = await query;
       if (seq !== fetchSeq.current) return; // superseded by a newer fetch

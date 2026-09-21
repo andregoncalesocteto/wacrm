@@ -1062,7 +1062,7 @@
         "Verify in browser using dev-browser skill (busca por `@username` e o aviso de duplicidade)"
       ],
       "priority": 62,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

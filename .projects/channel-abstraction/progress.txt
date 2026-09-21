@@ -694,3 +694,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Browser (pt :3100, QA account): WA contact unchanged; TG named/nameless in list ("@maria_tg · Telegram"), handle search, detail header, deal cards (Deal TG shows "Maria Telegram", anon shows "@anon_tg"), dashboard feed "New contact: @anon_tg", broadcast audience shows 2 not eligible with reason, count 1. Seeds removed.
 - **Learnings:** prettier over touched files reformatted whole files (big diffs, e.g. dashboard/queries.ts, contacts page). Dashboard feed strings are hardcoded English (pre-existing). Checks: typecheck, lint 0 errors, TZ=UTC 148 files/1792 tests, build OK.
 ---
+
+## 2026-09-21 - US-054
+- Search: migration 048 replaces filter_contacts_by_tags (same signature/return): search also matches contact_identities handle/external_id via EXISTS (leading '@' ignored for the identity match), and an empty/NULL p_tag_ids now means "no tag filter". The Contacts page uses the RPC for ANY search or tag filter (direct query only when neither), so the capped 200-id pre-lookup (IDENTITY_SEARCH_LIMIT) is gone.
+- Duplicates: dedupe.ts gained findExistingContactByPhoneIdentity, findDuplicateContact (contacts.phone first, then whatsapp:phone identities; result carries matchedPhone, used by isExactMatch) and ensurePhoneIdentity (digits-only upsert, ON CONFLICT DO NOTHING). contact-form uses them for the duplicate check ("ver existente" unchanged) and inserts the identity on create (and on edit when the phone field is shown); v1 findOrCreateContact (also used by broadcast-core) uses findDuplicateContact and inserts the identity on create. resolveOrCreateContact/findExistingContact untouched (webhook path).
+- Not done: CSV import still dedupes by contacts.phone only; editing a phone leaves the old phone identity in place.
+- verify-schema.sql asserts the function references contact_identities. Dev DB migrate + isolated replay (48 applied) pass.
+- Tests: dedupe.test (identity match, fuzzy, other kind/account, preference, ensurePhoneIdentity), contacts.test (v1 does not duplicate; creates identity). No i18n keys added.
+- Browser (pt :3100, QA): seeded contact with empty phone + whatsapp:phone identity + telegram handle + tag: "@zedseed" finds it with and without the tag filter (nomatch -> none); new-contact form with the same phone shows "Já existe um contato com este número" + "Ver Zed Seed54"; creating a new contact inserted its whatsapp:phone identity. Seeds removed.
+- **Learnings:** the RPC (SECURITY INVOKER) cannot be exercised from psql as postgres w/o JWT claims; verified through the app. Lint baseline is 43 warnings now (not 41). Checks: typecheck, lint 0 errors, TZ=UTC 148 files/1799 tests, build OK.
+---

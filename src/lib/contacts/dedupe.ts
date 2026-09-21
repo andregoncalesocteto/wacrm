@@ -1,5 +1,5 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizePhone, phonesMatch } from "@/lib/whatsapp/phone-utils";
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils';
 
 /**
  * Contact de-duplication helpers, shared by the WhatsApp webhook, the
@@ -23,8 +23,16 @@ export interface ExistingContact {
   id: string;
   phone: string;
   name?: string | null;
+  /**
+   * Set when the contact was found through a `whatsapp:phone` IDENTITY
+   * (its `phone` column may be blank): the number that identity holds.
+   */
+  matchedPhone?: string;
   [key: string]: unknown;
 }
+
+/** Identity kind holding a WhatsApp phone number (see channels/identity.ts). */
+const PHONE_IDENTITY_KIND = 'whatsapp:phone';
 
 /**
  * Find an existing contact in `accountId` whose phone matches `phone`,
@@ -35,7 +43,7 @@ export interface ExistingContact {
 export async function findExistingContact(
   db: SupabaseClient,
   accountId: string,
-  phone: string,
+  phone: string
 ): Promise<ExistingContact | null> {
   const normalized = normalizePhone(phone);
   if (!normalized) return null;
@@ -43,10 +51,10 @@ export async function findExistingContact(
   const suffix = normalized.length >= 8 ? normalized.slice(-8) : normalized;
 
   const { data, error } = await db
-    .from("contacts")
-    .select("*")
-    .eq("account_id", accountId)
-    .like("phone", `%${suffix}`);
+    .from('contacts')
+    .select('*')
+    .eq('account_id', accountId)
+    .like('phone', `%${suffix}`);
 
   if (error || !data) return null;
 
@@ -56,12 +64,94 @@ export async function findExistingContact(
 }
 
 /**
+ * Like `findExistingContact`, but looks at the `whatsapp:phone` IDENTITIES
+ * (the source of truth): a contact whose `phone` column is blank but whose
+ * identity holds this number is a duplicate too. Same last-8-digit
+ * pre-filter + strict `phonesMatch`. The result carries `matchedPhone`.
+ */
+export async function findExistingContactByPhoneIdentity(
+  db: SupabaseClient,
+  accountId: string,
+  phone: string
+): Promise<ExistingContact | null> {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+  const suffix = normalized.length >= 8 ? normalized.slice(-8) : normalized;
+
+  const { data, error } = await db
+    .from('contact_identities')
+    .select('contact_id, external_id')
+    .eq('account_id', accountId)
+    .eq('kind', PHONE_IDENTITY_KIND)
+    .like('external_id', `%${suffix}`);
+  if (error || !data) return null;
+
+  const hit = (data as { contact_id: string; external_id: string }[]).find(
+    (r) => phonesMatch(r.external_id, phone)
+  );
+  if (!hit) return null;
+
+  const { data: contact } = await db
+    .from('contacts')
+    .select('*')
+    .eq('account_id', accountId)
+    .eq('id', hit.contact_id)
+    .maybeSingle();
+  if (!contact) return null;
+  return { ...(contact as ExistingContact), matchedPhone: hit.external_id };
+}
+
+/** Duplicate lookup for a phone: the contacts column first, then identities. */
+export async function findDuplicateContact(
+  db: SupabaseClient,
+  accountId: string,
+  phone: string
+): Promise<ExistingContact | null> {
+  return (
+    (await findExistingContact(db, accountId, phone)) ??
+    (await findExistingContactByPhoneIdentity(db, accountId, phone))
+  );
+}
+
+/**
+ * Record the `whatsapp:phone` identity of a manually created contact
+ * (digits only, like the ingest), leaving an existing identity alone.
+ */
+export async function ensurePhoneIdentity(
+  db: SupabaseClient,
+  accountId: string,
+  contactId: string,
+  phone: string
+): Promise<void> {
+  const externalId = normalizePhone(phone);
+  if (!externalId) return;
+  const { error } = await db.from('contact_identities').upsert(
+    {
+      account_id: accountId,
+      contact_id: contactId,
+      kind: PHONE_IDENTITY_KIND,
+      external_id: externalId,
+    },
+    { onConflict: 'account_id,kind,external_id', ignoreDuplicates: true }
+  );
+  if (error) {
+    console.error('[dedupe] adding phone identity failed:', error.message);
+  }
+}
+
+/**
  * True when an existing contact is an *exact* normalized match for
  * `phone` (vs only a fuzzy trunk-variant match). The form hard-blocks
  * exact matches but only warns on fuzzy ones.
  */
-export function isExactMatch(existing: ExistingContact, phone: string): boolean {
-  return normalizeKey(existing.phone) === normalizeKey(phone);
+export function isExactMatch(
+  existing: ExistingContact,
+  phone: string
+): boolean {
+  return (
+    normalizeKey(existing.matchedPhone ?? existing.phone) ===
+    normalizeKey(phone)
+  );
 }
 
 /**
@@ -70,8 +160,8 @@ export function isExactMatch(existing: ExistingContact, phone: string): boolean 
  * format-equal insert that slipped past the in-app check.
  */
 export function isUniqueViolation(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  return (error as { code?: string }).code === "23505";
+  if (!error || typeof error !== 'object') return false;
+  return (error as { code?: string }).code === '23505';
 }
 
 /**
@@ -84,7 +174,7 @@ export function isUniqueViolation(error: unknown): boolean {
  * as a dupe.
  */
 export function dedupeByPhone<T extends { phone: string }>(
-  rows: T[],
+  rows: T[]
 ): { unique: T[]; duplicates: number; invalid: number } {
   const seen = new Set<string>();
   const unique: T[] = [];
