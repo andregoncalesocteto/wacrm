@@ -130,6 +130,14 @@ function toLegacyInteractive(p: InteractivePayload): InteractiveMessagePayload {
   return { ...rest, button_label: buttonLabel };
 }
 
+/**
+ * Errors thrown by `provider.send` itself. The legacy HTTP mapping answers 502
+ * for every failure that reached the provider (Meta rejected it) and 400 for
+ * those raised before it, and both are ChannelErrors with the same codes, so
+ * the origin is tracked here.
+ */
+const providerFailures = new WeakSet<object>();
+
 const WA_PHONE = 'whatsapp:phone';
 const WA_BSUID = 'whatsapp:bsuid';
 
@@ -284,7 +292,9 @@ export async function sendOutbound(
       'recipient_unreachable',
       contact?.phone
         ? 'Invalid phone number format'
-        : 'Contact has no reachable address on this channel'
+        : connection.channel_type === 'whatsapp_cloud'
+          ? 'Contact has no phone number or WhatsApp user ID'
+          : 'Contact has no reachable address on this channel'
     );
   }
 
@@ -343,7 +353,13 @@ export async function sendOutbound(
   }
 
   // Provider errors (ChannelError) propagate: nothing is persisted.
-  const sent: SendResult = await provider.send(connection, target, outbound);
+  let sent: SendResult;
+  try {
+    sent = await provider.send(connection, target, outbound);
+  } catch (err) {
+    if (typeof err === 'object' && err !== null) providerFailures.add(err);
+    throw err;
+  }
 
   if (sent.resolvedAddress && target.kind === WA_PHONE) {
     console.log(
@@ -400,12 +416,8 @@ export async function sendOutbound(
       content_type: contentType,
       content_text: contentText,
       media_url: isMedia ? message.url || null : null,
-      ...(message.type === 'template' || message.type === 'interactive'
-        ? {
-            template_name: templateName,
-            interactive_payload: interactivePayload,
-          }
-        : {}),
+      template_name: templateName,
+      interactive_payload: interactivePayload,
       message_id: sent.externalId,
       status: 'sent',
       reply_to_message_id: replyToMessageId || null,
@@ -479,9 +491,10 @@ export function toSendMessageError(err: unknown): unknown {
   }
   if (err instanceof ChannelError) {
     if (
-      err.code === 'recipient_unreachable' ||
-      err.code === 'unsupported' ||
-      err.code === 'invalid'
+      !providerFailures.has(err) &&
+      (err.code === 'recipient_unreachable' ||
+        err.code === 'unsupported' ||
+        err.code === 'invalid')
     ) {
       // Failed before the provider was called: the old core answered 400.
       return new SendMessageError('bad_request', err.message, 400);

@@ -331,3 +331,15 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - The neutral InteractivePayload uses `buttonLabel`, but persisted `messages.interactive_payload` is the legacy `button_label` shape (thread renderer/quick replies read it): send.ts converts back for persistence. Callers of US-025+ pass the neutral shape.
   - Malformed template row -> TemplateMalformedError, mapped by toSendMessageError to the legacy `template_malformed` 500. Baseline now 110 files / 1416 tests, lint 40 warnings.
 ---
+
+## 2026-09-21 - US-025
+- sendMessageToConversation (src/lib/whatsapp/send-message.ts, shared by /api/whatsapp/send and /api/v1/messages) is now a thin wrapper: validateSendMessageParams -> toOutboundMessage (text/media/template/interactive; list button_label -> neutral buttonLabel; template send data in template.provider, language '' = unspecified) -> sendOutbound({actor:{type:'agent'}, contentText, db}) -> toSendMessageError. The route itself is unchanged apart from the conversation-creation path: findOrCreateConversation now stamps connection_id (findAccountWhatsAppConnection; null when the account has none, send then 400s as before). All ~350 lines of Meta plumbing removed from send-message.ts (constants, SendMessageError, validate stay).
+- Fixes in send.ts to keep EXACT legacy behavior (assertions untouched): (1) errors thrown by provider.send are tracked in a WeakSet and always map to meta_error 502 (before, a provider ChannelError 'invalid'/'unsupported' mapped to 400; pre-provider ones still 400); (2) the messages insert always writes template_name/interactive_payload (null for text/media) as the old code did; (3) "no phone number or WhatsApp user ID" message kept for whatsapp_cloud (generic text for other channels).
+- Test edits: only ADDED one test in route.test.ts (conversation created by the contact_id path carries connection_id). No existing assertion or fake changed; send-message.test.ts and characterization tests pass unchanged.
+- Known delta: order of pre-send checks is now connection lookup BEFORE recipient resolution (old: recipient first), so a contact with no address AND an account with no connection now answers "not configured" instead of "no phone number". Sender_id still not written for the dashboard agent (as before).
+- Not verified manually against the dev server (needs cookie session + seeded connection/credentials; Meta unreachable). Covered by the route/characterization tests. Build OK.
+- **Learnings for future iterations:**
+  - US-026 (/api/v1/messages) already gets the new path through sendMessageToConversation; it only needs its own tests/cleanup.
+  - Other senders (flows/automations/broadcast/AI) still call meta-api directly (US-027+).
+  - Baseline: 110 files / 1417 tests, lint 40 warnings, typecheck clean, build OK.
+---

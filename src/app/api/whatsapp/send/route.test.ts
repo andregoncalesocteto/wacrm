@@ -240,6 +240,13 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     })
   })
 
+  it('stamps the account connection on a conversation it creates', async () => {
+    const res = await postContactTemplate()
+    expect(res.status).toBe(200)
+    expect(conversationInserts).toHaveLength(1)
+    expect(conversationInserts[0].connection_id).toEqual(expect.any(String))
+  })
+
   it('reuses an existing conversation instead of creating a duplicate', async () => {
     existingConversation = {
       id: 'conv-existing',

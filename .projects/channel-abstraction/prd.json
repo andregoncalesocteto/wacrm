@@ -459,7 +459,7 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 27,
-      "passes": false,
+      "passes": true,
       "notes": "Após a US-014: a rota `api/whatsapp/send` cria conversa própria sem gravar `connection_id`; ao migrar para `sendOutbound`, toda conversa criada deve receber `connection_id`."
     },
     {

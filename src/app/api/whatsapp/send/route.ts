@@ -11,6 +11,7 @@ import {
   validateSendMessageParams,
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
+import { findAccountWhatsAppConnection } from '@/lib/channels/whatsapp-connection'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -213,12 +214,18 @@ async function findOrCreateConversation(
 
   if (existing) return existing.id
 
+  // Stamp the connection the send will use so the thread is bound to it
+  // from the start (null only when the account has no connection yet; the
+  // send then fails with "WhatsApp not configured" as before).
+  const connection = await findAccountWhatsAppConnection(supabase, accountId)
+
   const { data: created, error } = await supabase
     .from('conversations')
     .insert({
       account_id: accountId,
       user_id: userId,
       contact_id: contactId,
+      connection_id: connection?.id ?? null,
     })
     .select('id')
     .single()
