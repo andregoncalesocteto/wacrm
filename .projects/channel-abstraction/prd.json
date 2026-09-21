@@ -977,7 +977,7 @@
       ],
       "priority": 57,
       "passes": false,
-      "notes": ""
+      "notes": "Após a US-078: a resolução da conversa mais recente para gatilhos sem conversa (US-028) deve EXCLUIR conexões desativadas (`disabled_at` preenchido), para o passo não escolher uma conversa que só vai falhar no `sendOutbound`; cobrir com teste. A resposta por IA gasta uma chamada de LLM e um slot antes de o envio ser recusado (otimização futura: checar antes)."
     },
     {
       "id": "US-052",
