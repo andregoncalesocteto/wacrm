@@ -728,3 +728,11 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 151 files/1859 tests; dev DB migrate + isolated replay (49 applied) + verify-schema pass. No build, no browser (API only).
 - **Learnings:** messages.sender_type allows 'customer' (not 'contact'); stores/channel_connections/conversations need account+user ids to seed inside a DO block; the merge is not idempotent in the "re-run is a no-op" sense: the second call raises contact_not_found because the duplicate is gone (route maps to 404). UI is US-058.
 ---
+
+## 2026-09-21 - US-058
+- Contact detail sheet: "Vincular a outro contato" button (agent+, useCan send-messages) opens MergeContactDialog (src/components/contacts/merge-contact-dialog.tsx). The contact being viewed SURVIVES; the picked one is merged into it. Step 1: debounced search via filter_contacts_by_tags RPC (matches name/phone/email/identity handles), identities hydrated for display. Step 2: confirmation with counts of what moves (conversations, deals, notes, tags, identities via head-count queries) + irreversible warning; confirm calls POST /api/contacts/merge. On success the sheet refetches everything and ContactConversations is remounted (key).
+- Keys Contacts.detailView.mergeDialog.* in 4 catalogues. No new unit tests (UI-only; covered by browser check).
+- Browser (pt :3100, QA): seeded survivor + duplicate (deal, note, telegram identity); confirmation showed 1 negocio/1 nota/1 identidade; after merge Negocios and Notas tabs show the moved deal and note, duplicate gone. Seeds removed.
+- **Learnings:** dev-browser clicks on nested dialog buttons need page.evaluate(el.click()) (force clicks timed out). pt plural: 0 uses the singular form ("0 conversa").
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 151 files/1859 tests.
+---

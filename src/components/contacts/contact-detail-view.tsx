@@ -49,6 +49,7 @@ import {
   X,
   DollarSign,
   LayoutTemplate,
+  Link2,
 } from 'lucide-react';
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import {
@@ -58,6 +59,8 @@ import {
   withIdentities,
 } from '@/lib/contacts/display-name';
 import { useContactDisplay } from '@/hooks/use-contact-display';
+import { MergeContactDialog } from '@/components/contacts/merge-contact-dialog';
+import { useCan } from '@/hooks/use-can';
 import { ContactConversations } from '@/components/inbox/contact-conversations';
 
 interface ContactDetailViewProps {
@@ -84,6 +87,9 @@ export function ContactDetailView({
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [convRefresh, setConvRefresh] = useState(0);
+  const canMerge = useCan('send-messages');
 
   // Send template — lets the business initiate (or re-open) a conversation
   // with this contact by sending an approved template. The send route
@@ -513,7 +519,7 @@ export function ContactDetailView({
                     </div>
                   </div>
                 </div>
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Button
                     size="sm"
                     onClick={() => setTemplatePickerOpen(true)}
@@ -527,6 +533,16 @@ export function ContactDetailView({
                     )}
                     {t('sendTemplateBtn')}
                   </Button>
+                  {canMerge && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setMergeOpen(true)}
+                    >
+                      <Link2 className="size-4" />
+                      {t('mergeDialog.action')}
+                    </Button>
+                  )}
                 </div>
               </SheetHeader>
 
@@ -631,7 +647,10 @@ export function ContactDetailView({
                       {t('saveChangesBtn')}
                     </Button>
                     {contactId && (
-                      <ContactConversations contactId={contactId} />
+                      <ContactConversations
+                        key={convRefresh}
+                        contactId={contactId}
+                      />
                     )}
                   </div>
                 </TabsContent>
@@ -862,6 +881,22 @@ export function ContactDetailView({
           )}
         </SheetContent>
       </Sheet>
+      {contact && (
+        <MergeContactDialog
+          open={mergeOpen}
+          onOpenChange={setMergeOpen}
+          survivor={contact}
+          onMerged={() => {
+            fetchContact();
+            fetchTags();
+            fetchNotes();
+            fetchCustomFields();
+            fetchDeals();
+            setConvRefresh((n) => n + 1);
+            onUpdated();
+          }}
+        />
+      )}
       <TemplatePicker
         open={templatePickerOpen}
         onOpenChange={setTemplatePickerOpen}

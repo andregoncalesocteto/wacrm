@@ -1129,7 +1129,7 @@
         "Verify in browser using dev-browser skill (juntar dois contatos com negócio e nota e conferir o resultado)"
       ],
       "priority": 66,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
