@@ -361,7 +361,7 @@
       ],
       "priority": 21,
       "passes": false,
-      "notes": ""
+      "notes": "Após a US-019: `flagBroadcastReplyIfAny` e o fan-out (automações, flows, IA) entram pelo hook `onMessageStored` de `ingestInbound`; `isFirstInbound` e `contactCreated` já vêm no resultado `stored`."
     },
     {
       "id": "US-074",
@@ -394,7 +394,7 @@
       ],
       "priority": 23,
       "passes": false,
-      "notes": "Critério de status ajustado pelo orquestrador após a US-002: a espelhada de messages não tem trava de ordem hoje (fixado por teste de caracterização); manter o comportamento (RNF-01). Após a US-073: três casos de borda do `parse` do WhatsApp diferem do que o webhook atual grava quando mapeados 1:1 — (1) interativo sem opção: a rota grava `content_type` \"interactive\", o parse emite `unsupported` (texto); (2) mídia sem id: a rota grava `content_type` image com mídia nula; (3) botão sem payload nem texto: `id` e `title` vazios. Ao ligar a ingestão (US-019/US-021) e trocar a rota (US-022), reproduzir exatamente o que a rota grava hoje (ajustando o mapeamento no núcleo ou enriquecendo o evento de forma aditiva) e cobrir os três casos com testes."
+      "notes": "Critério de status ajustado pelo orquestrador após a US-002: a espelhada de messages não tem trava de ordem hoje (fixado por teste de caracterização); manter o comportamento (RNF-01). Após a US-073: três casos de borda do `parse` do WhatsApp diferem do que o webhook atual grava quando mapeados 1:1 — (1) interativo sem opção: a rota grava `content_type` \"interactive\", o parse emite `unsupported` (texto); (2) mídia sem id: a rota grava `content_type` image com mídia nula; (3) botão sem payload nem texto: `id` e `title` vazios. Ao ligar a ingestão (US-019/US-021) e trocar a rota (US-022), reproduzir exatamente o que a rota grava hoje (ajustando o mapeamento no núcleo ou enriquecendo o evento de forma aditiva) e cobrir os três casos com testes. Após a US-019: sem o hook `resolveMedia`, a ingestão grava `media_url` nulo, enquanto a rota grava o fallback `/api/whatsapp/media/<id>`; o hook desta história deve reproduzir esse fallback. A ingestão já trata os 3 casos de borda (via `content.stored`)."
     },
     {
       "id": "US-022",
@@ -411,7 +411,7 @@
       ],
       "priority": 24,
       "passes": false,
-      "notes": "Após a US-073: três casos de borda do `parse` do WhatsApp diferem do que o webhook atual grava quando mapeados 1:1 — (1) interativo sem opção: a rota grava `content_type` \"interactive\", o parse emite `unsupported` (texto); (2) mídia sem id: a rota grava `content_type` image com mídia nula; (3) botão sem payload nem texto: `id` e `title` vazios. Ao ligar a ingestão (US-019/US-021) e trocar a rota (US-022), reproduzir exatamente o que a rota grava hoje (ajustando o mapeamento no núcleo ou enriquecendo o evento de forma aditiva) e cobrir os três casos com testes."
+      "notes": "Após a US-073: três casos de borda do `parse` do WhatsApp diferem do que o webhook atual grava quando mapeados 1:1 — (1) interativo sem opção: a rota grava `content_type` \"interactive\", o parse emite `unsupported` (texto); (2) mídia sem id: a rota grava `content_type` image com mídia nula; (3) botão sem payload nem texto: `id` e `title` vazios. Ao ligar a ingestão (US-019/US-021) e trocar a rota (US-022), reproduzir exatamente o que a rota grava hoje (ajustando o mapeamento no núcleo ou enriquecendo o evento de forma aditiva) e cobrir os três casos com testes. Após a US-019: passar `auditUserId = accounts.owner_user_id` à ingestão; o preview da conversa é `contentText || emptyPreview || description || [content_type]`; `wa_parent_user_id` é preenchido pela ingestão a partir de `parentExternalId` (removido junto com a coluna na US-070)."
     },
     {
       "id": "US-023",
