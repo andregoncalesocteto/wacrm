@@ -1362,7 +1362,7 @@
       ],
       "priority": 80,
       "passes": false,
-      "notes": ""
+      "notes": "Verificação final do orquestrador: `react/jsx-no-literals` voltou a ter 1 aviso (a meta do projeto é zero) e o total de avisos do lint passou de 40 para 43 durante a feature; antes de fechar, zerar `react/jsx-no-literals` e trazer o total de avisos de volta a no máximo o da base (41), corrigindo só o que esta feature introduziu."
     }
   ]
 }
