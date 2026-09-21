@@ -23,7 +23,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import { SendMessageError } from '@/lib/whatsapp/send-message';
+import { ChannelError } from '@/lib/channels/types';
 import { findAccountWhatsAppConnection } from '@/lib/channels/whatsapp-connection';
+import type { ChannelConnection } from '@/lib/channels/connections';
+import { getProvider } from '@/lib/channels/registry';
+import { registerBuiltinProviders } from '@/lib/channels/providers';
 import { resolveAuditUserId, ContactError } from '@/lib/api/v1/contacts';
 
 export interface ResolvedConversation {
@@ -43,7 +47,9 @@ export async function resolveConversationByPhone(
   db: SupabaseClient,
   accountId: string,
   phone: string,
-  name?: string | null
+  name?: string | null,
+  /** Explicit WhatsApp connection (US-060); default = the account's own. */
+  explicitConnection?: ChannelConnection | null
 ): Promise<ResolvedConversation> {
   const sanitized = sanitizePhoneForMeta(phone);
   if (!isValidE164(sanitized)) {
@@ -56,7 +62,8 @@ export async function resolveConversationByPhone(
 
   // Fail fast (and create nothing) when the account has no WhatsApp
   // connected — the same error the send would raise anyway.
-  const connection = await findAccountWhatsAppConnection(db, accountId);
+  const connection =
+    explicitConnection ?? (await findAccountWhatsAppConnection(db, accountId));
   if (!connection) {
     throw new SendMessageError(
       'whatsapp_not_configured',
@@ -148,6 +155,68 @@ export async function resolveConversationByPhone(
   );
 
   return { conversationId, contactId, contactCreated };
+}
+
+/**
+ * Non-WhatsApp channels (US-060): `to` is the provider's own address (e.g. a
+ * Telegram chat id). A channel cannot be opened from a bare address here, so
+ * the contact (found through the identity the provider recognises) must already
+ * have a conversation on THIS connection; otherwise `recipient_unreachable`.
+ */
+export async function resolveConversationByAddress(
+  db: SupabaseClient,
+  accountId: string,
+  connection: ChannelConnection,
+  to: string
+): Promise<ResolvedConversation> {
+  const unreachable = () =>
+    new ChannelError(
+      'recipient_unreachable',
+      `No conversation with '${to}' on this connection; the recipient must have written first`
+    );
+
+  registerBuiltinProviders();
+  const provider = getProvider(connection.channel_type);
+  const { data: rows, error } = await db
+    .from('contact_identities')
+    .select('*')
+    .eq('account_id', accountId)
+    .eq('external_id', to);
+  if (error) {
+    throw new SendMessageError('db_error', 'Failed to resolve contact', 500);
+  }
+  const contactIds = new Set(
+    ((rows as Record<string, unknown>[] | null) ?? [])
+      .filter((r) =>
+        provider.resolveTarget([
+          {
+            kind: r.kind as string,
+            externalId: r.external_id as string,
+            handle: (r.handle as string | null) ?? null,
+          },
+        ])
+      )
+      .map((r) => r.contact_id as string)
+  );
+
+  for (const contactId of contactIds) {
+    const { data: convs } = await db
+      .from('conversations')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('contact_id', contactId)
+      .eq('connection_id', connection.id)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    if (convs && convs.length > 0) {
+      return {
+        conversationId: convs[0].id,
+        contactId,
+        contactCreated: false,
+      };
+    }
+  }
+  throw unreachable();
 }
 
 /**

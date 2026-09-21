@@ -743,3 +743,16 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 152 files/1866 tests. No build, no browser (no UI).
 - **Learnings:** vi.mock cannot be called in a loop; share a factory through vi.hoisted. The manual CRM steps (deal/tag/note/field) are client-side supabase writes in the app, so the test replays the same writes rather than calling components. Without a phone the automations `create_deal` and tag paths need no channel at all; only the flow send touches Telegram.
 ---
+
+## 2026-09-21 - US-060
+- POST /api/v1/messages accepts { conversation_id } or { connection_id?, to }. Both together -> 400 bad_request. Unknown/foreign conversation or connection -> 404 not_found.
+- Connection pick: explicit id (account-checked) else the only ENABLED connection; >=2 enabled -> 400 connection_required; none enabled but some exist -> 409 connection_disabled; none at all -> 400 whatsapp_not_configured (legacy code kept). An explicit disabled connection is refused before any contact/conversation is created.
+- whatsapp_cloud: resolveConversationByPhone (new optional 5th arg = the chosen connection). Other channels: new resolveConversationByAddress: `to` is matched against contact_identities recognised by provider.resolveTarget and the contact must already have a conversation on THIS connection, else 422 recipient_unreachable (a Telegram bot cannot open chats; no contact is created).
+- Response: external_message_id, connection_id, channel (whatsapp_message_id removed). Error mapping in the v1 route only (dashboard route untouched): ChannelError code (also via SendMessageError.channelCode, pre- or post-provider) unsupported/window_closed -> 409, recipient_unreachable -> 422; invalid stays 400/502 as before.
+- Files: src/app/api/v1/messages/{route.ts,route.test.ts}, src/lib/whatsapp/resolve-conversation.ts, docs/public-api.md, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - send-message.characterization.test.ts pins SendMessageResult with toEqual: do not add fields to it; the route derives connection_id itself (conversation.connection_id, fallback account WhatsApp connection).
+  - Telegram in route tests: registerBuiltinProviders() + vi.spyOn(getProvider('telegram'), 'send'); no fetch mock needed.
+  - Meta 131047 -> window_closed and 131026 -> recipient_unreachable now surface as 409/422 on the v1 endpoint (were 502 meta_error). Other Meta failures stay 502.
+  - docs/public-api.md was already not prettier-clean; left as is. Lint baseline is 43 warnings now (not 41), unchanged by this story. Not run: npm run build (no routing/config change), browser (API only). MCP send tool passes the body through; its README/docs (US-06x) may need the new fields.
+---

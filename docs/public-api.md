@@ -117,9 +117,15 @@ curl https://your-crm.example.com/api/v1/me \
 
 ### `POST /api/v1/messages`
 
-Send a WhatsApp message to a phone number. Scope: `messages:send`. You
-pass an **E.164 number**, not an internal id — the endpoint
-finds-or-creates the contact + conversation, then sends.
+Send a message. Scope: `messages:send`. Address it in one of two ways:
+
+- `{ "conversation_id": "…" }` — reply in an existing conversation.
+- `{ "connection_id": "…", "to": "+14155550123" }` — go through a channel
+  connection. `to` is an **E.164 number** for WhatsApp (the endpoint
+  finds-or-creates the contact + conversation) or the channel's own address
+  for others (e.g. a Telegram chat id, which must already have written to the
+  bot). `connection_id` may be omitted only when the account has exactly one
+  active connection; otherwise the answer is `400 connection_required`.
 
 ```bash
 curl -X POST https://your-crm.example.com/api/v1/messages \
@@ -152,17 +158,24 @@ Response (201):
 {
   "data": {
     "message_id": "…",
-    "whatsapp_message_id": "wamid.…",
+    "external_message_id": "wamid.…",
     "conversation_id": "…",
+    "connection_id": "…",
+    "channel": "whatsapp_cloud",
     "contact_id": "…",
     "contact_created": true
   }
 }
 ```
 
-Domain error codes beyond the table above: `whatsapp_not_configured`
-(400), `meta_error` (502 — the request reached Meta and it rejected the
-send), `template_malformed` (500).
+`external_message_id` replaces the old `whatsapp_message_id`.
+
+Domain error codes beyond the table above: `connection_required` (400),
+`whatsapp_not_configured` (400), `unsupported` (409 — the channel lacks the
+capability, e.g. templates on Telegram), `window_closed` (409 — WhatsApp 24h
+window), `connection_disabled` (409), `recipient_unreachable` (422),
+`meta_error` (502 — the request reached Meta and it rejected the send),
+`template_malformed` (500).
 
 ### `GET /api/v1/contacts`
 

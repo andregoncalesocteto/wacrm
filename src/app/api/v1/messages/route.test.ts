@@ -150,6 +150,9 @@ vi.mock('@/lib/auth/api-context', () => ({
 
 import { requireApiKey } from '@/lib/auth/api-context';
 import { POST } from './route';
+import { getProvider } from '@/lib/channels/registry';
+import { registerBuiltinProviders } from '@/lib/channels/providers';
+import { ChannelError } from '@/lib/channels/types';
 
 const PHONE = '+15551234567';
 
@@ -204,8 +207,10 @@ describe('POST /api/v1/messages', () => {
     expect(json).toEqual({
       data: {
         message_id: expect.any(String),
-        whatsapp_message_id: 'wamid-text',
+        external_message_id: 'wamid-text',
         conversation_id: expect.any(String),
+        connection_id: 'conn-acct-1',
+        channel: 'whatsapp_cloud',
         contact_id: expect.any(String),
         contact_created: true,
       },
@@ -259,7 +264,7 @@ describe('POST /api/v1/messages', () => {
     const json = await res.json();
 
     expect(res.status).toBe(201);
-    expect(json.data.whatsapp_message_id).toBe('wamid-tpl');
+    expect(json.data.external_message_id).toBe('wamid-tpl');
     expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
     const args = (h.sendTemplateMessage.mock.calls[0] as unknown[])[0] as Row;
     expect(args.templateName).toBe('order_update');
@@ -281,7 +286,7 @@ describe('POST /api/v1/messages', () => {
     const json = await res.json();
 
     expect(res.status).toBe(201);
-    expect(json.data.whatsapp_message_id).toBe('wamid-media');
+    expect(json.data.external_message_id).toBe('wamid-media');
     expect(h.sendMediaMessage).toHaveBeenCalledTimes(1);
     expect(h.db.messages[0]).toMatchObject({
       content_type: 'document',
@@ -368,5 +373,228 @@ describe('POST /api/v1/messages disabled connection (US-078)', () => {
     expect(h.sendTextMessage).not.toHaveBeenCalled();
     expect(h.sendTemplateMessage).not.toHaveBeenCalled();
     expect(h.db.messages).toHaveLength(0);
+  });
+});
+
+describe('POST /api/v1/messages new addressing (US-060)', () => {
+  const TG_CHAT = '777';
+
+  function telegramConnection(extra: Row = {}) {
+    return {
+      id: 'conn-tg',
+      account_id: 'acct-1',
+      channel_type: 'telegram',
+      external_id: 'bot-1',
+      status: 'connected',
+      config: {},
+      disabled_at: null,
+      ...extra,
+    };
+  }
+
+  /** A Telegram contact that has already written to the bot (conversation on conn-tg). */
+  function seedTelegram(opts: { conversation?: boolean } = {}) {
+    const { conversation = true } = opts;
+    h.db.channel_connections.push(telegramConnection());
+    h.db.contacts.push({ id: 'ct-tg', account_id: 'acct-1', phone: '' });
+    h.db.contact_identities = [
+      {
+        account_id: 'acct-1',
+        contact_id: 'ct-tg',
+        kind: 'telegram:chat_id',
+        external_id: TG_CHAT,
+      },
+    ];
+    if (conversation) {
+      h.db.conversations.push({
+        id: 'conv-tg',
+        account_id: 'acct-1',
+        contact_id: 'ct-tg',
+        connection_id: 'conn-tg',
+      });
+    }
+  }
+
+  function tgSend() {
+    registerBuiltinProviders();
+    return vi.spyOn(getProvider('telegram'), 'send');
+  }
+
+  it('conversation_id: sends in that conversation and reports connection and channel', async () => {
+    const first = await (await post({ to: PHONE, text: 'one' })).json();
+    const res = await post({
+      conversation_id: first.data.conversation_id,
+      text: 'two',
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json.data).toEqual({
+      message_id: expect.any(String),
+      external_message_id: 'wamid-text',
+      conversation_id: first.data.conversation_id,
+      connection_id: 'conn-acct-1',
+      channel: 'whatsapp_cloud',
+      contact_id: first.data.contact_id,
+      contact_created: false,
+    });
+    expect(json.data).not.toHaveProperty('whatsapp_message_id');
+    expect(h.db.messages).toHaveLength(2);
+  });
+
+  it('conversation_id: 404 not_found for an unknown or other-account conversation', async () => {
+    h.db.conversations.push({
+      id: 'conv-x',
+      account_id: 'other',
+      contact_id: 'ct-x',
+    });
+    for (const id of ['nope', 'conv-x']) {
+      const res = await post({ conversation_id: id, text: 'Hi' });
+      expect(res.status).toBe(404);
+      expect((await res.json()).error.code).toBe('not_found');
+    }
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('400 bad_request when both conversation_id and to are given', async () => {
+    const res = await post({ conversation_id: 'c', to: PHONE, text: 'Hi' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe('bad_request');
+  });
+
+  it('connection_id + to: uses that connection', async () => {
+    const res = await post({
+      connection_id: 'conn-acct-1',
+      to: PHONE,
+      text: 'Hi',
+    });
+    const json = await res.json();
+    expect(res.status).toBe(201);
+    expect(json.data).toMatchObject({
+      connection_id: 'conn-acct-1',
+      channel: 'whatsapp_cloud',
+      contact_created: true,
+    });
+  });
+
+  it('connection_id of another account or unknown: 404 not_found, nothing created', async () => {
+    h.db.channel_connections.push(
+      whatsappConnectionRow('other', 'pn-9', { id: 'conn-other' })
+    );
+    for (const id of ['conn-other', 'nope']) {
+      const res = await post({ connection_id: id, to: PHONE, text: 'Hi' });
+      expect(res.status).toBe(404);
+      expect((await res.json()).error.code).toBe('not_found');
+    }
+    expect(h.db.contacts).toHaveLength(0);
+  });
+
+  it('connection_id is optional with exactly one active connection (a disabled one does not count)', async () => {
+    h.db.channel_connections.push(
+      telegramConnection({ disabled_at: '2026-09-01T00:00:00Z' })
+    );
+    const res = await post({ to: PHONE, text: 'Hi' });
+    expect(res.status).toBe(201);
+    expect((await res.json()).data.connection_id).toBe('conn-acct-1');
+  });
+
+  it('400 connection_required with two active connections and none informed; nothing created', async () => {
+    h.db.channel_connections.push(telegramConnection());
+    const res = await post({ to: PHONE, text: 'Hi' });
+    const json = await res.json();
+    expect(res.status).toBe(400);
+    expect(json.error.code).toBe('connection_required');
+    expect(h.db.contacts).toHaveLength(0);
+    expect(h.db.conversations).toHaveLength(0);
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('409 connection_disabled for an explicit disabled connection, before creating anything', async () => {
+    h.db.channel_connections.push(
+      telegramConnection({ disabled_at: '2026-09-01T00:00:00Z' })
+    );
+    const res = await post({
+      connection_id: 'conn-tg',
+      to: TG_CHAT,
+      text: 'Hi',
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe('connection_disabled');
+  });
+
+  it('Telegram: sends to a chat id that already has a conversation on the connection', async () => {
+    seedTelegram();
+    const send = tgSend().mockResolvedValue({ externalId: '777:42' });
+    const res = await post({
+      connection_id: 'conn-tg',
+      to: TG_CHAT,
+      text: 'Oi',
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json.data).toMatchObject({
+      external_message_id: '777:42',
+      connection_id: 'conn-tg',
+      channel: 'telegram',
+      conversation_id: 'conv-tg',
+      contact_id: 'ct-tg',
+      contact_created: false,
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('422 recipient_unreachable: unknown Telegram address or no conversation on this connection', async () => {
+    seedTelegram({ conversation: false });
+    const send = tgSend();
+    for (const to of ['999', TG_CHAT]) {
+      const res = await post({ connection_id: 'conn-tg', to, text: 'Oi' });
+      expect(res.status).toBe(422);
+      expect((await res.json()).error.code).toBe('recipient_unreachable');
+    }
+    expect(send).not.toHaveBeenCalled();
+    expect(h.db.messages).toHaveLength(0);
+  });
+
+  it('422 recipient_unreachable when the provider reports the recipient unreachable', async () => {
+    seedTelegram();
+    tgSend().mockRejectedValue(
+      new ChannelError('recipient_unreachable', 'bot was blocked')
+    );
+    const res = await post({ conversation_id: 'conv-tg', text: 'Oi' });
+    expect(res.status).toBe(422);
+    expect((await res.json()).error.code).toBe('recipient_unreachable');
+    expect(h.db.messages).toHaveLength(0);
+  });
+
+  it('409 unsupported when the channel lacks the capability (template on Telegram)', async () => {
+    seedTelegram();
+    const send = tgSend();
+    const res = await post({
+      conversation_id: 'conv-tg',
+      type: 'template',
+      template: { name: 'order_update', language: 'en_US' },
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe('unsupported');
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('409 window_closed when Meta rejects for the 24h window', async () => {
+    h.sendTextMessage.mockRejectedValue(
+      new Error('(#131047) Re-engagement message')
+    );
+    const res = await post({ to: PHONE, text: 'Hi' });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe('window_closed');
+    expect(h.db.messages).toHaveLength(0);
+  });
+
+  it('422 recipient_unreachable when Meta reports the number cannot receive (131026)', async () => {
+    h.sendTextMessage.mockRejectedValue(new Error('(#131026) Undeliverable'));
+    const res = await post({ to: PHONE, text: 'Hi' });
+    expect(res.status).toBe(422);
+    expect((await res.json()).error.code).toBe('recipient_unreachable');
   });
 });
