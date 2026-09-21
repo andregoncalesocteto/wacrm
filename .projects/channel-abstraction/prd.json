@@ -627,7 +627,7 @@
       ],
       "priority": 37,
       "passes": false,
-      "notes": ""
+      "notes": "Após a US-012: `provider.connect` do WhatsApp não persiste nada; a rota `/connect` deve gravar `registered_at` e `subscribed_apps_at` em `channel_connections.config` depois de um registro bem-sucedido (o `health` lê `config.registered_at`), e nunca guardar o PIN."
     },
     {
       "id": "US-036",
