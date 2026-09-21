@@ -133,6 +133,15 @@ export async function POST(request: Request) {
         userId,
         contact_id
       )
+      if (resolved === 'no_connection') {
+        return NextResponse.json(
+          {
+            error:
+              'WhatsApp not configured. Please set up your WhatsApp integration first.',
+          },
+          { status: 400 }
+        )
+      }
       if (!resolved) {
         return NextResponse.json(
           { error: 'Failed to open a conversation for this contact' },
@@ -204,20 +213,26 @@ async function findOrCreateConversation(
   accountId: string,
   userId: string,
   contactId: string,
-): Promise<string | null> {
+): Promise<string | null | 'no_connection'> {
+  // One conversation per (contact, connection): resolve the connection the
+  // send will use first, then look the thread up on it. An account with no
+  // connection has nothing to bind a thread to (connection_id is NOT NULL),
+  // so nothing is created and the caller answers with the same "not
+  // configured" error the send raised before.
+  const connection = await findAccountWhatsAppConnection(supabase, accountId)
+  if (!connection) return 'no_connection'
+
   const { data: existing } = await supabase
     .from('conversations')
     .select('id')
     .eq('account_id', accountId)
     .eq('contact_id', contactId)
+    .eq('connection_id', connection.id)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle()
 
   if (existing) return existing.id
-
-  // Stamp the connection the send will use so the thread is bound to it
-  // from the start (null only when the account has no connection yet; the
-  // send then fails with "WhatsApp not configured" as before).
-  const connection = await findAccountWhatsAppConnection(supabase, accountId)
 
   const { data: created, error } = await supabase
     .from('conversations')
@@ -225,7 +240,7 @@ async function findOrCreateConversation(
       account_id: accountId,
       user_id: userId,
       contact_id: contactId,
-      connection_id: connection?.id ?? null,
+      connection_id: connection.id,
     })
     .select('id')
     .single()

@@ -12,7 +12,7 @@ const state = {
 };
 
 // Stateful fake of the supabase-js builder with the unique indexes that matter
-// here: conversations (account, contact) [the pre-US-032 index], messages
+// here: conversations (contact, connection) [migration 047], messages
 // (conversation, message_id), contacts (account, wa_user_id / phone) and
 // contact_identities (account, kind, external_id).
 class Query {
@@ -92,7 +92,8 @@ class Query {
       case 'conversations':
         return rows.some(
           (r) =>
-            r.account_id === row.account_id && r.contact_id === row.contact_id
+            r.contact_id === row.contact_id &&
+            r.connection_id === row.connection_id
         );
       case 'messages':
         return rows.some(
@@ -354,21 +355,7 @@ describe('ingestInbound: contact and conversation', () => {
     expect(t('messages')).toHaveLength(2);
   });
 
-  it('adopts a legacy conversation (connection_id NULL) instead of creating a second one', async () => {
-    await ingestInbound(db, CONN, [msg()], OPTS);
-    t('conversations')[0].connection_id = null;
-    const [r] = await ingestInbound(
-      db,
-      CONN,
-      [msg({ externalId: 'wamid.2' })],
-      OPTS
-    );
-    expect(r).toMatchObject({ status: 'stored', conversationCreated: false });
-    expect(t('conversations')).toHaveLength(1);
-    expect(t('conversations')[0].connection_id).toBe('conn-1');
-  });
-
-  it('a conversation of another connection is not adopted; the old index makes the message skip', async () => {
+  it('a contact on a second connection gets a second conversation (one per contact and connection)', async () => {
     await ingestInbound(db, CONN, [msg()], OPTS);
     const second = { ...CONN, id: 'conn-2' } as Connection;
     const [r] = await ingestInbound(
@@ -377,8 +364,27 @@ describe('ingestInbound: contact and conversation', () => {
       [msg({ externalId: 'wamid.2' })],
       OPTS
     );
-    expect(r).toMatchObject({ status: 'skipped', reason: 'no conversation' });
-    expect(t('conversations')[0].connection_id).toBe('conn-1');
+    expect(r).toMatchObject({ status: 'stored', conversationCreated: true });
+    expect(t('conversations')).toHaveLength(2);
+    expect(t('conversations').map((c) => c.connection_id)).toEqual([
+      'conn-1',
+      'conn-2',
+    ]);
+    expect(t('contacts')).toHaveLength(1);
+  });
+
+  it('a second message on the same connection reuses that connection conversation', async () => {
+    await ingestInbound(db, CONN, [msg()], OPTS);
+    const second = { ...CONN, id: 'conn-2' } as Connection;
+    await ingestInbound(db, second, [msg({ externalId: 'wamid.2' })], OPTS);
+    const [r] = await ingestInbound(
+      db,
+      CONN,
+      [msg({ externalId: 'wamid.3' })],
+      OPTS
+    );
+    expect(r).toMatchObject({ status: 'stored', conversationCreated: false });
+    expect(t('conversations')).toHaveLength(2);
   });
 
   it('a reply resolves its parent by external id inside the conversation, NULL when unknown', async () => {

@@ -182,17 +182,13 @@ function shapeOf(event: MessageEvent): StoredShape {
 /**
  * The contact's conversation for this connection.
  *
- * TRANSITION RULE (until US-032): the DB unique index is still
- * (account_id, contact_id), one conversation per contact. So the lookup takes
- * the contact's OLDEST conversation that is on this connection OR has
- * `connection_id` NULL (created before connections existed) and ADOPTS a NULL
- * one by stamping this connection on it; creating a second conversation for
- * such a contact would violate the old index. A conversation on a DIFFERENT
- * connection is not reused (it belongs to another channel/number); the insert
- * then hits the old index and the message is skipped with a log, which only
- * happens for a contact talking on two connections, unreachable before US-032.
- * When US-032 moves the index to (contact_id, connection_id) the NULL branch
- * becomes dead and can go.
+ * One conversation per (contact, connection), enforced by the unique index
+ * from migration 047: a contact talking on a second connection gets a second
+ * conversation. The lookup takes the contact's OLDEST conversation on this
+ * connection. A conversation with `connection_id` NULL is still ADOPTED
+ * (stamped with this connection) as a defensive fallback for a row written by
+ * old code between the backfill and the migration; since 047 the column is
+ * NOT NULL, so in a migrated database that branch never fires.
  */
 async function findOrCreateConversation(
   db: SupabaseClient,

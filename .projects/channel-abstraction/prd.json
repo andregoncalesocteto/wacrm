@@ -590,8 +590,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 35,
-      "passes": false,
-      "notes": "Adicionado pelo orquestrador após a US-007: o backfill deixa connection_id nulo em contas sem whatsapp_config; o NOT NULL exige tratar conversas órfãs (config apagada) com uma conexão desativada de legado. Também: a migration 046 repete, de forma idempotente, o preenchimento de `conversations.connection_id` nulo (conversas criadas pelo código antigo depois da 045) a partir da conexão de WhatsApp da conta, ANTES de aplicar o NOT NULL. O número \"046\" do critério já foi usado pela US-015 (`046_broadcast_connection_id.sql`): use o próximo número livre (047 ou o seguinte)."
+      "passes": true,
+      "notes": "Adicionado pelo orquestrador após a US-007: o backfill deixa connection_id nulo em contas sem whatsapp_config; o NOT NULL exige tratar conversas órfãs (config apagada) com uma conexão desativada de legado. Também: a migration 046 repete, de forma idempotente, o preenchimento de `conversations.connection_id` nulo (conversas criadas pelo código antigo depois da 045) a partir da conexão de WhatsApp da conta, ANTES de aplicar o NOT NULL. O número \"046\" do critério já foi usado pela US-015 (`046_broadcast_connection_id.sql`): use o próximo número livre (047 ou o seguinte). | Implementado como migration 047 (046 estava ocupada). Provado com dados semeados no banco de dev (conta com conexao e conversas NULL, duas contas orfas, run ativa sem conversa) + replay isolado com verify-schema. Ver progress.txt."
     },
     {
       "id": "US-033",

@@ -99,17 +99,17 @@ BEGIN
     RAISE EXCEPTION 'channel_connection_credentials must have RLS enabled';
   END IF;
 
-  -- Channel abstraction expand columns (044), all nullable.
+  -- Channel abstraction expand columns (044), nullable. conversations.
+  -- connection_id became NOT NULL in 047, so it is asserted below, not here.
   IF (
     SELECT count(*) FROM information_schema.columns
     WHERE table_schema = 'public' AND is_nullable = 'YES' AND (
-      (table_name = 'conversations' AND column_name = 'connection_id')
-      OR (table_name = 'message_templates' AND column_name = 'connection_id')
+      (table_name = 'message_templates' AND column_name = 'connection_id')
       OR (table_name = 'broadcasts' AND column_name = 'connection_id')
       OR (table_name = 'automation_pending_executions' AND column_name IN ('conversation_id', 'connection_id'))
       OR (table_name = 'quick_replies' AND column_name = 'store_id')
     )
-  ) <> 6 THEN
+  ) <> 5 THEN
     RAISE EXCEPTION 'nullable channel columns are missing — migration 044 did not apply';
   END IF;
   IF NOT EXISTS (
@@ -168,6 +168,46 @@ BEGIN
   END IF;
   IF (SELECT COUNT(*) FROM pg_proc WHERE proname = 'create_broadcast_with_recipients') <> 1 THEN
     RAISE EXCEPTION 'create_broadcast_with_recipients has more than one overload (migration 046)';
+  END IF;
+
+  -- 047: conversations.connection_id is NOT NULL and none is NULL; one
+  -- conversation per (contact, connection); one active flow run per
+  -- conversation; the old unique indexes are gone.
+  IF (
+    SELECT is_nullable FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'conversations'
+      AND column_name = 'connection_id'
+  ) <> 'NO' THEN
+    RAISE EXCEPTION 'conversations.connection_id must be NOT NULL (migration 047)';
+  END IF;
+  IF EXISTS (SELECT 1 FROM conversations WHERE connection_id IS NULL) THEN
+    RAISE EXCEPTION 'conversations with NULL connection_id (migration 047)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'idx_conversations_contact_connection'
+      AND indexdef LIKE 'CREATE UNIQUE INDEX%(contact_id, connection_id)%'
+  ) THEN
+    RAISE EXCEPTION 'idx_conversations_contact_connection (contact_id, connection_id) is missing (migration 047)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'idx_conversations_connection_last_message'
+      AND indexdef LIKE '%(connection_id, last_message_at DESC)%'
+  ) THEN
+    RAISE EXCEPTION 'conversations (connection_id, last_message_at DESC) index is missing (migration 047)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'idx_one_active_run_per_conversation'
+      AND indexdef LIKE 'CREATE UNIQUE INDEX%(conversation_id)%'
+      AND indexdef LIKE '%status%active%'
+  ) THEN
+    RAISE EXCEPTION 'idx_one_active_run_per_conversation is missing (migration 047)';
+  END IF;
+  IF to_regclass('public.idx_conversations_account_contact') IS NOT NULL
+     OR to_regclass('public.idx_one_active_run_per_contact') IS NOT NULL THEN
+    RAISE EXCEPTION 'the old unique indexes must be gone (migration 047)';
   END IF;
 
   RAISE NOTICE 'schema verification passed';

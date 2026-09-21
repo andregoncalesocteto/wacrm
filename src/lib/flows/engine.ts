@@ -27,8 +27,8 @@
  *   - Optimistic UPDATE with `current_node_key` precondition: two
  *     simultaneous taps for the same run collide at the DB layer; the
  *     second is a no-op.
- *   - Partial unique index `idx_one_active_run_per_contact`: two
- *     simultaneous starts for the same contact collide; the second
+ *   - Partial unique index `idx_one_active_run_per_conversation`: two
+ *     simultaneous starts for the same conversation collide; the second
  *     INSERT raises 23505 and the runner catches & exits.
  */
 
@@ -200,10 +200,12 @@ async function loadActiveRunForContact(
   accountId: string,
   contactId: string,
 ): Promise<FlowRunRow | null> {
-  // The partial unique index `idx_one_active_run_per_contact` was
-  // rebuilt in migration 017 over `(account_id, contact_id)` — so
-  // "two active runs for one contact in one account" is impossible
-  // by design. But a future migration glitch or manual SQL could
+  // The partial unique index `idx_one_active_run_per_conversation`
+  // (migration 047; it was per contact before, migration 017) makes
+  // "two active runs for one conversation" impossible by design. A
+  // contact reached on two connections has two conversations, and this
+  // lookup is still by contact (unchanged), so it picks the newest.
+  // But a future migration glitch or manual SQL could
   // create one, and .maybeSingle() throws on >1 row — which would
   // kill dispatch for that contact's webhook entirely. .limit(1) is
   // forgiving: pick the newest, let the cron sweep clean up the
@@ -1150,7 +1152,7 @@ async function startNewRun(
   input: DispatchInboundInput,
   nodes: Map<string, FlowNodeRow>,
 ): Promise<DispatchInboundResult> {
-  // INSERT — partial unique index `idx_one_active_run_per_contact`
+  // INSERT — partial unique index `idx_one_active_run_per_conversation`
   // catches concurrent inserts with 23505. We catch and return as
   // consumed:true (the parallel webhook handles it).
   const { data: inserted, error: insErr } = await db
@@ -1158,9 +1160,10 @@ async function startNewRun(
     .insert({
       flow_id: flow.id,
       // Tenancy: NOT NULL post-017. The partial unique index
-      // `idx_one_active_run_per_contact` is over (account_id,
-      // contact_id) WHERE status='active', so two accounts sharing
-      // a contact phone number each run their own flows independently.
+      // `idx_one_active_run_per_conversation` is over (conversation_id)
+      // WHERE status='active'; conversations belong to one account, so
+      // two accounts sharing a contact phone number each run their own
+      // flows independently.
       account_id: flow.account_id,
       // Audit: preserves the flow's author on the run row for log
       // attribution.
