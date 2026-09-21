@@ -19,7 +19,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { sendTemplateMessage } from '@/lib/whatsapp/meta-api';
-import { decrypt } from '@/lib/whatsapp/encryption';
+import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection';
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -108,21 +108,19 @@ export async function createBroadcast(
     );
   }
 
-  // Config (fail fast + provides the audit trail owner already resolved
-  // by the caller). Meta send needs phone_number_id + decrypted token.
-  const { data: config, error: configError } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', accountId)
-    .single();
-  if (configError || !config) {
+  // Connection (fail fast + provides the audit trail owner already resolved
+  // by the caller). Meta send needs phone_number_id + decrypted token. A
+  // broadcast sends through ONE WhatsApp connection: the account's, and its
+  // id is persisted on the broadcast row below.
+  const conn = await loadWhatsAppSendConnection(db, accountId);
+  if (!conn) {
     throw new BroadcastError(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',
       400
     );
   }
-  const accessToken = decrypt(config.access_token);
+  const accessToken = conn.accessToken;
 
   // Template row (once) for header/button components; guard a
   // malformed local row rather than N identical opaque failures.
@@ -146,7 +144,9 @@ export async function createBroadcast(
   const resolved: { contactId: string; phone: string; params: string[] }[] = [];
   let rejected = 0;
   for (const r of recipients) {
-    const sanitized = sanitizePhoneForMeta(typeof r.to === 'string' ? r.to : '');
+    const sanitized = sanitizePhoneForMeta(
+      typeof r.to === 'string' ? r.to : ''
+    );
     if (!isValidE164(sanitized)) {
       rejected++;
       continue;
@@ -211,6 +211,8 @@ export async function createBroadcast(
       // Frozen per-recipient params (migration 038) — without them a
       // resume of this broadcast has no way to reconstruct {{1}}.
       p_template_params: deduped.map((r) => r.params),
+      // The connection that sends this broadcast (migration 046).
+      p_connection_id: conn.connection.id,
     }
   );
   if (createErr || !createdRows || createdRows.length === 0) {
@@ -226,7 +228,11 @@ export async function createBroadcast(
   const planned: PlannedRecipient[] = createdRows.map(
     (row: { recipient_id: string; contact_id: string }) => {
       const r = byContact.get(row.contact_id)!;
-      return { recipientRowId: row.recipient_id, phone: r.phone, params: r.params };
+      return {
+        recipientRowId: row.recipient_id,
+        phone: r.phone,
+        params: r.params,
+      };
     }
   );
 
@@ -234,7 +240,7 @@ export async function createBroadcast(
     broadcastId,
     templateName,
     templateLanguage: resolvedTemplate.language,
-    phoneNumberId: config.phone_number_id,
+    phoneNumberId: conn.phoneNumberId,
     accessToken,
     templateRow,
     planned,
@@ -279,7 +285,8 @@ export async function deliverBroadcast(
         lastError = null;
         break;
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        const message =
+          error instanceof Error ? error.message : 'Unknown error';
         lastError = message;
         // Only a "recipient not allowed" error is worth another variant.
         if (!isRecipientNotAllowedError(message)) break;

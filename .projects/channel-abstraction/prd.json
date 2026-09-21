@@ -277,8 +277,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 16,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Migration 046 adds p_connection_id to create_broadcast_with_recipients (8-arg overload dropped). Dashboard hook inserts broadcasts.connection_id directly. Not browser-verified (no criterion requires it; Meta unreachable)."
     },
     {
       "id": "US-016",

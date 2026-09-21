@@ -56,7 +56,7 @@ BEGIN
   -- plain replay can't catch it). Assert the qualified form is what's
   -- actually installed.
   IF pg_get_functiondef(
-       'public.create_broadcast_with_recipients(uuid,uuid,text,text,text,integer,uuid[],jsonb[])'::regprocedure
+       'public.create_broadcast_with_recipients(uuid,uuid,text,text,text,integer,uuid[],jsonb[],uuid)'::regprocedure
      ) NOT LIKE '%RETURNING id, broadcast_recipients.contact_id%' THEN
     RAISE EXCEPTION
       'create_broadcast_with_recipients still has the ambiguous RETURNING — migration 041 did not apply';
@@ -157,6 +157,17 @@ BEGIN
       AND EXISTS (SELECT 1 FROM whatsapp_config wc WHERE wc.account_id = b.account_id)
   ) THEN
     RAISE EXCEPTION 'templates/broadcasts with NULL connection_id in an account that has a connection (migration 045)';
+  END IF;
+
+  -- 046: the broadcast RPC persists the sending connection and the old
+  -- 8-argument overload is gone (it would make omitted-arg calls ambiguous).
+  IF pg_get_functiondef(
+       'public.create_broadcast_with_recipients(uuid,uuid,text,text,text,integer,uuid[],jsonb[],uuid)'::regprocedure
+     ) NOT LIKE '%connection_id%' THEN
+    RAISE EXCEPTION 'create_broadcast_with_recipients does not store connection_id (migration 046)';
+  END IF;
+  IF (SELECT COUNT(*) FROM pg_proc WHERE proname = 'create_broadcast_with_recipients') <> 1 THEN
+    RAISE EXCEPTION 'create_broadcast_with_recipients has more than one overload (migration 046)';
   END IF;
 
   RAISE NOTICE 'schema verification passed';

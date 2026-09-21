@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { sendTemplateMessage } from '@/lib/whatsapp/meta-api'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body'
 import {
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     // explicit that running broadcasts is a write operation and that
     // viewers are read-only.
     //
-    // This endpoint writes NOTHING to the database: it reads the config
+    // This endpoint writes NOTHING to the database: it reads the connection
     // and template, then calls Meta directly. So unlike the rest of the
     // app there was no RLS policy backstopping a missing role check —
     // resolving `account_id` straight off the profile (which only needs
@@ -120,13 +120,9 @@ export async function POST(request: Request) {
       )
     }
 
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    const conn = await loadWhatsAppSendConnection(supabase, accountId)
 
-    if (configError || !config) {
+    if (!conn) {
       return NextResponse.json(
         {
           error:
@@ -136,7 +132,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const accessToken = decrypt(config.access_token)
+    const accessToken = conn.accessToken
 
     // Load the template row once so sendTemplateMessage can build
     // header + button components on each iteration. Loading inside
@@ -186,7 +182,7 @@ export async function POST(request: Request) {
       for (const variant of variants) {
         try {
           const result = await sendTemplateMessage({
-            phoneNumberId: config.phone_number_id,
+            phoneNumberId: conn.phoneNumberId,
             accessToken,
             to: variant,
             templateName: template_name,

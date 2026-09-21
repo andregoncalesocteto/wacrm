@@ -207,3 +207,14 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - resolveAuditUserId in lib/api/v1/contacts.ts still reads whatsapp_config (used by resolve-conversation); the resolve-conversation test double keeps serving whatsapp_config for it. Migrate in the story that covers contacts.ts.
   - Do NOT run prettier over src/lib/whatsapp/*.test.ts globally: many are not prettier-formatted and get noisy diffs.
 ---
+
+## 2026-09-21 - US-015
+- broadcast-core.createBroadcast, broadcast-resume.planBroadcastResume and POST /api/whatsapp/broadcast no longer read whatsapp_config: they use loadWhatsAppSendConnection (US-014 helper). Resume passes broadcast.connection_id (falls back to the account's connection when NULL). Same "WhatsApp not configured" errors/400.
+- New broadcasts persist connection_id: migration 046 replaces create_broadcast_with_recipients with a 9-arg version (p_connection_id UUID DEFAULT NULL; the 8-arg overload is DROPped, otherwise omitted-arg calls are ambiguous); verify-schema.sql updated (regprocedure signature + assertions). The dashboard hook use-broadcast-sending.ts inserts broadcasts directly from the client, so it now looks up the account's whatsapp_cloud channel_connections row (RLS member read) and sets connection_id (best-effort, NULL falls back). Did NOT import connections.ts in the hook (it pulls the service-role client).
+- Tests edited (doubles/seed only, assertions unchanged): broadcast-core.test.ts (+1 new test for p_connection_id), broadcast-resume.test.ts. broadcast-deliver.characterization.test.ts needed no change (deliver never read config).
+- Files: broadcast-core.ts, broadcast-resume.ts, api/whatsapp/broadcast/route.ts, hooks/use-broadcast-sending.ts, 046 migration, verify-schema.sql, the two tests, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - POST /api/whatsapp/broadcast writes nothing to the DB (only the client hook and /api/v1 create rows).
+  - Checked: dev migrate + verify-schema, isolated replay (46 applied). RPC not exercised end-to-end against Meta/real data.
+  - Baseline: 104 files / 1291 tests, lint 41 warnings.
+---

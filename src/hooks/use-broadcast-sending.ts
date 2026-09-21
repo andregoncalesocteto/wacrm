@@ -377,10 +377,21 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
       // ── Step 2: Create broadcast row ──────────────────────────────
       setProgress(10);
+      // The WhatsApp connection that sends this broadcast (enabled one
+      // first). Best-effort: NULL keeps the server-side account fallback.
+      const { data: sendConnection } = await supabase
+        .from('channel_connections')
+        .select('id')
+        .eq('account_id', accountId)
+        .eq('channel_type', 'whatsapp_cloud')
+        .order('disabled_at', { ascending: true, nullsFirst: true })
+        .limit(1)
+        .maybeSingle();
       const { data: broadcast, error: broadcastError } = await supabase
         .from('broadcasts')
         .insert({
           user_id: user.id,
+          connection_id: sendConnection?.id ?? null,
           account_id: accountId,
           name: payload.name,
           template_name: payload.template.name,
