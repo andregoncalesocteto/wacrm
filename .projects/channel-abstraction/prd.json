@@ -376,8 +376,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 22,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "fanout.ts now also flags broadcast replies (before flows) and dispatches message.received (after AI). The route creates NO server-side notifications on inbound (lib/notifications is browser-only), so none added. conversation.created is emitted by conversationCreatedHook (IngestHooks.onConversationCreated), not by the fan-out."
     },
     {
       "id": "US-021",

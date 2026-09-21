@@ -1,7 +1,9 @@
 import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
-import type { IngestedMessage } from './ingest';
+import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { supabaseAdmin } from './admin-client';
+import type { IngestContext, IngestedMessage } from './ingest';
 
 /**
  * Inbound fan-out (US-020): what runs after a NEW inbound message was stored.
@@ -20,9 +22,13 @@ import type { IngestedMessage } from './ingest';
  * Each engine is isolated: one that throws is logged (`[channel:fanout]`) and
  * the others still run; the stored message is never affected.
  *
- * SEAM (US-074): `flagBroadcastReplyIfAny` (before flows) and the outbound
- * `message.received` webhook / notifications (after the AI reply) belong to
- * this same sequence but are NOT done here yet. Add them at the marked spots.
+ * US-074 adds, around that sequence (same as the webhook route):
+ *   0. flagBroadcastReplyIfAny  (before flows; every new inbound, first or not)
+ *   4. outbound `message.received` webhook (after the AI reply, awaited)
+ * `conversation.created` is NOT emitted here: it fires from the ingestion's
+ * `onConversationCreated` hook (see `conversationCreatedHook`), before the
+ * message, as the route does. The route creates no server-side notifications
+ * on inbound (lib/notifications is browser-only), so there is nothing to add.
  */
 
 export interface FanoutOptions {
@@ -53,7 +59,10 @@ export async function fanOutInbound(
   const interactiveReplyId = stored.interactiveReplyId;
   const text = stored.contentText;
 
-  // SEAM (US-074): flagBroadcastReplyIfAny(accountId, contactId) goes here.
+  // 0. If this contact was a recent broadcast recipient, flag the reply.
+  await isolated('broadcast reply flag', () =>
+    flagBroadcastReplyIfAny(accountId, contactId)
+  );
 
   // 1. Flows. A failure counts as "not consumed" so automations still run.
   const flowResult = await isolated('flows', () =>
@@ -123,7 +132,70 @@ export async function fanOutInbound(
     );
   }
 
-  // SEAM (US-074): outbound `message.received` webhook and notifications.
+  // 4. Outbound `message.received` webhook (public API). Awaited; the payload
+  // is identical to today's (connection_id/store_id/channel come with US-063).
+  await isolated('message.received webhook', () =>
+    dispatchWebhookEvent(supabaseAdmin(), accountId, 'message.received', {
+      conversation_id: conversationId,
+      contact_id: contactId,
+      whatsapp_message_id: externalId,
+      content_type: stored.contentType,
+      text: text,
+    })
+  );
+}
+
+/**
+ * Marks the contact's most recent sent/delivered/read broadcast recipient as
+ * `replied` (advances the broadcast's `replied_count` via the aggregate
+ * trigger). Best-effort: errors are logged, never thrown.
+ */
+export async function flagBroadcastReplyIfAny(
+  accountId: string,
+  contactId: string
+): Promise<void> {
+  try {
+    const { data: recs, error } = await supabaseAdmin()
+      .from('broadcast_recipients')
+      .select('id, status, broadcast_id, broadcasts!inner(account_id)')
+      .eq('contact_id', contactId)
+      .eq('broadcasts.account_id', accountId)
+      .in('status', ['sent', 'delivered', 'read'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error || !recs || recs.length === 0) return;
+
+    const { error: updErr } = await supabaseAdmin()
+      .from('broadcast_recipients')
+      .update({ status: 'replied', replied_at: new Date().toISOString() })
+      .eq('id', recs[0].id);
+
+    if (updErr) {
+      console.error(
+        '[channel:fanout] marking recipient replied failed:',
+        updErr
+      );
+    }
+  } catch (err) {
+    console.error('[channel:fanout] flagBroadcastReplyIfAny failed:', err);
+  }
+}
+
+/** Ready-made `IngestHooks.onConversationCreated`: emits `conversation.created`. */
+export async function conversationCreatedHook(
+  ctx: IngestContext
+): Promise<void> {
+  try {
+    await dispatchWebhookEvent(
+      supabaseAdmin(),
+      ctx.connection.account_id,
+      'conversation.created',
+      { conversation_id: ctx.conversation.id, contact_id: ctx.contact.id }
+    );
+  } catch (err) {
+    console.error('[channel:fanout] conversation.created webhook failed:', err);
+  }
 }
 
 /** Ready-made `IngestHooks.onMessageStored`. */
