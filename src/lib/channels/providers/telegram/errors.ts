@@ -42,7 +42,13 @@ export function fromBotApiFailure(
       { ...opts, retryable: true }
     );
   }
-  if (code === 403)
+  // 403 "Forbidden: bot was blocked by the user" / "user is deactivated" /
+  // "bot can't initiate conversation with a user", and 400 "Bad Request: chat
+  // not found" (the user never started the bot): the contact cannot be reached.
+  if (
+    code === 403 ||
+    /chat not found|bot was blocked|user is deactivated/i.test(message)
+  )
     return new ChannelError('recipient_unreachable', message, opts);
   if (code === 400) return new ChannelError('invalid', message, opts);
   return new ChannelError('unknown', message, opts);

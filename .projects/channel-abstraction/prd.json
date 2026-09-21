@@ -941,8 +941,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 55,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Real Telegram unreachable: verified with mocked fetch only. Media is sent by URL: Telegram must be able to fetch it (a local supabase.localtest.me URL is not reachable from Telegram). Error strings for blocked bot / chat not found taken from the task brief, not confirmed verbatim by the docs snippets."
     },
     {
       "id": "US-050",

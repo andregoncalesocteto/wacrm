@@ -72,6 +72,16 @@ export async function POST(
   }
 
   after(async () => {
+    // Best-effort (Telegram: clears the button-tap spinner); never blocks ingest.
+    if (provider.acknowledgeInteraction) {
+      await Promise.all(
+        events.map((event) =>
+          provider.acknowledgeInteraction!(connection, event).catch(() => {
+            console.warn('[channel-webhook] could not acknowledge interaction');
+          })
+        )
+      );
+    }
     try {
       const admin = supabaseAdmin();
       // Connections carry no user: rows are attributed to the account owner.

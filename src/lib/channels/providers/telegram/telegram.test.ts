@@ -93,19 +93,6 @@ describe('capabilities and registry', () => {
     expect(telegramProvider.configSchema.safeParse({}).success).toBe(true);
     expect(telegramProvider.configSchema.safeParse([]).success).toBe(false);
   });
-
-  it('outbound is unsupported for now (inbound: US-048, inbound.test.ts)', async () => {
-    await expect(async () =>
-      telegramProvider.send(
-        conn,
-        { kind: 'k', address: '1' },
-        {
-          type: 'text',
-          text: 'x',
-        }
-      )
-    ).rejects.toMatchObject({ code: 'unsupported' });
-  });
 });
 
 describe('connect', () => {

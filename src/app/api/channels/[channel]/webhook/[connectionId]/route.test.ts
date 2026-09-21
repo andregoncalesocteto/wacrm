@@ -171,6 +171,47 @@ describe('POST /api/channels/[channel]/webhook/[connectionId]', () => {
     update.message.chat.type = 'private';
   });
 
+  it('a button tap is acknowledged (answerCallbackQuery) before ingest; failure swallowed', async () => {
+    const tap = JSON.parse(
+      readFileSync(
+        join(
+          process.cwd(),
+          'src/lib/channels/providers/telegram/__fixtures__/callback_query.json'
+        ),
+        'utf8'
+      )
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, result: true }))
+      )
+      .mockRejectedValueOnce(new Error('network'));
+    vi.stubGlobal('fetch', fetchMock);
+    const post = () =>
+      POST(
+        new Request(`https://crm/api/channels/telegram/webhook/${ID}`, {
+          method: 'POST',
+          headers: { 'x-telegram-bot-api-secret-token': SECRET },
+          body: JSON.stringify(tap),
+        }),
+        { params: Promise.resolve({ channel: 'telegram', connectionId: ID }) }
+      );
+    expect((await post()).status).toBe(200);
+    await flush();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain('/answerCallbackQuery');
+    expect(JSON.parse(init.body).callback_query_id).toBe(
+      String(tap.callback_query.id)
+    );
+    expect(h.ingest).toHaveBeenCalledTimes(1);
+    // Second tap: the ack fails, ingest still runs.
+    await post();
+    await flush();
+    expect(h.ingest).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+
   it('an ingest failure is swallowed after the ack', async () => {
     h.ingest.mockRejectedValueOnce(new Error('db down'));
     expect((await call('telegram')).status).toBe(200);

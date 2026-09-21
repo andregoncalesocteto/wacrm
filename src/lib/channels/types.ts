@@ -402,6 +402,12 @@ export interface ChannelProvider {
   verify(req: Request, conn: Connection): Promise<boolean>;
   parse(req: Request, conn: Connection): Promise<InboundEvent[]>;
   downloadMedia?(conn: Connection, ref: MediaRef): Promise<Blob>;
+  /**
+   * Optional, best-effort: acknowledges an interaction the user made (Telegram
+   * answerCallbackQuery clears the button-tap spinner). Called by the generic
+   * webhook route after parse; failures are swallowed by the caller.
+   */
+  acknowledgeInteraction?(conn: Connection, event: InboundEvent): Promise<void>;
 
   // outbound
   /** Picks the address to deliver to from a contact's identities; null = unreachable here. */

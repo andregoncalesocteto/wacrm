@@ -1,20 +1,22 @@
-import { ChannelError } from '../../types';
-import type {
-  Capabilities,
-  ChannelProvider,
-  ContactIdentity,
-  Target,
-} from '../../types';
+import type { Capabilities, ChannelProvider } from '../../types';
+import {
+  CHAT_ID_KIND,
+  acknowledgeInteraction,
+  react,
+  resolveTarget,
+  send,
+  typing,
+} from './outbound';
 import { connect, deriveExternalId, disconnect, health } from './lifecycle';
 import { downloadMedia, parse, resolveConnection, verify } from './inbound';
 import { telegramConfigSchema, telegramCredentialsSchema } from './schemas';
 
 /**
  * Telegram Bot API provider. Capabilities and lifecycle (US-047), inbound
- * (US-048); outbound arrives with US-049.
+ * (US-048); outbound (US-049) is in ./outbound.ts.
  */
 
-export const CHAT_ID_KIND = 'telegram:chat_id';
+export { CHAT_ID_KIND };
 
 export const telegramCapabilities: Capabilities = {
   templates: false,
@@ -30,18 +32,6 @@ export const telegramCapabilities: Capabilities = {
   maxMediaBytes: 50 * 1024 * 1024,
   captionMaxLength: 1024,
 };
-
-const notYet = (what: string) => (): never => {
-  throw new ChannelError(
-    'unsupported',
-    `Telegram ${what} is not implemented yet`
-  );
-};
-
-function resolveTarget(identities: ContactIdentity[]): Target | null {
-  const chat = identities.find((i) => i.kind === CHAT_ID_KIND);
-  return chat ? { kind: CHAT_ID_KIND, address: chat.externalId } : null;
-}
 
 export const telegramProvider: ChannelProvider = {
   type: 'telegram',
@@ -72,5 +62,8 @@ export const telegramProvider: ChannelProvider = {
   downloadMedia,
 
   resolveTarget,
-  send: notYet('outbound'),
+  send,
+  react,
+  typing,
+  acknowledgeInteraction,
 };
