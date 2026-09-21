@@ -39,3 +39,12 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - dev-browser: Sheet/dialog buttons may need force:true. Screenshots only under the scratchpad, never in the repo.
 
 ---
+
+## 2026-09-21 - US-001
+- Wrote .projects/channel-abstraction/coverage-map.md: existing tests per area (send, webhook, templates, broadcast, flows, automations, AI) and the gaps US-002..004 must cover. No production code changed.
+- Files changed: .projects/channel-abstraction/{coverage-map.md,prd.json,progress.txt}
+- **Learnings for future iterations:**
+  - Webhook route tests mock webhook-signature and the fan-out modules; GET verify, 401, reactions, status ladder (ladderLevel/isValidStatusTransition) and handleReaction have no test.
+  - sendMessageToConversation only has validation/recipient tests (no happy-path/Meta-failure); deliverBroadcast, flows node execution, automations meta-send and the react/media/templates routes are untested.
+  - The gap list is in coverage-map.md sections 1-9; US-002 = send, US-003 = webhook+templates, US-004 = broadcast/flows/automations/AI.
+---
