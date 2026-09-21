@@ -736,3 +736,10 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - **Learnings:** dev-browser clicks on nested dialog buttons need page.evaluate(el.click()) (force clicks timed out). pt plural: 0 uses the singular form ("0 conversa").
 - Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 151 files/1859 tests.
 ---
+
+## 2026-09-21 - US-059
+- Integration test src/lib/channels/providers/telegram/crm.integration.test.ts (7 tests): a Telegram update (fixture text.json) goes through the real provider parse, ingestInbound and fanoutHook; real automations engine (new_contact_created: add_tag + update_contact_field custom) and real flows engine (keyword flow: send_message via Telegram fetch mock -> set_tag -> end) run against ONE in-memory DB. The agent's CRM writes (deal from the conversation with the deal-form payload, contact_tags, contact_notes, custom value upsert) hit the same DB; loadMetrics/loadPipelineDonut then show 1 conversation, 1 new contact, 1 open deal worth 2500. A last test asserts nothing needs a phone or wamid (phone '', no whatsapp:* identity, no whatsapp_config, message_ids all "chat:id", fetch only to api.telegram.org).
+- New shared fake src/lib/channels/crm-world.fake.ts (single store, unique indexes for identities/conversation(contact,connection)/messages/contact_tags/custom values, created_at stamping, contact:contacts and conversations( embeds, gte/lt/head count). No production code changed.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 152 files/1866 tests. No build, no browser (no UI).
+- **Learnings:** vi.mock cannot be called in a loop; share a factory through vi.hoisted. The manual CRM steps (deal/tag/note/field) are client-side supabase writes in the app, so the test replays the same writes rather than calling components. Without a phone the automations `create_deal` and tag paths need no channel at all; only the flow send touches Telegram.
+---
