@@ -75,6 +75,30 @@ BEGIN
       'messages.error_code/error_title/error_details are missing — migration 042 did not apply';
   END IF;
 
+  -- 043 adds the channel-abstraction tables. The credentials table must
+  -- have RLS on and NO policy (service role only): a stray policy would
+  -- expose encrypted secrets to members.
+  IF to_regclass('public.stores') IS NULL
+     OR to_regclass('public.channel_connections') IS NULL
+     OR to_regclass('public.channel_connection_credentials') IS NULL
+     OR to_regclass('public.contact_identities') IS NULL THEN
+    RAISE EXCEPTION
+      'stores / channel_connections / channel_connection_credentials / contact_identities are missing — migration 043 did not apply';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'channel_connection_credentials'
+  ) THEN
+    RAISE EXCEPTION
+      'channel_connection_credentials must have no RLS policy (service role only)';
+  END IF;
+  IF NOT (
+    SELECT relrowsecurity FROM pg_class
+    WHERE oid = 'public.channel_connection_credentials'::regclass
+  ) THEN
+    RAISE EXCEPTION 'channel_connection_credentials must have RLS enabled';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

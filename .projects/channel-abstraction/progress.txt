@@ -87,3 +87,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Still untested (out of US-004 criteria): broadcast API routes (POST /api/whatsapp/broadcast, resume, /api/v1/broadcasts), flows handleReplyForActiveRun/collect_input/condition paths.
   - Baseline now: 97 files / 1162 tests green (TZ=UTC), lint 41 warnings, typecheck clean.
 ---
+
+## 2026-09-21 - US-005
+- Added supabase/migrations/043_stores_and_connections.sql: stores, channel_connections (disabled_at, status CHECK, UNIQUE (channel_type, external_id)), channel_connection_credentials (secrets_encrypted, secrets_format DEFAULT 'json_v1'; RLS ON, NO policy), contact_identities (UNIQUE (account_id, kind, external_id)); indexes, set_updated_at triggers, RLS (stores/connections: member read, admin+ write; identities: member read, agent+ write) and realtime publication for channel_connections (same DO-block pattern as 027).
+- Extended supabase/ci/verify-schema.sql (inside the single DO block): four tables exist, credentials table has RLS on and zero pg_policies.
+- Verified: dev DB migrate (1 applied, re-run 0), verify-schema on dev, isolated replay (-p wacrm-replay, 43 applied, verify passed, down -v). typecheck, lint, TZ=UTC npm test (97 files/1162) green.
+- Files changed: the migration, verify-schema.sql, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - Recent migrations use uuid_generate_v4() (035) or gen_random_uuid() (030); used uuid_generate_v4 per design. updated_at trigger is `set_updated_at` using update_updated_at_column().
+  - Policies are DROP POLICY IF EXISTS + CREATE POLICY named <table>_<select|insert|update|delete>. No columns on the new tables are referenced by code yet; 044 (nullable connection_id columns + backfill) is next.
+---
