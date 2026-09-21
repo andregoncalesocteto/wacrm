@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection'
 
 export async function GET(
   request: Request,
@@ -31,8 +31,8 @@ export async function GET(
       )
     }
 
-    // Resolve the caller's account_id — whatsapp_config is one-per-
-    // account post-multi-user, so a teammate fetching media for a
+    // Resolve the caller's account_id — the WhatsApp connection is
+    // per-account post-multi-user, so a teammate fetching media for a
     // conversation in the shared inbox needs the account's config,
     // not their personal (non-existent) row.
     const { data: profile } = await supabase
@@ -48,21 +48,17 @@ export async function GET(
       )
     }
 
-    // Fetch and decrypt WhatsApp config
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    // Resolve the account's WhatsApp connection + decrypted token
+    const loaded = await loadWhatsAppSendConnection(supabase, accountId)
 
-    if (configError || !config) {
+    if (!loaded) {
       return NextResponse.json(
         { error: 'WhatsApp not configured' },
         { status: 400 }
       )
     }
 
-    const accessToken = decrypt(config.access_token)
+    const accessToken = loaded.accessToken
 
     // Get the download URL from Meta
     const mediaInfo = await getMediaUrl({ mediaId, accessToken })

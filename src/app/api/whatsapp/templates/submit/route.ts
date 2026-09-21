@@ -6,7 +6,10 @@ import {
   requireRole,
   toErrorResponse,
 } from '@/lib/auth/account'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import {
+  findAccountWhatsAppConnection,
+  loadWhatsAppSendConnection,
+} from '@/lib/channels/whatsapp-connection'
 import { submitMessageTemplate } from '@/lib/whatsapp/meta-api'
 import {
   validateTemplatePayload,
@@ -24,6 +27,7 @@ import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
 function buildUpsertRow(
   accountId: string,
   userId: string,
+  connectionId: string | null,
   payload: TemplatePayload,
   extras: {
     status: 'DRAFT' | string
@@ -40,6 +44,8 @@ function buildUpsertRow(
     // still on (user_id, name, language) — see the upsert helper
     // for the cross-teammate dedup follow-up.
     user_id: userId,
+    // Channel connection this template belongs to (US-016).
+    connection_id: connectionId,
     name: payload.name,
     category: payload.category,
     language: payload.language,
@@ -80,7 +86,7 @@ async function upsertTemplateRow(
 /**
  * Submit a template to Meta for approval AND persist it locally.
  *
- * Auth → fetch whatsapp_config → validate → (DRY_RUN short-circuit) →
+ * Auth → resolve the WhatsApp connection → validate → (DRY_RUN short-circuit) →
  * POST to Meta → upsert local row by (user_id, name, language) with
  * status, meta_template_id, sample_values, last_submitted_at.
  *
@@ -133,17 +139,23 @@ export async function POST(request: Request) {
 
     let metaTemplateId: string
     let metaStatus: string
+    let connectionId: string | null = null
 
     if (dryRun) {
       metaTemplateId = `dry-run-${crypto.randomUUID()}`
       metaStatus = 'PENDING'
+      // No Meta call, so no config is required — but still tag the row
+      // with the account's connection when there is one.
+      try {
+        connectionId =
+          (await findAccountWhatsAppConnection(supabase, accountId))?.id ??
+          null
+      } catch {
+        connectionId = null
+      }
     } else {
-      const { data: config, error: configError } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', accountId)
-        .single()
-      if (configError || !config) {
+      const loaded = await loadWhatsAppSendConnection(supabase, accountId)
+      if (!loaded) {
         return NextResponse.json(
           {
             error:
@@ -152,7 +164,8 @@ export async function POST(request: Request) {
           { status: 400 },
         )
       }
-      if (!config.waba_id) {
+      const wabaId = loaded.connection.config?.waba_id
+      if (typeof wabaId !== 'string' || !wabaId) {
         return NextResponse.json(
           {
             error:
@@ -162,7 +175,8 @@ export async function POST(request: Request) {
         )
       }
 
-      const accessToken = decrypt(config.access_token)
+      const accessToken = loaded.accessToken
+      connectionId = loaded.connection.id
 
       // Media headers (image/video/document) need a Resumable-Upload
       // handle (Meta rejects a plain URL at creation). Derive it from
@@ -181,7 +195,7 @@ export async function POST(request: Request) {
       const metaPayload = buildMetaTemplatePayload(payload)
       try {
         const meta = await submitMessageTemplate({
-          wabaId: config.waba_id,
+          wabaId,
           accessToken,
           payload: metaPayload,
         })
@@ -193,7 +207,7 @@ export async function POST(request: Request) {
         // until they fix and re-submit.
         await upsertTemplateRow(
           supabase,
-          buildUpsertRow(accountId, userId, payload, {
+          buildUpsertRow(accountId, userId, connectionId, payload, {
             status: 'DRAFT',
             metaTemplateId: null,
             submissionError: message,
@@ -213,7 +227,7 @@ export async function POST(request: Request) {
 
     const { data: row, error: upsertErr } = await upsertTemplateRow(
       supabase,
-      buildUpsertRow(accountId, userId, payload, {
+      buildUpsertRow(accountId, userId, connectionId, payload, {
         status: normalizeStatus(metaStatus),
         metaTemplateId,
         submissionError: null,

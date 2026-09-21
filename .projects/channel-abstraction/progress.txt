@@ -218,3 +218,15 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Checked: dev migrate + verify-schema, isolated replay (46 applied). RPC not exercised end-to-end against Meta/real data.
   - Baseline: 104 files / 1291 tests, lint 41 warnings.
 ---
+
+## 2026-09-21 - US-016
+- templates/submit, templates/[id] (PATCH+DELETE), templates/sync, media/[mediaId], react and template-webhook.ts no longer read whatsapp_config. Routes keep their auth (requireRole / profile account) and then call loadWhatsAppSendConnection(supabase, accountId, {connectionId}) (US-014 helper); waba_id comes from connection.config.waba_id; same error messages/status codes. A null load = "not configured" (no connection or no token).
+- New templates persist connection_id: submit (loaded connection; in dry-run best-effort findAccountWhatsAppConnection, null if none), sync (insert+update rows), webhook stub rows. [id] routes use the template's own connection_id first; react uses the conversation's connection_id.
+- template-webhook stub: tenant resolved via channel_connections (channel_type whatsapp_cloud, config->>waba_id = entry.id); audit user_id now = accounts.owner_user_id (connections carry no user; legacy was whatsapp_config.user_id). Webhook status/quality updates still key on meta_template_id.
+- Test edited (double/seed + call-index/table-name assertions forced by the table swap): src/lib/whatsapp/template-webhook.test.ts (stub serves channel_connections + accounts; insert now expects connection_id). No tests existed for the other five routes.
+- **Learnings for future iterations:**
+  - Stub tenant lookup order is now message_templates -> channel_connections -> accounts -> message_templates.
+  - Not exercised against real Meta; routes with Meta calls have no tests (pre-existing gap).
+  - Remaining whatsapp_config readers: contacts.ts resolveAuditUserId, webhook route, config routes, inbox page, settings components, verify-registration, meta-api/encryption (comments).
+  - Baseline: 104 files / 1291 tests, lint 41 warnings.
+---

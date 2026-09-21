@@ -12,7 +12,8 @@ import {
 //   message_templates: .update().eq().select()  → selectResult (then
 //                      retrySelectResult for the 2nd call, if given)
 //                      .insert()               → { error: insertError }
-//   whatsapp_config:   .select().eq()           → { data: configRows }
+//   channel_connections: .select().eq().eq()     → { data: connection rows built from configRows }
+//   accounts:          .select().eq().maybeSingle() → { data: { owner_user_id } }
 type SelectResult = {
   data: { id: string }[] | null;
   error: { message: string; code?: string } | null;
@@ -39,17 +40,47 @@ function makeSupabaseStub(
     from(table: string) {
       const entry: (typeof calls)[number] = { table };
       calls.push(entry);
-      if (table === 'whatsapp_config') {
+      if (table === 'channel_connections') {
+        return {
+          select(columns: string) {
+            entry.select = columns;
+            return {
+              eq() {
+                return {
+                  eq(column: string, value: unknown) {
+                    entry.filter = { column, value };
+                    return Promise.resolve({
+                      data: (opts.configRows ?? []).map((c) => ({
+                        id: `conn-${c.account_id}`,
+                        account_id: c.account_id,
+                      })),
+                      error: null,
+                    });
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
+      if (table === 'accounts') {
         return {
           select(columns: string) {
             entry.select = columns;
             return {
               eq(column: string, value: unknown) {
                 entry.filter = { column, value };
-                return Promise.resolve({
-                  data: opts.configRows ?? [],
-                  error: null,
-                });
+                return {
+                  maybeSingle() {
+                    const owner = (opts.configRows ?? []).find(
+                      (c) => c.account_id === value,
+                    )?.user_id;
+                    return Promise.resolve({
+                      data: owner ? { owner_user_id: owner } : null,
+                      error: null,
+                    });
+                  },
+                };
               },
             };
           },
@@ -254,14 +285,19 @@ describe('handleTemplateWebhookChange — unknown template stub (#534)', () => {
 
     expect(calls.map((c) => c.table)).toEqual([
       'message_templates', // the original UPDATE (0 rows)
-      'whatsapp_config', // resolve the tenant
+      'channel_connections', // resolve the tenant
+      'accounts', // resolve the audit user (account owner)
       'message_templates', // the stub INSERT
     ]);
-    expect(calls[1].select).toBe('account_id, user_id');
-    expect(calls[1].filter).toEqual({ column: 'waba_id', value: 'WABA-1' });
-    expect(calls[2].insert).toEqual({
+    expect(calls[1].select).toBe('id, account_id');
+    expect(calls[1].filter).toEqual({
+      column: 'config->>waba_id',
+      value: 'WABA-1',
+    });
+    expect(calls[3].insert).toEqual({
       account_id: 'acc-1',
       user_id: 'admin-1',
+      connection_id: 'conn-acc-1',
       meta_template_id: '555',
       name: 'created_in_meta',
       language: 'de',
@@ -290,7 +326,7 @@ describe('handleTemplateWebhookChange — unknown template stub (#534)', () => {
       },
       stub,
     );
-    expect(calls[2].insert).toMatchObject({
+    expect(calls[3].insert).toMatchObject({
       status: 'REJECTED',
       rejection_reason: 'INVALID_FORMAT',
       language: 'en_US',
@@ -315,13 +351,13 @@ describe('handleTemplateWebhookChange — unknown template stub (#534)', () => {
       },
       stub,
     );
-    expect(calls).toHaveLength(2); // update + config lookup, no insert
+    expect(calls).toHaveLength(2); // update + connection lookup, no insert
     expect(calls.some((c) => c.insert)).toBe(false);
     expect(warn).toHaveBeenCalledTimes(1);
     const message = String(warn.mock.calls[0][0]);
     expect(message).toContain('WABA WABA-NOBODY');
     expect(message).toContain('557');
-    expect(message).toContain('no whatsapp_config rows');
+    expect(message).toContain('no WhatsApp connections');
   });
 
   it('refuses to guess the tenant when several configs share the WABA id', async () => {
@@ -345,7 +381,7 @@ describe('handleTemplateWebhookChange — unknown template stub (#534)', () => {
       stub,
     );
     expect(calls.some((c) => c.insert)).toBe(false);
-    expect(String(warn.mock.calls[0][0])).toContain('2 whatsapp_config rows');
+    expect(String(warn.mock.calls[0][0])).toContain('2 WhatsApp connections');
   });
 
   it('inserts a stub with quality_score (and no status) for a 0-row quality update', async () => {
@@ -369,9 +405,10 @@ describe('handleTemplateWebhookChange — unknown template stub (#534)', () => {
       stub,
     );
     expect(calls[0].update).toEqual({ quality_score: 'RED' });
-    expect(calls[2].insert).toEqual({
+    expect(calls[3].insert).toEqual({
       account_id: 'acc-1',
       user_id: 'admin-1',
+      connection_id: 'conn-acc-1',
       meta_template_id: '559',
       name: 'created_in_meta',
       language: 'en_US',
@@ -379,7 +416,7 @@ describe('handleTemplateWebhookChange — unknown template stub (#534)', () => {
       quality_score: 'RED',
     });
     // `status` is deliberately absent — the column default applies.
-    expect(calls[2].insert).not.toHaveProperty('status');
+    expect(calls[3].insert).not.toHaveProperty('status');
     expect(warn).not.toHaveBeenCalled();
   });
 

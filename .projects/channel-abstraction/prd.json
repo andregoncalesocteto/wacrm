@@ -293,7 +293,7 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
