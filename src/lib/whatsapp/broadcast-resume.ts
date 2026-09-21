@@ -22,6 +22,10 @@ import {
   BroadcastError,
   type BroadcastPlan,
 } from '@/lib/whatsapp/broadcast-core';
+import {
+  CONNECTION_DISABLED_CODE,
+  ConnectionDisabledError,
+} from '@/lib/channels/types';
 import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection';
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
@@ -220,6 +224,14 @@ export async function planBroadcastResume(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',
       400
+    );
+  }
+
+  if (conn.connection.disabled_at) {
+    throw new BroadcastError(
+      CONNECTION_DISABLED_CODE,
+      new ConnectionDisabledError().message,
+      409
     );
   }
 

@@ -9,6 +9,7 @@ import { whatsappConnectionRow } from './credentials-admin.fake';
 import { registerProvider, resetRegistryForTests } from './registry';
 import {
   ChannelError,
+  ConnectionDisabledError,
   type Capabilities,
   type ChannelProvider,
   type ContactIdentity,
@@ -679,5 +680,69 @@ describe('showTyping', () => {
     typingMock.mockReset();
     typingMock.mockRejectedValue(new ChannelError('unknown', 'x'));
     await expect(typing()).rejects.toBeInstanceOf(ChannelError);
+  });
+});
+
+describe('sendOutbound disabled connection (US-078)', () => {
+  const disabledAt = '2026-09-01T00:00:00Z';
+
+  it('refuses before the provider and persists nothing', async () => {
+    seed({ phone: '15551234567' }, { connection_id: 'conn-acct-1' });
+    h.db.channel_connections = [
+      whatsappConnectionRow('acct-1', 'pn-1', { disabled_at: disabledAt }),
+    ];
+    const err = await send().catch((e) => e);
+    expect(err).toBeInstanceOf(ConnectionDisabledError);
+    expect(err).toBeInstanceOf(ChannelError);
+    expect(err).toMatchObject({
+      code: 'unsupported',
+      reason: 'connection_disabled',
+    });
+    expect(sendMock).not.toHaveBeenCalled();
+    expect(h.db.messages).toHaveLength(0);
+    expect(h.db.conversations[0].last_message_text).toBe('old');
+  });
+
+  it('does not fall back to another enabled connection of the account', async () => {
+    seed({ phone: '15551234567' }, { connection_id: 'conn-own' });
+    h.db.channel_connections = [
+      whatsappConnectionRow('acct-1', 'pn-1', {
+        id: 'conn-own',
+        disabled_at: disabledAt,
+      }),
+      whatsappConnectionRow('acct-1', 'pn-2', { id: 'conn-other' }),
+    ];
+    await expect(send()).rejects.toBeInstanceOf(ConnectionDisabledError);
+    expect(sendMock).not.toHaveBeenCalled();
+    expect(h.db.messages).toHaveLength(0);
+  });
+
+  it('refuses when a conversation without connection only finds a disabled one', async () => {
+    h.db.channel_connections = [
+      whatsappConnectionRow('acct-1', 'pn-1', { disabled_at: disabledAt }),
+    ];
+    await expect(send()).rejects.toBeInstanceOf(ConnectionDisabledError);
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it('maps to SendMessageError connection_disabled / 409', () => {
+    const mapped = toSendMessageError(new ConnectionDisabledError());
+    expect(mapped).toBeInstanceOf(SendMessageError);
+    expect(mapped).toMatchObject({ code: 'connection_disabled', status: 409 });
+  });
+
+  it('showTyping refuses too', async () => {
+    h.db.channel_connections = [
+      whatsappConnectionRow('acct-1', 'pn-1', { disabled_at: disabledAt }),
+    ];
+    await expect(
+      showTyping({
+        conversationId: 'cv-1',
+        accountId: 'acct-1',
+        inboundExternalId: 'wamid.in',
+        db: fakeDb(),
+      })
+    ).rejects.toBeInstanceOf(ConnectionDisabledError);
+    expect(typingMock).not.toHaveBeenCalled();
   });
 });

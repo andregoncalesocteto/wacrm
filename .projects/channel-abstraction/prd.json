@@ -855,7 +855,7 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "notes": "Adicionada pelo orquestrador após a US-044: a US-044 bloqueou o compositor e os manipuladores de envio na interface, mas o servidor ainda aceitaria envio por uma conexão desativada (API v1, flows, automações, IA, broadcast) e a reação não é bloqueada. O banner também lê 'A loja Loja Norte'.",
-      "passes": false,
+      "passes": true,
       "priority": 50
     },
     {

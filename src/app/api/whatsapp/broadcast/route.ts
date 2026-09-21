@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { getProvider } from '@/lib/channels/registry'
 import { registerBuiltinProviders } from '@/lib/channels/providers'
-import { ChannelError } from '@/lib/channels/types'
+import {
+  ChannelError,
+  CONNECTION_DISABLED_CODE,
+  ConnectionDisabledError,
+} from '@/lib/channels/types'
 import { WA_PHONE_KIND } from '@/lib/channels/identity'
 import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
@@ -127,6 +131,18 @@ export async function POST(request: Request) {
             'WhatsApp not configured. Please set up your WhatsApp integration first.',
         },
         { status: 400 }
+      )
+    }
+
+    // US-078: a broadcast is bound to one connection; refuse a disabled one
+    // before any send (409, same code as the other send paths).
+    if (conn.connection.disabled_at) {
+      return NextResponse.json(
+        {
+          error: new ConnectionDisabledError().message,
+          code: CONNECTION_DISABLED_CODE,
+        },
+        { status: 409 }
       )
     }
 

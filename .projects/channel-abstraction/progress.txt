@@ -573,3 +573,16 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1609, build ok. Browser (pt :3100): 2 stores/3 connections -> chips Centro 1 / Norte 1, banner names Loja Norte, disabled conversation shows notice and no composer textarea, flipping status to connected removes the banner live (realtime); one connection -> no chips, no new banner, old banner shown. Seeds removed.
 - **Learnings:** the banner says "A loja {store}" so a store named "Loja Norte" reads "A loja Loja Norte". The reaction action is not gated by connection disabled (server-side send still errors). Next dev rewrote AGENTS.md; reverted.
 ---
+
+## 2026-09-21 - US-078
+- Server refuses sends through disabled connections. New `ConnectionDisabledError` (extends ChannelError, code 'unsupported', `reason`/CONNECTION_DISABLED_CODE 'connection_disabled') in channels/types.ts. `sendOutbound` and `showTyping` throw it right after loading the connection (before provider/persist). `toSendMessageError` maps it explicitly to SendMessageError('connection_disabled', 409) BEFORE the generic ChannelError branch (which would answer 400/502). v1 route already returns err.code -> 409 envelope; dashboard send route adds `code` to its `{error}` body only for this error. Reaction route, dashboard broadcast route (409 + code), createBroadcast/resume (BroadcastError 409) and deliverBroadcast (marks campaign failed, throws) refuse too.
+- Rule documented in whatsapp-connection.ts: an existing conversation ALWAYS sends through ITS connection; resolveWhatsAppConnection still returns the (disabled) own connection, callers refuse; only conversations without connection_id use the account fallback (enabled first).
+- Flows/automations already surface a thrown error (run failed send_*_failed + event detail; automation log failed + error_message); AI keeps its console.error "dispatch failed" path (no persisted failure record exists for AI).
+- Banner key Inbox.connectionDisconnected reworded x4 (name in quotes, no article), ICU {store} unchanged.
+- Tests: send.test.ts (core, no-fallback, mapping, typing), send/route.test.ts, v1 messages route.test.ts, react/route.test.ts (new), broadcast route.test.ts + broadcast-core.disabled.test.ts (new), automations engine.channel.test.ts, flows engine.characterization.test.ts, ai auto-reply.characterization.test.ts. All prove no provider call and nothing persisted. Baseline now: 134 files / 1624 tests, lint 40 warnings.
+- Not verified in browser (banner wording only checked in catalogues). `npm run build` not run (no routing/config change).
+- **Learnings:**
+  - Several existing files are not prettier-formatted (dashboard send/broadcast/react routes, some tests): format only the files that were clean before (check with git stash + prettier --check).
+  - Automations without a conversation in context pick a conversation without checking disabled_at; it then fails visibly in sendOutbound.
+  - AI auto-reply consumes a reply slot and pays an LLM call before the send is refused (a pre-gate would be a future optimization).
+---

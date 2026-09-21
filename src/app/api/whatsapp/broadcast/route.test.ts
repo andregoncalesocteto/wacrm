@@ -245,3 +245,23 @@ describe('POST /api/whatsapp/broadcast', () => {
     expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('POST /api/whatsapp/broadcast disabled connection (US-078)', () => {
+  it('409s connection_disabled before any send', async () => {
+    h.loadConn.mockResolvedValue({
+      connection: { ...CONNECTION, disabled_at: '2026-09-01T00:00:00Z' },
+      phoneNumberId: 'PNID-1',
+      accessToken: 'tok',
+    });
+    const res = await POST(
+      req({
+        template_name: 'promo',
+        recipients: [{ phone: '+15551234567', params: [] }],
+      })
+    );
+    const json = await res.json();
+    expect(res.status).toBe(409);
+    expect(json.code).toBe('connection_disabled');
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+  });
+});

@@ -232,6 +232,23 @@ describe('AI auto-reply send', () => {
     err.mockRestore();
   });
 
+  it('a disabled connection is refused (US-078): logged as an error, no Meta send, nothing persisted', async () => {
+    h.db.channel_connections[0].disabled_at = '2026-09-01T00:00:00Z';
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(dispatchInboundToAiReply(ARGS)).resolves.toBeUndefined();
+
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(h.sendTypingIndicator).not.toHaveBeenCalled();
+    expect(messages()).toHaveLength(0);
+    expect(conv().last_message_text).toBe('old');
+    expect(err).toHaveBeenCalledWith(
+      '[ai auto-reply] dispatch failed:',
+      expect.objectContaining({ reason: 'connection_disabled' })
+    );
+    err.mockRestore();
+  });
+
   it('a handoff answer sends nothing and disables the auto-reply on the thread', async () => {
     h.generateReply.mockResolvedValue({ text: '', handoff: true });
 

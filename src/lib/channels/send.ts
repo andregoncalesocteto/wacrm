@@ -19,6 +19,7 @@ import { getProvider } from './registry';
 import { registerBuiltinProviders } from './providers';
 import {
   ChannelError,
+  ConnectionDisabledError,
   type Capabilities,
   type ContactIdentity,
   type InteractivePayload,
@@ -291,6 +292,7 @@ export async function showTyping(input: {
     ((conversation as Row).connection_id as string | null) ?? null
   );
   if (!connection) throw new ConnectionNotConfiguredError();
+  if (connection.disabled_at) throw new ConnectionDisabledError();
 
   registerBuiltinProviders();
   const provider = getProvider(connection.channel_type);
@@ -330,6 +332,9 @@ export async function sendOutbound(
     ((conversation as Row).connection_id as string | null) ?? null
   );
   if (!connection) throw new ConnectionNotConfiguredError();
+  // US-078: an existing conversation sends through ITS connection; when that
+  // one is disabled the send fails (no provider call, nothing persisted).
+  if (connection.disabled_at) throw new ConnectionDisabledError();
 
   registerBuiltinProviders();
   const provider = getProvider(connection.channel_type);
@@ -544,6 +549,9 @@ export function toSendMessageError(err: unknown): unknown {
   }
   if (err instanceof OutboundPersistError) {
     return new SendMessageError('db_error', err.message, 500);
+  }
+  if (err instanceof ConnectionDisabledError) {
+    return new SendMessageError(err.reason, err.message, 409);
   }
   if (err instanceof ChannelError) {
     if (

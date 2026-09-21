@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { sendReactionMessage } from '@/lib/whatsapp/meta-api';
 import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection';
+import {
+  CONNECTION_DISABLED_CODE,
+  ConnectionDisabledError,
+} from '@/lib/channels/types';
 import { resolveContactSendTarget } from '@/lib/whatsapp/wa-identity';
 import {
   checkRateLimit,
@@ -101,6 +105,18 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'WhatsApp not configured.' },
         { status: 400 },
+      );
+    }
+
+    // US-078: the conversation's own connection is disabled -> no reaction
+    // goes out and nothing is mirrored.
+    if (loaded.connection.disabled_at) {
+      return NextResponse.json(
+        {
+          error: new ConnectionDisabledError().message,
+          code: CONNECTION_DISABLED_CODE,
+        },
+        { status: 409 },
       );
     }
 

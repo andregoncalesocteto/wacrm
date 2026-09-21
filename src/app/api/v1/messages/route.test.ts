@@ -351,3 +351,22 @@ describe('POST /api/v1/messages', () => {
     expect(h.db.messages).toHaveLength(0);
   });
 });
+
+describe('POST /api/v1/messages disabled connection (US-078)', () => {
+  it('answers 409 connection_disabled, never calls Meta and stores no message', async () => {
+    h.db.channel_connections = [
+      whatsappConnectionRow('acct-1', 'pn-1', {
+        disabled_at: '2026-09-01T00:00:00Z',
+      }),
+    ];
+    const res = await post({ to: PHONE, text: 'Hello!' });
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.error.code).toBe('connection_disabled');
+    expect(json.error.message).toEqual(expect.any(String));
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    expect(h.db.messages).toHaveLength(0);
+  });
+});

@@ -25,7 +25,11 @@ import {
 } from '@/lib/channels/connections';
 import { getProvider } from '@/lib/channels/registry';
 import { registerBuiltinProviders } from '@/lib/channels/providers';
-import { ChannelError } from '@/lib/channels/types';
+import {
+  ChannelError,
+  CONNECTION_DISABLED_CODE,
+  ConnectionDisabledError,
+} from '@/lib/channels/types';
 import { WA_PHONE_KIND } from '@/lib/channels/identity';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
@@ -123,6 +127,13 @@ export async function createBroadcast(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',
       400
+    );
+  }
+  if (conn.connection.disabled_at) {
+    throw new BroadcastError(
+      CONNECTION_DISABLED_CODE,
+      new ConnectionDisabledError().message,
+      409
     );
   }
   const accessToken = conn.accessToken;
@@ -273,6 +284,15 @@ export async function deliverBroadcast(
 ): Promise<void> {
   // Resolve the provider ONCE and require `templates` before touching any
   // recipient: a channel without templates fails the whole broadcast up front.
+  // US-078: a disabled connection sends nothing (the broadcast is bound to it).
+  if (plan.connection.disabled_at) {
+    await db
+      .from('broadcasts')
+      .update({ status: 'failed', updated_at: new Date().toISOString() })
+      .eq('id', plan.broadcastId);
+    throw new ConnectionDisabledError();
+  }
+
   registerBuiltinProviders();
   const provider = getProvider(plan.connection.channel_type);
   if (!provider.capabilities.templates) {

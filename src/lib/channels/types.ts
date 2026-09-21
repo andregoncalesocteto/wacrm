@@ -119,6 +119,25 @@ export class ChannelError extends Error {
   }
 }
 
+/** Stable machine code of `ConnectionDisabledError` (HTTP 409 on the routes). */
+export const CONNECTION_DISABLED_CODE = 'connection_disabled';
+
+/**
+ * The send was refused because the connection is disabled (`disabled_at` set,
+ * US-078). Category `unsupported`; thrown BEFORE the provider is called and
+ * before anything is persisted. `reason` is the stable code callers key on.
+ */
+export class ConnectionDisabledError extends ChannelError {
+  readonly reason = CONNECTION_DISABLED_CODE;
+  constructor() {
+    super(
+      'unsupported',
+      'This connection is disabled. Enable it in Settings to send messages.'
+    );
+    this.name = 'ConnectionDisabledError';
+  }
+}
+
 /**
  * The media was located but could not be fetched (over the size limit, or the
  * transfer failed). Unlike a failed lookup, the id is still valid, so a caller

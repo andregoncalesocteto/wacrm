@@ -17,6 +17,13 @@ import {
  *      first). Fallback needed because conversations created by pre-connection
  *      code (or after migration 045) still have a NULL `connection_id`.
  *
+ * An existing conversation ALWAYS sends through ITS connection (US-078): when
+ * that connection is disabled it is still the one returned here (never a
+ * silent fallback to another connection of the account) and the caller must
+ * refuse the send (`disabled_at` set -> `ConnectionDisabledError`). Only a
+ * conversation WITHOUT a connection uses the account fallback, which prefers
+ * an enabled connection.
+ *
  * Connection `status` is deliberately NOT consulted: the legacy config path
  * never looked at it, so a "disconnected" connection sends exactly like the
  * old row did.

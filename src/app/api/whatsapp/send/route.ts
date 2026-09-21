@@ -185,7 +185,10 @@ export async function POST(request: Request) {
     } catch (err) {
       if (err instanceof SendMessageError) {
         return NextResponse.json(
-          { error: err.message },
+          {
+            error: err.message,
+            ...(err.code === 'connection_disabled' && { code: err.code }),
+          },
           { status: err.status }
         )
       }

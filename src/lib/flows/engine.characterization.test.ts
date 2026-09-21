@@ -319,4 +319,29 @@ describe('engine run driving the real senders', () => {
     });
     expect(conv().last_message_text).toBe('old');
   });
+
+  it('a disabled connection fails the run visibly (US-078): no Meta call, no message', async () => {
+    seedFlow([
+      {
+        node_key: 'n1',
+        node_type: 'send_message',
+        config: { text: 'Hi', next_node_key: 'n2' },
+      },
+      { node_key: 'n2', node_type: 'end', config: {} },
+    ]);
+    h.db.channel_connections[0].disabled_at = '2026-09-01T00:00:00Z';
+    h.db.conversations[0].connection_id = h.db.channel_connections[0].id;
+
+    const res = await dispatch();
+
+    expect(res.consumed).toBe(true);
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(messages()).toHaveLength(0);
+    expect(h.db.flow_runs[0]).toMatchObject({
+      status: 'failed',
+      end_reason: 'send_text_failed',
+    });
+    expect(JSON.stringify(h.db.flow_run_events)).toMatch(/disabled/i);
+    expect(conv().last_message_text).toBe('old');
+  });
 });

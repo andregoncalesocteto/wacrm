@@ -269,3 +269,19 @@ describe('triggers without a conversation', () => {
     ]);
   });
 });
+
+describe('disabled connection (US-078)', () => {
+  it('fails the step visibly, never calls the provider and stores no message', async () => {
+    const wa = h.db.channel_connections.find((c) => c.id === WA_CONN)!;
+    wa.disabled_at = '2026-09-01T00:00:00Z';
+    steps({ step_type: 'send_message', step_config: { text: 'Hi' } });
+
+    await fire({ conversation_id: 'cv-old-wa' });
+
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(h.db.messages).toHaveLength(0);
+    expect(conv('cv-old-wa').last_message_text).toBe('old');
+    expect(log().status).toBe('failed');
+    expect(String(log().error_message)).toMatch(/disabled/i);
+  });
+});

@@ -137,7 +137,7 @@
   "Inbox": {
     "page": {
       "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account.",
-      "connectionDisconnected": "Store {store} is disconnected — messages for this store may not be arriving.",
+      "connectionDisconnected": "Connection for store “{store}” is down — messages for this store may not be arriving.",
       "connectionNeedsAction": "Store {store} needs attention on its connection — messages for this store may not be arriving.",
       "connectionWarningLink": "View channels"
     },
