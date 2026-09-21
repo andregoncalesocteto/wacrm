@@ -607,8 +607,8 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "notes": "Adicionada pelo orquestrador após a US-032: o subagente notou que `flows/engine.ts` (loadActiveRunForContact) e `channels/send.ts` (pausa ao agente responder) ainda buscam execuções por contato; com duas conversas por contato (duas conexões) podem atingir a execução da outra conversa. Deve sair antes do Telegram (F6) e do inbox multiloja (F5b).",
-      "passes": false,
+      "notes": "Adicionada pelo orquestrador após a US-032: o subagente notou que `flows/engine.ts` (loadActiveRunForContact) e `channels/send.ts` (pausa ao agente responder) ainda buscam execuções por contato; com duas conversas por contato (duas conexões) podem atingir a execução da outra conversa. Deve sair antes do Telegram (F6) e do inbox multiloja (F5b). Feito: engine.ts loadActiveRunForConversation (filtra conversation_id) e send.ts pausa por conversation_id; cron opera por id de run (sem mudanca).",
+      "passes": true,
       "priority": 36
     },
     {

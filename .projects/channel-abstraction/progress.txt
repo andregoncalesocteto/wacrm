@@ -430,3 +430,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Web route tests mock the supabase chain with a fixed .eq depth: adding a third .eq() to ingest's conversation lookup broke ~18 webhook tests, so filter in code, not in the query.
   - Signing up an auth user auto-creates an account (one account per owner); seed via auth.users insert, then use that account id.
 ---
+
+## 2026-09-21 - US-077
+- flows/engine.ts: loadActiveRunForContact -> loadActiveRunForConversation (extra .eq conversation_id; dispatchInboundToFlows passes input.conversationId, so handleReplyForActiveRun only sees the run of the conversation the message arrived in). channels/send.ts: agent pause filters account + conversation_id + status active (was contact_id).
+- flows/cron route reviewed: keyed by run id (sweep by age, update .eq id), nothing by contact. isDuplicateInbound stays by contact on purpose (keyed by meta message id, harmless).
+- Tests: NEW flows/engine.conversation-scope.test.ts (filtering fake; contact with runs in cv-A/cv-B: reply in A advances only run-A, reply in B only run-B); send.test.ts + new test (agent reply in cv-2 pauses with conversation_id cv-2 filter). EDITED assertions (filter shape is the behavior changed by the story): send.test.ts 'flow pause' filters, and whatsapp/send-message.characterization.test.ts line ~658 ['contact_id','ct-1'] -> ['conversation_id','cv-1'].
+- Checks: typecheck, lint, 1441 tests green, build ok.
+- **Learnings for future iterations:**
+  - engine.ts is NOT prettier-formatted (double quotes); do not run prettier on it (rewrites ~600 lines).
+  - Existing dispatch.test.ts fake ignores .eq filters, so it cannot prove scoping; use a filtering fake.
+---

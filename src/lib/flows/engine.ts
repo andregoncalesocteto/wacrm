@@ -195,17 +195,18 @@ export function evaluateConditionPredicate(args: {
 
 type AdminClient = ReturnType<typeof supabaseAdmin>;
 
-async function loadActiveRunForContact(
+async function loadActiveRunForConversation(
   db: AdminClient,
   accountId: string,
   contactId: string,
+  conversationId: string,
 ): Promise<FlowRunRow | null> {
   // The partial unique index `idx_one_active_run_per_conversation`
   // (migration 047; it was per contact before, migration 017) makes
   // "two active runs for one conversation" impossible by design. A
-  // contact reached on two connections has two conversations, and this
-  // lookup is still by contact (unchanged), so it picks the newest.
-  // But a future migration glitch or manual SQL could
+  // contact reached on two connections has two conversations, each
+  // with its own run, so the lookup is scoped to the conversation the
+  // message arrived in. But a future migration glitch or manual SQL could
   // create one, and .maybeSingle() throws on >1 row — which would
   // kill dispatch for that contact's webhook entirely. .limit(1) is
   // forgiving: pick the newest, let the cron sweep clean up the
@@ -215,11 +216,12 @@ async function loadActiveRunForContact(
     .select("*")
     .eq("account_id", accountId)
     .eq("contact_id", contactId)
+    .eq("conversation_id", conversationId)
     .eq("status", "active")
     .order("started_at", { ascending: false })
     .limit(1);
   if (error) {
-    console.error("[flows] loadActiveRunForContact error:", error.message);
+    console.error("[flows] loadActiveRunForConversation error:", error.message);
     return null;
   }
   const rows = (data as FlowRunRow[] | null) ?? [];
@@ -925,10 +927,11 @@ export async function dispatchInboundToFlows(
 ): Promise<DispatchInboundResult> {
   const db = supabaseAdmin();
   try {
-    const activeRun = await loadActiveRunForContact(
+    const activeRun = await loadActiveRunForConversation(
       db,
       input.accountId,
       input.contactId,
+      input.conversationId,
     );
 
     // Idempotency — only matters if there's already a run for this

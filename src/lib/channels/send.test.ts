@@ -589,7 +589,7 @@ describe('provider outcomes', () => {
 });
 
 describe('flow pause', () => {
-  it('pauses the active run scoped by account+contact+active for an agent', async () => {
+  it('pauses the active run scoped by account+conversation+active for an agent', async () => {
     await send();
     expect(h.flowPauses).toHaveLength(1);
     expect(h.flowPauses[0].patch).toMatchObject({
@@ -598,7 +598,23 @@ describe('flow pause', () => {
     });
     expect(h.flowPauses[0].filters).toEqual([
       ['account_id', 'acct-1'],
-      ['contact_id', 'ct-1'],
+      ['conversation_id', 'cv-1'],
+      ['status', 'active'],
+    ]);
+  });
+
+  it('pauses only the run of the conversation the agent replied in', async () => {
+    h.db.conversations.push({
+      id: 'cv-2',
+      account_id: 'acct-1',
+      contact_id: 'ct-1',
+      last_message_text: 'old',
+    });
+    await send({ conversationId: 'cv-2' });
+    expect(h.flowPauses).toHaveLength(1);
+    expect(h.flowPauses[0].filters).toEqual([
+      ['account_id', 'acct-1'],
+      ['conversation_id', 'cv-2'],
       ['status', 'active'],
     ]);
   });

@@ -506,7 +506,7 @@ export async function sendOutbound(
           end_reason: 'agent_replied',
         })
         .eq('account_id', accountId)
-        .eq('contact_id', contact.id as string)
+        .eq('conversation_id', conversationId)
         .eq('status', 'active');
       if (pauseErr) {
         console.error('[flows] pause-on-agent-send failed:', pauseErr.message);

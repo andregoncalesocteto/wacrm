@@ -655,7 +655,7 @@ describe('active flow run is paused when an agent sends', () => {
     expect(typeof patch.ended_at).toBe('string');
     expect(filters).toEqual([
       ['account_id', 'acct-1'],
-      ['contact_id', 'ct-1'],
+      ['conversation_id', 'cv-1'],
       ['status', 'active'],
     ]);
   });
