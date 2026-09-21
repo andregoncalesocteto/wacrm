@@ -2,7 +2,7 @@
  * Characterization tests for what the Automations engine SENDS (US-004,
  * channel-abstraction). They pin the CURRENT behaviour of the real engine
  * (`runAutomationsForTrigger`, `resumePendingExecution`) driving the real
- * `meta-send` senders: text, template and interactive steps persist a bot
+ * `./send` senders: text, template and interactive steps persist a bot
  * message and update the conversation they were sent through, a wait step
  * parks the run, and the resume after the wait sends through the
  * contact's conversation. Only the Meta HTTP senders are stubbed.

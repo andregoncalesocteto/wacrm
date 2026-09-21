@@ -3,7 +3,7 @@ import { beforeEach, describe, it, expect, vi } from "vitest";
 // ============================================================
 // Fakes for the interpolation tests at the bottom of this file
 // (issue #553). Same shape as dispatch.test.ts: a minimal Supabase
-// query-builder stand-in plus a stubbed meta-send, so we can drive the
+// query-builder stand-in plus a stubbed ./send, so we can drive the
 // real `dispatchInboundToFlows` and assert on the payload that would
 // have gone to Meta. vi.mock is hoisted above the imports below, so
 // the pure-helper tests are unaffected — they never touch either.

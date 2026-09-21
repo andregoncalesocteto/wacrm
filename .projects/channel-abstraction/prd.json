@@ -572,8 +572,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 34,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Removed flows/meta-send.ts and automations/meta-send.ts (only orphans; loadAccountMetaCredentials had no remaining users). send-message.ts was already a thin wrapper (no dead sender code). Removed 15 direct-sender tests from flows/engine.characterization.test.ts, covered by channels/send.test.ts, flows/send.test.ts and the engine runs."
     },
     {
       "id": "US-032",
