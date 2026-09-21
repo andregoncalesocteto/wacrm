@@ -508,8 +508,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 30,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Log status for an ignored run stays success with a skipped step (detail \"ignored: <reason>\"); no new status/migration. A contact with NO conversation at all still fails the step (pinned by existing tests). Real Meta not verified (unreachable)."
     },
     {
       "id": "US-029",

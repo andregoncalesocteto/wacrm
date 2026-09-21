@@ -66,6 +66,8 @@ export async function GET(request: Request) {
       branch: (row.branch as 'yes' | 'no' | null) ?? null,
       next_step_position: row.next_step_position as number,
       context: (row.context as AutomationContext) ?? {},
+      conversation_id: (row.conversation_id as string | null) ?? null,
+      connection_id: (row.connection_id as string | null) ?? null,
     })
     processed++
   }

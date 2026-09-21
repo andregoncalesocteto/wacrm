@@ -21,9 +21,12 @@ import type {
 import { supabaseAdmin } from './admin-client'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
-import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
+import { engineSendText, engineSendTemplate, engineSendInteractive } from './send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
+import { getProvider, hasProvider } from '@/lib/channels/registry'
+import { registerBuiltinProviders } from '@/lib/channels/providers'
+import type { Capabilities } from '@/lib/channels/types'
 
 // ------------------------------------------------------------
 // Public API
@@ -137,6 +140,12 @@ export async function resumePendingExecution(pending: {
   branch: 'yes' | 'no' | null
   next_step_position: number
   context: AutomationContext
+  /** Conversation the run was parked on (US-028). Wins over the context's
+   *  conversation_id; NULL for rows parked before it existed or without one. */
+  conversation_id?: string | null
+  /** Connection of that conversation at park time (informational: the send
+   *  resolves the connection from the conversation). */
+  connection_id?: string | null
 }): Promise<void> {
   const db = supabaseAdmin()
   const { data: automation, error } = await db
@@ -155,7 +164,9 @@ export async function resumePendingExecution(pending: {
     await executeStepsFrom({
       automation: automation as Automation,
       contactId: pending.contact_id,
-      context: pending.context ?? {},
+      context: pending.conversation_id
+        ? { ...(pending.context ?? {}), conversation_id: pending.conversation_id }
+        : (pending.context ?? {}),
       parentStepId: pending.parent_step_id,
       branch: pending.branch,
       startPosition: pending.next_step_position,
@@ -279,6 +290,20 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
     if (step.step_type === 'wait') {
       const cfg = step.step_config as WaitStepConfig
       const ms = waitMs(cfg)
+      // Remember WHICH conversation (and connection) the run is on so the
+      // resume sends through it, whatever the customer's other threads do.
+      const waitConversationId = args.context.conversation_id ?? null
+      let waitConnectionId: string | null = null
+      if (waitConversationId) {
+        const { data: convRow } = await db
+          .from('conversations')
+          .select('connection_id')
+          .eq('id', waitConversationId)
+          .eq('account_id', args.automation.account_id)
+          .maybeSingle()
+        waitConnectionId =
+          (convRow as { connection_id?: string | null } | null)?.connection_id ?? null
+      }
       await db.from('automation_pending_executions').insert({
         automation_id: args.automation.id,
         // Tenancy: account_id required NOT NULL post-017.
@@ -290,6 +315,8 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
         branch: args.branch,
         next_step_position: step.position + 1,
         context: args.context,
+        conversation_id: waitConversationId,
+        connection_id: waitConnectionId,
         run_at: new Date(Date.now() + ms).toISOString(),
         status: 'pending',
       })
@@ -334,6 +361,17 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
         detail,
       })
     } catch (err) {
+      if (err instanceof ExecutionIgnored) {
+        // Not a failure: there is nowhere valid to send. Recorded with the
+        // reason (no send, nothing thrown, run ends without error).
+        results.push({
+          step_id: step.id,
+          step_type: step.step_type,
+          status: 'skipped',
+          detail: `ignored: ${err.message}`,
+        })
+        break
+      }
       const msg = err instanceof Error ? err.message : String(err)
       results.push({
         step_id: step.id,
@@ -364,7 +402,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('send_message needs a contact')
       const text = interpolate(cfg.text, args)
       if (!text.trim()) throw new Error('send_message has empty text')
-      const conversationId = await resolveConversationId(args)
+      const conversationId = await resolveConversationId(args, 'text')
       const { whatsapp_message_id } = await engineSendText({
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
@@ -384,7 +422,10 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       // Meta 400 mid-conversation.
       const check = validateInteractivePayload(payload)
       if (!check.ok) throw new Error(check.error)
-      const conversationId = await resolveConversationId(args)
+      const conversationId = await resolveConversationId(
+        args,
+        payload.kind === 'list' ? 'interactiveList' : 'interactiveButtons',
+      )
       const { whatsapp_message_id } = await engineSendInteractive({
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
@@ -399,7 +440,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       const cfg = step.step_config as SendTemplateStepConfig
       if (!args.contactId) throw new Error('send_template needs a contact')
       if (!cfg.template_name) throw new Error('send_template needs template_name')
-      const conversationId = await resolveConversationId(args)
+      const conversationId = await resolveConversationId(args, 'templates')
       // Meta templates use positional {{1}}, {{2}}, … placeholders, so
       // we MUST emit params in strict numeric order. Lexicographic sort
       // of "1", "2", …, "10" yields "1", "10", "2", … which silently
@@ -628,31 +669,71 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
 // Helpers
 // ------------------------------------------------------------
 
+/** The run has nowhere valid to send; recorded as ignored, not failed. */
+class ExecutionIgnored extends Error {}
+
+type SendNeed = 'text' | keyof Pick<Capabilities, 'templates' | 'interactiveButtons' | 'interactiveList'>
+
+function connectionSupports(channelType: string, need: SendNeed): boolean {
+  if (need === 'text') return true
+  registerBuiltinProviders()
+  if (!hasProvider(channelType)) return false
+  return getProvider(channelType).capabilities[need] === true
+}
+
 /**
  * Pick the conversation a send-type step should use. Prefer the id the
- * webhook handed us (it's the one that just got the inbound message);
- * fall back to the contact's conversation for resumed/wait paths and
- * manual engine POSTs. Throws if none exists — send steps have
- * no meaningful target without a conversation.
+ * webhook handed us (or the one a wait step saved); otherwise (time-based,
+ * tag-based, new-contact triggers) take the contact's MOST RECENT
+ * conversation on a connection that supports the step (US-028). A contact
+ * with no conversation at all is still a failed step; a contact whose
+ * conversations are all on connections that cannot do this step is ignored,
+ * with the reason.
  */
-async function resolveConversationId(args: ExecuteArgs): Promise<string> {
+async function resolveConversationId(args: ExecuteArgs, need: SendNeed): Promise<string> {
   const fromCtx = args.context.conversation_id
   if (fromCtx) return fromCtx
   if (!args.contactId) throw new Error('cannot resolve conversation: no contact')
-  const { data, error } = await supabaseAdmin()
+  const accountId = args.automation.account_id
+  const db = supabaseAdmin()
+  const { data, error } = await db
     .from('conversations')
-    .select('id')
-    .eq('account_id', args.automation.account_id)
+    .select('id, connection_id')
+    .eq('account_id', accountId)
     .eq('contact_id', args.contactId)
-    .maybeSingle()
+    .order('last_message_at', { ascending: false })
   if (error) throw new Error(`conversation lookup failed: ${error.message}`)
-  if (!data?.id) {
+  const rows = (data ?? []) as { id: string; connection_id: string | null }[]
+  if (rows.length === 0) {
     const prefix = args.triggerEvent === 'tag_added'
       ? 'tag_added automation cannot send'
       : 'cannot send'
     throw new Error(`${prefix}: contact has no existing conversation`)
   }
-  return data.id as string
+
+  const connectionIds = [
+    ...new Set(rows.map((r) => r.connection_id).filter((c): c is string => !!c)),
+  ]
+  const typeById = new Map<string, string>()
+  if (connectionIds.length > 0) {
+    const { data: conns, error: connErr } = await db
+      .from('channel_connections')
+      .select('id, channel_type')
+      .eq('account_id', accountId)
+      .in('id', connectionIds)
+    if (connErr) throw new Error(`connection lookup failed: ${connErr.message}`)
+    for (const c of (conns ?? []) as { id: string; channel_type: string }[]) {
+      typeById.set(c.id, c.channel_type)
+    }
+  }
+  for (const row of rows) {
+    // Conversations without a connection are legacy WhatsApp threads.
+    const type = row.connection_id ? typeById.get(row.connection_id) : 'whatsapp_cloud'
+    if (type && connectionSupports(type, need)) return row.id
+  }
+  throw new ExecutionIgnored(
+    `contact has no conversation on a connection that supports ${need}`,
+  )
 }
 
 /** Letter, digit or underscore in any script — the "inside a word" test. */

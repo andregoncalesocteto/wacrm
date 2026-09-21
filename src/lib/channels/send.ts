@@ -62,6 +62,11 @@ export interface SendOutboundInput {
   replyToMessageId?: string | null;
   /** Template only: caller-rendered body to persist (wins over the row's body). */
   contentText?: string | null;
+  /**
+   * Conversation preview to use when the message has no text of its own
+   * (default `[<content_type>]`). Automations keep their `[template:<name>]`.
+   */
+  fallbackPreview?: string;
   /** RLS-bound or service-role client; every query is account-scoped either way. */
   db?: SupabaseClient;
 }
@@ -433,7 +438,9 @@ export async function sendOutbound(
   await db
     .from('conversations')
     .update({
-      last_message_text: previewText ?? (contentText || `[${contentType}]`),
+      last_message_text:
+        previewText ??
+        (contentText || (input.fallbackPreview ?? `[${contentType}]`)),
       last_message_at: now,
       updated_at: now,
     })

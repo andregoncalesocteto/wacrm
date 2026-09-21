@@ -364,3 +364,17 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - US-028+ (automations, AI auto-reply) can copy flows/send.ts as the adapter pattern; then meta-send.ts files become dead (US-031).
   - `npm run build` not run (dev server on :3100 shares .next); typecheck/lint/test clean. Baseline: 112 files / 1429 tests, lint 40 warnings.
 ---
+
+## 2026-09-21 - US-028
+- New src/lib/automations/send.ts: engineSendText/Template/Interactive keep the engine call shape and `{whatsapp_message_id}` return, as thin adapters over sendOutbound({actor:{type:'automation'}, db: automations supabaseAdmin()}). engine.ts imports "./send" (automations no longer use meta-send.ts or the flows interactive senders). Failed provider send persists nothing and the step/log ends failed (unchanged).
+- Wait: the pending row now stores conversation_id (from context) and connection_id (that conversation's connection_id). resumePendingExecution accepts both (cron route passes them); the saved conversation_id overrides context.conversation_id, so the resume sends through THAT conversation. The connection is not used on resume (derived from the conversation).
+- Triggers without a conversation (time/tag/new-contact): resolveConversationId(args, need) takes the contact's most recent conversation (last_message_at desc) whose connection supports the step (provider capabilities from the registry: templates / interactiveButtons / interactiveList; text always; NULL connection_id = legacy whatsapp_cloud). If conversations exist but none supports the step -> ExecutionIgnored: no send, no throw, step result status 'skipped' with detail "ignored: contact has no conversation on a connection that supports <capability>", log status success, run stops. No conversation at all -> still a FAILED step with the old message (pinned by engine.test.ts and the characterization test, whose assertions cannot change), so "ignored" covers the "exists but unsupported" case.
+- Core tweak: SendOutboundInput.fallbackPreview (default `[<content_type>]`); automations pass `[template:<name>]` so their preview stays as before (dashboard keeps `[template]`).
+- Test edits (assertions untouched): engine.test.ts mocks "./send" instead of "./meta-send"; engine.characterization.fake.ts gained the `contact:contacts(*)` embed and string-aware order() (ISO dates). New engine.channel.test.ts (6 tests): pending stores conversation/connection (and nulls), resume via saved conversation, most recent conversation, skip unsupported connection, ignored-with-reason.
+- Files: src/lib/automations/{send.ts,engine.ts,engine.channel.test.ts,engine.test.ts,engine.characterization.fake.ts}, src/lib/channels/send.ts, src/app/api/automations/cron/route.ts, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Logs UI still draws a red X for a 'skipped' step (StepRow only knows success/other); harmless but a US for the logs page could label it neutral.
+  - The nested-branch scope treats ignored like a failure (stops that branch only; parent continues), same as errors.
+  - automations/meta-send.ts and flows/meta-send.ts are now dead except flows meta-send serving ai/auto-reply (US-031 cleanup).
+  - Ran `npm run build` (OK). Baseline: 113 files / 1435 tests, lint 40 warnings, typecheck clean.
+---

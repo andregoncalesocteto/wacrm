@@ -18,8 +18,12 @@ export function fakeAdmin(h: Harness) {
     private filters: ((r: Row) => boolean)[] = [];
     private mode: 'many' | 'maybe' | 'single' = 'many';
     private sort: { col: string; asc: boolean } | null = null;
+    private embedContact = false;
     constructor(private table: string) {}
-    select() {
+    select(c?: string) {
+      if (typeof c === 'string' && c.includes('contact:contacts')) {
+        this.embedContact = true;
+      }
       return this;
     }
     insert(row: Row) {
@@ -75,12 +79,23 @@ export function fakeAdmin(h: Harness) {
         for (const r of out) Object.assign(r, this.payload);
       } else {
         out = rows.filter((r) => this.filters.every((f) => f(r)));
+        if (this.embedContact) {
+          // `contact:contacts(*)` embed used by sendOutbound (US-028).
+          out = out.map((r) => ({
+            ...r,
+            contact:
+              (h.db.contacts ?? []).find((c) => c.id === r.contact_id) ?? null,
+          }));
+        }
       }
       if (this.sort) {
         const { col, asc } = this.sort;
-        out = [...out].sort(
-          (a, b) => ((a[col] as number) - (b[col] as number)) * (asc ? 1 : -1)
-        );
+        // Numbers or ISO strings (most-recent-first lookups, US-028).
+        const cmp = (x: unknown, y: unknown) =>
+          typeof x === 'string' || typeof y === 'string'
+            ? String(x ?? '').localeCompare(String(y ?? ''))
+            : ((x as number) ?? 0) - ((y as number) ?? 0);
+        out = [...out].sort((a, b) => cmp(a[col], b[col]) * (asc ? 1 : -1));
       }
       if (this.mode === 'many') return { data: out, error: null };
       if (this.mode === 'single' && !out[0]) {
