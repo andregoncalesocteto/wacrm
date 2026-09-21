@@ -421,7 +421,7 @@
         "`src/lib/channels/send.ts` (`sendOutbound`) carrega conversa, conexão, contato e identidades, pede o destino ao provedor, valida a mensagem contra as capacidades, chama `provider.send`, grava a mensagem e atualiza a conversa",
         "Capacidade ausente ou destino inexistente lança `ChannelError` tipado (`unsupported`, `recipient_unreachable`) **sem chamar o provedor**",
         "Quando o ator é um agente, o flow ativo da conversa é pausado",
-        "Erro do provedor grava a mensagem como falha com `error_code`/`error_title`/`error_details`",
+        "Erro do provedor (a Meta recusou o envio) lança `ChannelError` tipado e **não grava mensagem nem altera a conversa**, exatamente como o código atual (fixado pela US-003: hoje uma falha síncrona de envio não persiste linha `failed`). As colunas `error_code`/`error_title`/`error_details` continuam sendo preenchidas só pelo evento de status de falha recebido depois (ingestão, US-021)",
         "Testes de unidade com provedor simulado; os testes de caracterização de envio (US-003) têm equivalente aqui",
         "Typecheck passes",
         "Lint passes",
@@ -429,7 +429,7 @@
       ],
       "priority": 25,
       "passes": false,
-      "notes": ""
+      "notes": "Critério de falha ajustado pelo orquestrador após a US-003: o código atual não persiste linha failed quando a Meta recusa o envio; manter (RNF-01)."
     },
     {
       "id": "US-024",
