@@ -2,6 +2,16 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { supabaseAdmin as flowsAdmin } from '@/lib/flows/admin-client';
 import { SendMessageError } from '@/lib/whatsapp/send-message';
+import {
+  interactivePayloadPreviewText,
+  validateInteractivePayload,
+  type InteractiveMessagePayload,
+} from '@/lib/whatsapp/interactive';
+import {
+  resolveTemplateRow,
+  templateBodyParams,
+  templateContentText,
+} from '@/lib/whatsapp/template-body';
 import { supabaseAdmin } from './admin-client';
 import type { ChannelConnection } from './connections';
 import { findAccountWhatsAppConnection } from './whatsapp-connection';
@@ -9,8 +19,9 @@ import { getProvider } from './registry';
 import { registerBuiltinProviders } from './providers';
 import {
   ChannelError,
+  type Capabilities,
   type ContactIdentity,
-  type MediaKind,
+  type InteractivePayload,
   type OutboundMessage,
   type SendResult,
 } from './types';
@@ -26,7 +37,15 @@ import {
  * (pinned by send-message.characterization.test.ts). `error_code` columns are
  * only filled by the failure status event received later (ingest).
  *
- * SEAM (US-024): `template` and `interactive` are not handled here yet.
+ * US-024 adds `template` and `interactive`:
+ *  - Template: the core (not the provider, which stays DB-free) resolves the
+ *    local `message_templates` row with `resolveTemplateRow` and hands it to the
+ *    provider inside `template.provider` (`{ row, messageParams, params }`). The
+ *    caller passes send-time values as `template.provider = { messageParams,
+ *    params }` and, optionally, a pre-rendered body as `contentText`.
+ *  - Interactive: the neutral payload uses `buttonLabel`; what is PERSISTED
+ *    (`messages.interactive_payload`) is the legacy shape (`button_label`) the
+ *    thread renderer and quick replies already read, so it is converted back.
  * SERVER-ONLY.
  */
 
@@ -41,6 +60,8 @@ export interface SendOutboundInput {
   actor: OutboundActor;
   /** Our `messages.id` of the message being quoted (must be in this conversation). */
   replyToMessageId?: string | null;
+  /** Template only: caller-rendered body to persist (wins over the row's body). */
+  contentText?: string | null;
   /** RLS-bound or service-role client; every query is account-scoped either way. */
   db?: SupabaseClient;
 }
@@ -77,6 +98,36 @@ export class OutboundPersistError extends Error {
     super(`Message sent to Meta but failed to save to DB: ${message}`);
     this.name = 'OutboundPersistError';
   }
+}
+
+/** The local template row exists but is malformed (legacy code `template_malformed`, 500). */
+export class TemplateMalformedError extends Error {
+  constructor() {
+    super(
+      'Template row is malformed locally — run "Sync from Meta" in Settings to repair it.'
+    );
+    this.name = 'TemplateMalformedError';
+  }
+}
+
+/** Stable messages for a channel lacking a capability (the UI can key on them, US-046). */
+export const UNSUPPORTED_TEMPLATES =
+  'This channel does not support template messages';
+export const UNSUPPORTED_BUTTONS =
+  'This channel does not support interactive buttons';
+export const UNSUPPORTED_LIST =
+  'This channel does not support interactive lists';
+
+/** Send-time template data the caller may put in `template.provider`. */
+export interface TemplateSendData {
+  messageParams?: unknown;
+  params?: string[];
+}
+
+function toLegacyInteractive(p: InteractivePayload): InteractiveMessagePayload {
+  if (p.kind === 'buttons') return p;
+  const { buttonLabel, ...rest } = p;
+  return { ...rest, button_label: buttonLabel };
 }
 
 const WA_PHONE = 'whatsapp:phone';
@@ -133,10 +184,7 @@ async function loadIdentities(
   return identities;
 }
 
-function validate(
-  message: OutboundMessage,
-  caps: { mediaKinds: MediaKind[]; captionMaxLength: number }
-): void {
+function validate(message: OutboundMessage, caps: Capabilities): void {
   switch (message.type) {
     case 'text':
       if (!message.text) {
@@ -168,8 +216,30 @@ function validate(
         );
       }
       return;
+    case 'template':
+      if (!caps.templates) {
+        throw new ChannelError('unsupported', UNSUPPORTED_TEMPLATES);
+      }
+      if (!message.template.name) {
+        throw new ChannelError('invalid', 'template_name is required');
+      }
+      return;
+    case 'interactive': {
+      const kind = message.interactive.kind;
+      if (kind === 'buttons' && !caps.interactiveButtons) {
+        throw new ChannelError('unsupported', UNSUPPORTED_BUTTONS);
+      }
+      if (kind === 'list' && !caps.interactiveList) {
+        throw new ChannelError('unsupported', UNSUPPORTED_LIST);
+      }
+      const result = validateInteractivePayload(
+        toLegacyInteractive(message.interactive)
+      );
+      if (!result.ok) throw new ChannelError('invalid', result.error);
+      return;
+    }
     default:
-      // SEAM (US-024): template + interactive; reactions go through provider.react.
+      // Reactions go through provider.react.
       throw new ChannelError(
         'unsupported',
         `Message type "${message.type}" is not implemented in sendOutbound yet`
@@ -220,8 +290,35 @@ export async function sendOutbound(
 
   validate(message, provider.capabilities);
 
+  // Template: resolve the local row (header/button components + body to persist).
+  let templateRow: Awaited<ReturnType<typeof resolveTemplateRow>>['row'] = null;
+  let outboundBase: OutboundMessage = message;
+  if (message.type === 'template') {
+    const sendData = (message.template.provider ?? {}) as TemplateSendData;
+    const resolved = await resolveTemplateRow(
+      db,
+      accountId,
+      message.template.name,
+      message.template.language
+    );
+    if (resolved.malformed) throw new TemplateMalformedError();
+    templateRow = resolved.row;
+    outboundBase = {
+      ...message,
+      template: {
+        ...message.template,
+        language: resolved.language,
+        provider: {
+          row: templateRow ?? undefined,
+          messageParams: sendData.messageParams ?? undefined,
+          params: sendData.params ?? [],
+        },
+      },
+    };
+  }
+
   // The quoted message must belong to this same conversation.
-  let outbound: OutboundMessage = message;
+  let outbound: OutboundMessage = outboundBase;
   if (replyToMessageId) {
     const { data: parent, error: parentError } = await db
       .from('messages')
@@ -241,7 +338,7 @@ export async function sendOutbound(
         '[send] reply target has no provider message id; sending without context'
       );
     } else {
-      outbound = { ...message, replyTo: { externalId: parentExternal } };
+      outbound = { ...outboundBase, replyTo: { externalId: parentExternal } };
     }
   }
 
@@ -259,12 +356,37 @@ export async function sendOutbound(
   }
 
   const isMedia = message.type === 'media';
-  const contentText = isMedia
-    ? (message.caption ?? null)
-    : message.type === 'text'
-      ? message.text
-      : null;
-  const contentType = isMedia ? message.kind : 'text';
+  let contentText: string | null = null;
+  let contentType: string = 'text';
+  let previewText: string | null = null;
+  let templateName: string | null = null;
+  let interactivePayload: InteractiveMessagePayload | null = null;
+  switch (message.type) {
+    case 'media':
+      contentText = message.caption ?? null;
+      contentType = message.kind;
+      break;
+    case 'text':
+      contentText = message.text;
+      break;
+    case 'template': {
+      const sendData = (message.template.provider ?? {}) as TemplateSendData;
+      contentType = 'template';
+      templateName = message.template.name;
+      contentText = templateContentText(
+        templateRow,
+        templateBodyParams(sendData.params, sendData.messageParams),
+        input.contentText
+      );
+      break;
+    }
+    case 'interactive':
+      contentType = 'interactive';
+      interactivePayload = toLegacyInteractive(message.interactive);
+      contentText = interactivePayload.body;
+      previewText = interactivePayloadPreviewText(interactivePayload);
+      break;
+  }
 
   const { data: record, error: msgError } = await db
     .from('messages')
@@ -278,6 +400,12 @@ export async function sendOutbound(
       content_type: contentType,
       content_text: contentText,
       media_url: isMedia ? message.url || null : null,
+      ...(message.type === 'template' || message.type === 'interactive'
+        ? {
+            template_name: templateName,
+            interactive_payload: interactivePayload,
+          }
+        : {}),
       message_id: sent.externalId,
       status: 'sent',
       reply_to_message_id: replyToMessageId || null,
@@ -293,7 +421,7 @@ export async function sendOutbound(
   await db
     .from('conversations')
     .update({
-      last_message_text: contentText || `[${contentType}]`,
+      last_message_text: previewText ?? (contentText || `[${contentType}]`),
       last_message_at: now,
       updated_at: now,
     })
@@ -339,6 +467,9 @@ export function toSendMessageError(err: unknown): unknown {
   if (err instanceof SendMessageError) return err;
   if (err instanceof ConversationNotFoundError) {
     return new SendMessageError('not_found', err.message, 404);
+  }
+  if (err instanceof TemplateMalformedError) {
+    return new SendMessageError('template_malformed', err.message, 500);
   }
   if (err instanceof ConnectionNotConfiguredError) {
     return new SendMessageError('whatsapp_not_configured', err.message, 400);

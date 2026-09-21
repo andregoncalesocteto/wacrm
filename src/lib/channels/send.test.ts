@@ -293,6 +293,219 @@ describe('sendOutbound media', () => {
   });
 });
 
+const TPL_ROW = {
+  id: 'tpl-1',
+  account_id: 'acct-1',
+  user_id: 'u-1',
+  name: 'order_update',
+  category: 'Utility',
+  language: 'en',
+  body_text: 'Order {{1}} ships {{2}}',
+  created_at: '2026-01-01T00:00:00Z',
+};
+const buttons = {
+  kind: 'buttons' as const,
+  body: 'Pick one',
+  header: 'Header',
+  footer: 'Footer',
+  buttons: [
+    { id: 'a', title: 'A' },
+    { id: 'b', title: 'B' },
+  ],
+};
+const list = {
+  kind: 'list' as const,
+  body: 'Choose',
+  buttonLabel: 'Open',
+  sections: [{ title: 'S', rows: [{ id: 'r1', title: 'Row 1' }] }],
+};
+
+describe('sendOutbound template', () => {
+  it('resolves the row in the core, passes it to the provider, stores the rendered body', async () => {
+    h.db.message_templates = [TPL_ROW];
+    await send({
+      message: {
+        type: 'template',
+        template: {
+          name: 'order_update',
+          language: '',
+          provider: { params: ['A1', 'today'] },
+        },
+      },
+    });
+    const sent = sendMock.mock.calls[0][2];
+    expect(sent.template).toMatchObject({
+      name: 'order_update',
+      language: 'en',
+      provider: { row: TPL_ROW, params: ['A1', 'today'] },
+    });
+    expect(h.db.messages[0]).toMatchObject({
+      content_type: 'template',
+      template_name: 'order_update',
+      content_text: 'Order A1 ships today',
+      message_id: 'wamid.1',
+      status: 'sent',
+    });
+    expect(h.db.conversations[0].last_message_text).toBe(
+      'Order A1 ships today'
+    );
+  });
+
+  it('structured params win, and a caller-rendered body wins over the row', async () => {
+    h.db.message_templates = [TPL_ROW];
+    await send({
+      message: {
+        type: 'template',
+        template: {
+          name: 'order_update',
+          language: 'en',
+          provider: { params: ['x'], messageParams: { body: ['B1', 'B2'] } },
+        },
+      },
+    });
+    expect(h.db.messages[0].content_text).toBe('Order B1 ships B2');
+    await send({
+      message: {
+        type: 'template',
+        template: { name: 'order_update', language: 'en' },
+      },
+      contentText: 'pre-rendered',
+    });
+    expect(h.db.messages[1].content_text).toBe('pre-rendered');
+  });
+
+  it('no local row: language defaults to en_US and content_text is null', async () => {
+    await send({
+      message: {
+        type: 'template',
+        template: { name: 'unknown_tpl', language: '' },
+      },
+    });
+    expect(sendMock.mock.calls[0][2].template).toMatchObject({
+      language: 'en_US',
+      provider: { params: [] },
+    });
+    expect(h.db.messages[0]).toMatchObject({
+      content_type: 'template',
+      template_name: 'unknown_tpl',
+      content_text: null,
+    });
+    expect(h.db.conversations[0].last_message_text).toBe('[template]');
+  });
+
+  it('malformed local row maps to the legacy template_malformed 500', async () => {
+    h.db.message_templates = [
+      { account_id: 'acct-1', name: 't', language: 'en' },
+    ];
+    const err = await send({
+      message: { type: 'template', template: { name: 't', language: 'en' } },
+    }).catch((e) => e);
+    expect(sendMock).not.toHaveBeenCalled();
+    expect(toSendMessageError(err)).toMatchObject({
+      code: 'template_malformed',
+      status: 500,
+    });
+  });
+});
+
+describe('sendOutbound interactive', () => {
+  it('buttons: persists the payload and the body as content_text', async () => {
+    await send({ message: { type: 'interactive', interactive: buttons } });
+    expect(sendMock.mock.calls[0][2].interactive).toEqual(buttons);
+    expect(h.db.messages[0]).toMatchObject({
+      content_type: 'interactive',
+      content_text: 'Pick one',
+      interactive_payload: buttons,
+      template_name: null,
+      message_id: 'wamid.1',
+    });
+    expect(h.db.conversations[0].last_message_text).toBe('Pick one');
+  });
+
+  it('list: persists the legacy button_label shape, sends the neutral one', async () => {
+    await send({ message: { type: 'interactive', interactive: list } });
+    expect(sendMock.mock.calls[0][2].interactive).toEqual(list);
+    expect(h.db.messages[0]).toMatchObject({
+      content_type: 'interactive',
+      content_text: 'Choose',
+      interactive_payload: {
+        kind: 'list',
+        body: 'Choose',
+        button_label: 'Open',
+        sections: list.sections,
+      },
+    });
+    expect(
+      (h.db.messages[0].interactive_payload as Row).buttonLabel
+    ).toBeUndefined();
+  });
+
+  it('an invalid payload is rejected before the provider', async () => {
+    await expect(
+      send({
+        message: {
+          type: 'interactive',
+          interactive: { ...buttons, buttons: [] },
+        },
+      })
+    ).rejects.toMatchObject({ code: 'invalid' });
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('template/interactive capability and failure', () => {
+  const noCaps = (over: Partial<Capabilities>) => {
+    resetRegistryForTests();
+    registerProvider({ ...provider(), capabilities: { ...caps, ...over } });
+  };
+  const tpl = {
+    type: 'template' as const,
+    template: { name: 'order_update', language: 'en' },
+  };
+
+  it.each([
+    ['templates', { templates: false }, tpl],
+    [
+      'buttons',
+      { interactiveButtons: false },
+      { type: 'interactive' as const, interactive: buttons },
+    ],
+    [
+      'list',
+      { interactiveList: false },
+      { type: 'interactive' as const, interactive: list },
+    ],
+  ])(
+    'unsupported without %s (provider not called, nothing persisted)',
+    async (_n, over, message) => {
+      noCaps(over);
+      await expect(send({ message })).rejects.toMatchObject({
+        code: 'unsupported',
+      });
+      expect(sendMock).not.toHaveBeenCalled();
+      expect(h.db.messages).toHaveLength(0);
+      expect(h.db.conversations[0].last_message_text).toBe('old');
+    }
+  );
+
+  it('buttons still work when only the list capability is missing', async () => {
+    noCaps({ interactiveList: false });
+    await send({ message: { type: 'interactive', interactive: buttons } });
+    expect(sendMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed provider send persists nothing (template and interactive)', async () => {
+    h.db.message_templates = [TPL_ROW];
+    sendMock.mockRejectedValue(new ChannelError('unknown', 'nope'));
+    await expect(send({ message: tpl })).rejects.toBeInstanceOf(ChannelError);
+    await expect(
+      send({ message: { type: 'interactive', interactive: list } })
+    ).rejects.toBeInstanceOf(ChannelError);
+    expect(h.db.messages).toHaveLength(0);
+    expect(h.db.conversations[0].last_message_text).toBe('old');
+  });
+});
+
 describe('capability and target validation (provider never called)', () => {
   it('unsupported media kind', async () => {
     await expect(
@@ -313,15 +526,6 @@ describe('capability and target validation (provider never called)', () => {
         },
       })
     ).rejects.toMatchObject({ code: 'invalid' });
-    expect(sendMock).not.toHaveBeenCalled();
-  });
-
-  it('template/interactive are left to US-024', async () => {
-    await expect(
-      send({
-        message: { type: 'template', template: { name: 't', language: 'en' } },
-      })
-    ).rejects.toMatchObject({ code: 'unsupported' });
     expect(sendMock).not.toHaveBeenCalled();
   });
 

@@ -321,3 +321,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - send.ts imports SendMessageError from whatsapp/send-message; when US-025 makes that module delegate to send.ts the cycle is runtime-only (used inside functions), but move the class if it bites.
   - Baseline: typecheck clean, lint 40 warnings.
 ---
+
+## 2026-09-21 - US-024
+- sendOutbound now handles `template` and `interactive` (src/lib/channels/send.ts). Capability checks (templates / interactiveButtons / interactiveList) throw ChannelError 'unsupported' before the provider is called (stable messages exported: UNSUPPORTED_TEMPLATES/BUTTONS/LIST). Interactive payload is also checked with validateInteractivePayload ('invalid').
+- Persistence identical to sendMessageToConversation: template -> content_type 'template', template_name, content_text = templateContentText(row, templateBodyParams(...), contentText); interactive -> content_type 'interactive', interactive_payload jsonb, content_text = body, conversations.last_message_text = interactivePayloadPreviewText.
+- Files changed: src/lib/channels/send.ts, send.test.ts, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Decision: the core resolves the `message_templates` row (resolveTemplateRow, needs db+account) and hands `{row, messageParams, params}` to the provider in `template.provider`; callers give send-time values as `template.provider = {messageParams, params}` and an optional pre-rendered body as `SendOutboundInput.contentText`. The provider stays DB-free. Language '' means "unspecified" (resolved from the row, else en_US).
+  - The neutral InteractivePayload uses `buttonLabel`, but persisted `messages.interactive_payload` is the legacy `button_label` shape (thread renderer/quick replies read it): send.ts converts back for persistence. Callers of US-025+ pass the neutral shape.
+  - Malformed template row -> TemplateMalformedError, mapped by toSendMessageError to the legacy `template_malformed` 500. Baseline now 110 files / 1416 tests, lint 40 warnings.
+---

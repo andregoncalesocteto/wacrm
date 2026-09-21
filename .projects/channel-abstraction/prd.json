@@ -444,8 +444,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 26,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Template row resolved in the core (resolveTemplateRow), passed to the provider via template.provider; interactive persisted in legacy button_label shape. Migration of callers is US-025+."
     },
     {
       "id": "US-025",
