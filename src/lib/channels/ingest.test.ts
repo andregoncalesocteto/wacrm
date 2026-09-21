@@ -594,6 +594,20 @@ describe('ingestInbound: hooks', () => {
     expect(t('messages')).toHaveLength(2);
   });
 
+  it('a throwing onMessageStored is logged and the message stays stored', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const out = await ingestInbound(db, CONN, [msg()], {
+      ...OPTS,
+      hooks: {
+        onMessageStored: () => {
+          throw new Error('fan-out exploded');
+        },
+      },
+    });
+    expect(out[0].status).toBe('stored');
+    expect(t('messages')).toHaveLength(1);
+  });
+
   it('onMessageStored gets what fan-out needs', async () => {
     const onMessageStored = vi.fn();
     await ingestInbound(

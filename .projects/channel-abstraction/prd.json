@@ -360,8 +360,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 21,
-      "passes": false,
-      "notes": "Após a US-019: `flagBroadcastReplyIfAny` e o fan-out (automações, flows, IA) entram pelo hook `onMessageStored` de `ingestInbound`; `isFirstInbound` e `contactCreated` já vêm no resultado `stored`."
+      "passes": true,
+      "notes": "Após a US-019: `flagBroadcastReplyIfAny` e o fan-out (automações, flows, IA) entram pelo hook `onMessageStored` de `ingestInbound`; `isFirstInbound` e `contactCreated` já vêm no resultado `stored`. Feito: src/lib/channels/fanout.ts (fanOutInbound / fanoutHook). flagBroadcastReplyIfAny, webhook message.received e notificacoes ficam para a US-074 (marcados como SEAM no arquivo)."
     },
     {
       "id": "US-074",

@@ -265,3 +265,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Preview rule: last_message_text = contentText || emptyPreview || description || `[content_type]`.
   - Baseline: 107 files / 1335 tests, lint 41 warnings, typecheck clean.
 ---
+
+## 2026-09-21 - US-020
+- New src/lib/channels/fanout.ts: fanOutInbound(stored, {configOwnerUserId}) + fanoutHook(opts) (ready-made IngestHooks.onMessageStored). Same order/args as the webhook: dispatchInboundToFlows (userId = owner, isFirstInboundMessage) -> runAutomationsForTrigger per trigger (first_inbound_message, new_contact_created first; new_message_received, keyword_match, interactive_reply only when no flow consumed) -> dispatchInboundToAiReply (plain non-blank text, not consumed, no interactive id). All awaited; each engine wrapped in try/catch logged as `[channel:fanout]`. Engines untouched.
+- Flow engine throwing counts as "not consumed" (automations/AI still run). meta message id = event.externalId (route used message.id).
+- Files: fanout.ts, fanout.test.ts (11 tests, vi.mock of the 3 engines), ingest.test.ts (+1 test: throwing onMessageStored keeps the message stored), prd.json, progress.txt. Webhook route NOT touched.
+- **Learnings for future iterations:**
+  - US-074 fills the two SEAM comments in fanout.ts: flagBroadcastReplyIfAny BEFORE flows, message.received webhook/notifications AFTER the AI reply.
+  - US-022 wires `hooks.onMessageStored = fanoutHook({configOwnerUserId: accounts.owner_user_id})` (same value as auditUserId).
+  - Baseline: 108 files / 1347 tests, lint 41 warnings, typecheck clean.
+---
