@@ -58,3 +58,14 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - BSUIDs must match /^[A-Za-z]{2}\.(ENT\.)?[A-Za-z0-9]{4,}$/ (wa-identity); fixtures like "US.111" are silently ignored.
   - Prettier is enforced on new files (`npx prettier --write`). Baseline now: 92 files / 1074 tests green, lint 41 warnings.
 ---
+
+## 2026-09-21 - US-003
+- Added src/lib/whatsapp/send-message.characterization.test.ts (28 tests, no production code changed, existing tests untouched): phone-variant retry on "recipient not allowed" (next variant, contact phone auto-corrected, stops at first other error, exhausted -> meta_error/502, BSUID gets a single attempt, media too), destination resolution (BSUID-only, no phone/BSUID -> 400 clear message, unusable phone -> "Invalid phone number format"), pre-send failures (other account 404, no config, bad reply target, db_error after Meta accepted), persistence per type (text, media with/without caption, template, interactive buttons/list, reply context) incl. conversation update, and flow pause (paused_by_agent/agent_replied scoped by account+contact+active; best-effort; not on failure).
+- Files changed: the new test file, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - When Meta fails the send, NOTHING is persisted (no `failed` row, conversation untouched); it just throws SendMessageError meta_error/502. coverage-map.md speculated a `failed` row; that does not exist today.
+  - The 3-way variant list for +15551234567 is computed via phoneVariants; the test derives expectations from it rather than hardcoding.
+  - Flow pause uses supabaseAdmin() from lib/flows/admin-client (mocked to record update patch + eq filters), not the passed db.
+  - Still untested on the send side (left for later stories): POST /api/whatsapp/react, send route for conversation_id text/media, media proxy route, templates routes.
+  - Baseline now: 93 files / 1102 tests green, lint 41 warnings, typecheck clean.
+---
