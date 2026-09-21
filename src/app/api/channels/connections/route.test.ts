@@ -42,13 +42,18 @@ function makeClient() {
   return {
     from(table: string) {
       const filters: Array<[string, unknown]> = [];
+      const inFilters: Array<[string, unknown[]]> = [];
       let op: 'select' | 'insert' | 'update' | 'delete' | 'upsert' = 'select';
       let payload: Row = {};
       let limit: number | null = null;
       let cols: string[] | null = null;
       const rowsOf = () => (h.db[table] ??= []);
       const match = () =>
-        rowsOf().filter((r) => filters.every(([k, v]) => r[k] === v));
+        rowsOf().filter(
+          (r) =>
+            filters.every(([k, v]) => r[k] === v) &&
+            inFilters.every(([k, vs]) => vs.includes(r[k]))
+        );
       const run = (): { data: Row[] | null; error: unknown } => {
         if (op === 'insert') {
           if (
@@ -111,6 +116,7 @@ function makeClient() {
         update: (p: Row) => ((op = 'update'), (payload = p), b),
         delete: () => ((op = 'delete'), b),
         eq: (k: string, v: unknown) => (filters.push([k, v]), b),
+        in: (k: string, vs: unknown[]) => (inFilters.push([k, vs]), b),
         order: () => b,
         limit: (n: number) => ((limit = n), b),
         maybeSingle: async () => {
@@ -268,6 +274,34 @@ describe('GET /api/channels/connections', () => {
     h.role = 'viewer';
     const body = await (await GET()).json();
     expect(body.connections.map((c: { id: string }) => c.id)).toEqual(['a']);
+  });
+
+  it('flags has_conversations per connection, scoped to the account', async () => {
+    h.db.channel_connections = [
+      { id: 'a', account_id: 'acct-1', config: {}, external_id: '1' },
+      { id: 'b', account_id: 'acct-1', config: {}, external_id: '2' },
+    ];
+    h.db.conversations = [
+      { id: 'c1', account_id: 'acct-1', connection_id: 'a' },
+      { id: 'c2', account_id: 'acct-1', connection_id: 'a' },
+      { id: 'c3', account_id: 'acct-2', connection_id: 'b' },
+    ];
+    const body = await (await GET()).json();
+    expect(
+      Object.fromEntries(
+        body.connections.map(
+          (c: { id: string; has_conversations: boolean }) => [
+            c.id,
+            c.has_conversations,
+          ]
+        )
+      )
+    ).toEqual({ a: true, b: false });
+  });
+
+  it('does not query conversations when there are no connections', async () => {
+    const body = await (await GET()).json();
+    expect(body.connections).toEqual([]);
   });
 });
 

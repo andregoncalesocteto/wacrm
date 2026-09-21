@@ -18,7 +18,8 @@ import { saveConnectionCredentials } from '@/lib/channels/connections';
 
 /**
  * GET  /api/channels/connections — connections of the caller's account (any
- *                                 member). Never credentials or secret config.
+ *                                 member), each with `has_conversations`. Never
+ *                                 credentials or secret config.
  * POST /api/channels/connections — create one (admin+). Starts `disconnected`;
  *                                 connecting is a separate step.
  */
@@ -32,10 +33,32 @@ export async function GET() {
       .eq('account_id', accountId)
       .order('created_at', { ascending: true });
     if (error) throw error;
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+
+    // One extra query for the whole account (not one per connection): which
+    // of these connections already have conversations. The UI hides "delete"
+    // for them; DELETE still enforces it (409), so this is only a hint.
+    const withConversations = new Set<string>();
+    if (rows.length > 0) {
+      const { data: convs, error: convError } = await supabase
+        .from('conversations')
+        .select('connection_id')
+        .eq('account_id', accountId)
+        .in(
+          'connection_id',
+          rows.map((r) => r.id as string)
+        );
+      if (convError) throw convError;
+      for (const c of (convs ?? []) as Array<{ connection_id: string }>) {
+        withConversations.add(c.connection_id);
+      }
+    }
+
     return NextResponse.json({
-      connections: ((data ?? []) as Array<Record<string, unknown>>).map(
-        publicConnection
-      ),
+      connections: rows.map((r) => ({
+        ...publicConnection(r),
+        has_conversations: withConversations.has(r.id as string),
+      })),
     });
   } catch (err) {
     return toErrorResponse(err);

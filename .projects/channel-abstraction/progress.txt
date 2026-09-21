@@ -493,3 +493,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - No alert-dialog ui component exists: confirmation uses Dialog + destructive Button.
   - dev-browser screenshots land in ~/.dev-browser/tmp; use `dev-browser run file.js`, and waitUntil:"domcontentloaded" for goto (networkidle times out on Next dev).
 ---
+
+## 2026-09-21 - US-038
+- ChannelsPanel now lists connections grouped by store (GET /api/stores + GET /api/channels/connections): channel icon + type, display name, state chip (connectionChipState), last inbound (date-fns relative, getDateFnsLocale), actions Configurar (disabled, detail = US-040), Desativar (confirm dialog; toast shows open_conversations) / Ativar, Apagar (only when has_conversations is false; confirm dialog; 409 -> translated toast). Writes gated by useCan('edit-settings'). Empty states: no stores -> link to ?tab=stores; stores but none connected -> "Conectar canal" scrolls to the legacy WhatsApp form (#whatsapp-config, stays until US-075).
+- GET /api/channels/connections extended with `has_conversations` (one extra query on conversations for the account, .in(connection_id, ids)); route tests extended (fake gained .in).
+- Files: src/components/settings/channels-panel.tsx, src/lib/channels/ui.ts(+test), src/app/api/channels/connections/route.ts(+test), messages/*.json (Settings.channels.*).
+- Browser (pt, :3100): empty without stores, empty with stores, list with 2 connections in 2 stores (one disabled), disable/enable, delete; Apagar hidden for the connection with a conversation. Seeds removed.
+- **Learnings for future iterations:**
+  - dev-browser session may be logged in as another account (qa-ptbr): check the auth cookie email; contacts/conversations.user_id is the auth.users id, NOT profiles.id.
+  - has_conversations query is not paginated: PostgREST caps at 1000 rows, so with huge conversation counts it can under-report (DELETE still 409s; safe).
+---

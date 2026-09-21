@@ -715,8 +715,8 @@
         "Verify in browser using dev-browser skill (lista, estados e estado vazio)"
       ],
       "priority": 42,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Configurar is a disabled button (detail arrives in US-040). Conectar canal with stores scrolls to the legacy WhatsApp form until US-075. GET connections now returns has_conversations."
     },
     {
       "id": "US-039",
