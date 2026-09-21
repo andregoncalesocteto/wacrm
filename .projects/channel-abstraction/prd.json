@@ -819,8 +819,8 @@
         "Verify in browser using dev-browser skill (uma conexão, depois duas lojas com duas conexões)"
       ],
       "priority": 48,
-      "passes": false,
-      "notes": "Após a US-041: o seletor de respostas rápidas do inbox ainda lista TODAS as respostas; nesta história (com a loja da conversa disponível pela conexão) filtrar para `store_id` nulo ou igual à loja da conversa, com teste."
+      "passes": true,
+      "notes": "Após a US-041: o seletor de respostas rápidas do inbox ainda lista TODAS as respostas; nesta história (com a loja da conversa disponível pela conexão) filtrar para `store_id` nulo ou igual à loja da conversa, com teste. | Feito: seletor filtrado por filterQuickRepliesForStore (lib/inbox/conversations.ts)."
     },
     {
       "id": "US-044",

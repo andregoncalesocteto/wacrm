@@ -554,3 +554,11 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Realtime UPDATE payloads carry no `connection`; state merges keep the old embed (spread), only hydrate backfills it. US-043 UI should read the store/channel from `conversation.connection`.
   - prettier --write on src/types/index.ts and the existing test file reformats unrelated lines: edit those textually.
 ---
+
+## 2026-09-21 - US-043
+- Badges + filters + quick-reply scoping. New pure helpers in lib/inbox/conversations.ts: shouldShowScopeUi(connections) (true only with >1 connection, any status, unknown/empty/1 -> false) and filterQuickRepliesForStore(replies, storeId) (store_id null/absent or = conversation store; unknown store -> network-wide only). Tests in lib/inbox/scope-ui.test.ts.
+- inbox/page.tsx counts ALL account connections (supabase client, channel_connections by account_id, RLS) and passes showScopeUi to ConversationList and MessageThread. New components/inbox/conversation-scope-badge.tsx ("Store · Channel" via Settings.channels.type.*, plus "Desativada" marker when disabled_at). List: store/connection/channel single-select dropdowns (options from deriveScopeOptions of loaded conversations), ANDed with status/tag/company; hidden filters are ignored (effectiveScope). Header shows the badge under the contact handle. Composer gets storeId (conversation.connection.store_id) -> QuickReplyPicker filters client-side.
+- i18n: Inbox.conversationList.{store,allStores,connection,allConnections,channel,allChannels,disabled} in all four catalogues (textual insertion).
+- Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1603, build ok. Browser (pt :3100, QA account): 1 connection -> no badge, no scope filter; 3 connections/2 stores -> badges (incl. disabled marker), store/channel/connection filters narrow correctly, header badge shows, quick replies: Alfa conv shows QR Alfa + network-wide, Beta conv shows QR Beta + network-wide. Seeds removed.
+- **Learnings:** the "one connection" rule counts account connections, not derived-from-conversations; a disabled connection counts. Options only list scopes that have loaded conversations. The QA account has zero connections by default (banner "WhatsApp nao conectado" is expected). New files were prettier-formatted; touched existing files were not (they weren't formatted before).
+---

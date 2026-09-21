@@ -111,6 +111,8 @@ interface MediaDraft {
 
 interface MessageComposerProps {
   conversationId: string;
+  /** Store of the conversation's connection; scopes the quick-reply picker. */
+  storeId?: string | null;
   sessionExpired: boolean;
   onSend: (text: string, replyToId?: string) => void;
   onSendMedia: (payload: SendMediaPayload) => void;
@@ -133,6 +135,7 @@ const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 
 export function MessageComposer({
   conversationId,
+  storeId,
   sessionExpired,
   onSend,
   onSendMedia,
@@ -808,6 +811,7 @@ export function MessageComposer({
       {/* Quick-reply picker. */}
       <QuickReplyPicker
         open={quickReplyOpen}
+        storeId={storeId}
         onOpenChange={setQuickReplyOpen}
         onPick={handlePickQuickReply}
       />

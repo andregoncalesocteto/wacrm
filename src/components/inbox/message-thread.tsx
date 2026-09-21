@@ -50,6 +50,7 @@ import {
 } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
+import { ConversationScopeBadge } from "./conversation-scope-badge";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { renderTemplateBody } from "@/lib/whatsapp/template-body";
@@ -106,6 +107,8 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  /** Show the store · channel badge in the header (more than one connection). */
+  showScopeUi?: boolean;
 }
 
 function formatDateSeparator(
@@ -168,6 +171,7 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  showScopeUi = false,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const formatter = useFormatter();
@@ -931,6 +935,12 @@ export function MessageThread({
             <p className="truncate text-xs text-muted-foreground">
               {contactHandle(contact)}
             </p>
+            {showScopeUi && conversation.connection && (
+              <ConversationScopeBadge
+                connection={conversation.connection}
+                className="mt-0.5"
+              />
+            )}
           </div>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. */}
@@ -1184,6 +1194,7 @@ export function MessageThread({
       {/* Composer */}
       <MessageComposer
         conversationId={conversation.id}
+        storeId={conversation.connection?.store_id ?? null}
         sessionExpired={sessionInfo.expired}
         onSend={handleSend}
         onSendMedia={handleSendMedia}

@@ -151,7 +151,14 @@
       "clearAll": "Clear all",
       "noConversations": "No conversations found",
       "noMessagesYet": "No messages yet",
-      "unknown": "Unknown"
+      "unknown": "Unknown",
+      "store": "Store",
+      "allStores": "All stores",
+      "connection": "Connection",
+      "allConnections": "All connections",
+      "channel": "Channel",
+      "allChannels": "All channels",
+      "disabled": "Disabled"
     },
     "messageThread": {
       "backToConversations": "Back to conversations",

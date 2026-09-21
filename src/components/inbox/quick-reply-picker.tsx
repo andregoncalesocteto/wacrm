@@ -11,12 +11,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { QuickReply } from "@/types";
+import { filterQuickRepliesForStore } from "@/lib/inbox/conversations";
 import { interactivePayloadPreviewText } from "@/lib/whatsapp/interactive";
 
 interface QuickReplyPickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPick: (qr: QuickReply) => void;
+  /** Store of the conversation: only network-wide and this store's replies show. */
+  storeId?: string | null;
 }
 
 /**
@@ -28,10 +31,12 @@ export function QuickReplyPicker({
   open,
   onOpenChange,
   onPick,
+  storeId,
 }: QuickReplyPickerProps) {
   const t = useTranslations("Inbox.composer");
   const [items, setItems] = useState<QuickReply[]>([]);
   const [loading, setLoading] = useState(false);
+  const visible = filterQuickRepliesForStore(items, storeId);
 
   useEffect(() => {
     if (!open) return;
@@ -64,13 +69,13 @@ export function QuickReplyPicker({
             <div className="flex justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : items.length === 0 ? (
+          ) : visible.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               {t("quickRepliesEmpty")}
             </p>
           ) : (
             <ul className="flex flex-col gap-1">
-              {items.map((qr) => (
+              {visible.map((qr) => (
                 <li key={qr.id}>
                   <button
                     type="button"

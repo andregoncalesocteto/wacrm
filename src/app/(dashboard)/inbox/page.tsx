@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
   normalizeConversation,
+  shouldShowScopeUi,
 } from "@/lib/inbox/conversations";
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
@@ -51,6 +52,10 @@ function InboxPageInner() {
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
+  // All of the account's connections (any status), to decide whether the
+  // store/channel badges and filters are worth showing (more than one).
+  const [connectionIds, setConnectionIds] = useState<string[] | null>(null);
+  const showScopeUi = shouldShowScopeUi(connectionIds);
   /**
    * Bumped whenever we want children (ConversationList, MessageThread)
    * to refetch from the DB — used as a safety net against missed
@@ -212,6 +217,12 @@ function InboxPageInner() {
       setWhatsappConnected(
         (data ?? []).some((c) => c.status === "connected" && !c.disabled_at)
       );
+
+      const { data: all } = await supabase
+        .from("channel_connections")
+        .select("id")
+        .eq("account_id", accountId);
+      setConnectionIds((all ?? []).map((c) => c.id as string));
     };
 
     checkConnection();
@@ -595,6 +606,7 @@ function InboxPageInner() {
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
+            showScopeUi={showScopeUi}
           />
         </div>
 
@@ -628,6 +640,7 @@ function InboxPageInner() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
+            showScopeUi={showScopeUi}
           />
         </div>
 

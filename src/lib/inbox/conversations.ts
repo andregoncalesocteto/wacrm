@@ -182,3 +182,29 @@ export function deriveScopeOptions(
     channelTypes: [...channelTypes].sort(),
   };
 }
+
+/**
+ * Whether the inbox shows store/channel badges and the store / connection /
+ * channel filters. Only when the account has MORE than one connection (any
+ * status: a disabled connection still owns conversations that need a label);
+ * with one (or while the count is still unknown) the inbox looks as it always
+ * did.
+ */
+export function shouldShowScopeUi(
+  connections: readonly unknown[] | null | undefined
+): boolean {
+  return (connections?.length ?? 0) > 1;
+}
+
+/**
+ * Quick replies usable in a conversation of `storeId`: network-wide ones
+ * (store_id null/absent) plus those tied to that same store. A conversation
+ * with no known store only gets the network-wide ones.
+ */
+export function filterQuickRepliesForStore<
+  T extends { store_id?: string | null },
+>(replies: readonly T[], storeId: string | null | undefined): T[] {
+  return replies.filter(
+    (r) => r.store_id == null || (storeId != null && r.store_id === storeId)
+  );
+}

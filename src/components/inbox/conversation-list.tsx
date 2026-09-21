@@ -4,11 +4,13 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
+  deriveScopeOptions,
   matchesContactFilters,
   matchesConversationScope,
   NO_SCOPE_FILTERS,
   normalizeConversations,
 } from "@/lib/inbox/conversations";
+import { ConversationScopeBadge } from "./conversation-scope-badge";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
 import { Search, ChevronDown, X } from "lucide-react";
@@ -37,6 +39,11 @@ interface ConversationListProps {
    * or the tab was throttled. Optional so existing callers keep working.
    */
   resyncToken?: number;
+  /**
+   * Show store/channel badges and the store / connection / channel filters.
+   * False (default) with a single connection: the list looks as before.
+   */
+  showScopeUi?: boolean;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -55,8 +62,10 @@ export function ConversationList({
   conversations,
   onConversationsLoaded,
   resyncToken = 0,
+  showScopeUi = false,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
+  const tChannel = useTranslations("Settings.channels.type");
   
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
     { label: t("filterAll"), value: "all" },
@@ -75,8 +84,8 @@ export function ConversationList({
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
-  // Store / connection / channel scope. No UI yet (US-043): stays at "all".
-  const [scope] = useState(NO_SCOPE_FILTERS);
+  // Store / connection / channel scope; "all" by default.
+  const [scope, setScope] = useState(NO_SCOPE_FILTERS);
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
@@ -157,6 +166,17 @@ export function ConversationList({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [conversations]);
 
+  const scopeOptions = useMemo(
+    () => deriveScopeOptions(conversations),
+    [conversations]
+  );
+  const channelLabel = useCallback(
+    (type: string) => (tChannel.has(type) ? tChannel(type) : type),
+    [tChannel]
+  );
+  // The filters only apply while their UI is visible.
+  const effectiveScope = showScopeUi ? scope : NO_SCOPE_FILTERS;
+
   const tagsById = useMemo(() => {
     const m = new Map<string, Tag>();
     for (const t of tags) m.set(t.id, t);
@@ -182,7 +202,7 @@ export function ConversationList({
       );
     }
 
-    result = result.filter((c) => matchesConversationScope(c, scope));
+    result = result.filter((c) => matchesConversationScope(c, effectiveScope));
 
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -195,7 +215,7 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, search, selectedTagIds, selectedCompany, scope]);
+  }, [conversations, filter, search, selectedTagIds, selectedCompany, effectiveScope]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -357,6 +377,45 @@ export function ConversationList({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+
+          {showScopeUi && (
+            <>
+              <ScopeDropdown
+                label={t("store")}
+                allLabel={t("allStores")}
+                selected={scope.storeId}
+                options={scopeOptions.stores.map((s) => ({
+                  value: s.id,
+                  label: s.name,
+                }))}
+                onChange={(storeId) => setScope((p) => ({ ...p, storeId }))}
+              />
+              <ScopeDropdown
+                label={t("connection")}
+                allLabel={t("allConnections")}
+                selected={scope.connectionId}
+                options={scopeOptions.connections.map((c) => ({
+                  value: c.id,
+                  label: c.displayName,
+                }))}
+                onChange={(connectionId) =>
+                  setScope((p) => ({ ...p, connectionId }))
+                }
+              />
+              <ScopeDropdown
+                label={t("channel")}
+                allLabel={t("allChannels")}
+                selected={scope.channelType}
+                options={scopeOptions.channelTypes.map((c) => ({
+                  value: c,
+                  label: channelLabel(c),
+                }))}
+                onChange={(channelType) =>
+                  setScope((p) => ({ ...p, channelType }))
+                }
+              />
+            </>
+          )}
         </div>
 
         {hasContactFilters && (
@@ -420,6 +479,7 @@ export function ConversationList({
                 conversation={conv}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
+                showScopeUi={showScopeUi}
                 t={t}
               />
             ))}
@@ -434,6 +494,7 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
+  showScopeUi: boolean;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -441,6 +502,7 @@ function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  showScopeUi,
   t,
 }: ConversationItemProps) {
   const locale = useLocale();
@@ -507,7 +569,73 @@ function ConversationItem({
             />
           </div>
         </div>
+        {showScopeUi && conversation.connection && (
+          <ConversationScopeBadge
+            connection={conversation.connection}
+            className="mt-1"
+          />
+        )}
       </div>
     </button>
+  );
+}
+
+interface ScopeDropdownProps {
+  label: string;
+  allLabel: string;
+  selected: string | null;
+  options: { value: string; label: string }[];
+  onChange: (value: string | null) => void;
+}
+
+/** Single-select "all / one option" dropdown for a scope dimension. */
+function ScopeDropdown({
+  label,
+  allLabel,
+  selected,
+  options,
+  onChange,
+}: ScopeDropdownProps) {
+  const current = options.find((o) => o.value === selected);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={cn(
+          "inline-flex max-w-32 items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+          selected
+            ? "text-primary"
+            : "text-muted-foreground hover:text-foreground"
+        )}
+      >
+        <span className="truncate">{current?.label ?? label}</span>
+        <ChevronDown className="h-3 w-3 shrink-0" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="max-h-64 w-56 border-border bg-popover"
+      >
+        <DropdownMenuItem
+          onClick={() => onChange(null)}
+          className={cn(
+            "text-sm",
+            selected === null ? "text-primary" : "text-popover-foreground"
+          )}
+        >
+          {allLabel}
+        </DropdownMenuItem>
+        {options.map((o) => (
+          <DropdownMenuItem
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            className={cn(
+              "text-sm",
+              selected === o.value ? "text-primary" : "text-popover-foreground"
+            )}
+          >
+            <span className="truncate">{o.label}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

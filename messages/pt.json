@@ -151,7 +151,14 @@
       "clearAll": "Limpar tudo",
       "noConversations": "Nenhuma conversa encontrada",
       "noMessagesYet": "Nenhuma mensagem ainda",
-      "unknown": "Desconhecido"
+      "unknown": "Desconhecido",
+      "store": "Loja",
+      "allStores": "Todas as lojas",
+      "connection": "Conexão",
+      "allConnections": "Todas as conexões",
+      "channel": "Canal",
+      "allChannels": "Todos os canais",
+      "disabled": "Desativada"
     },
     "messageThread": {
       "backToConversations": "Voltar às conversas",
