@@ -18,6 +18,10 @@ export interface ChannelPanelProps {
   storeId: string;
   /** Called after any write so the list behind the panel can refresh. */
   onChanged: () => void;
+  /** Wizard hosting: create only, the host connects + tests (see the panel). */
+  onCreated?: (connection: ChannelConnectionRow, opts: { pin: string }) => void;
+  /** Wizard hosting: hide the panel's own heading. */
+  hideChrome?: boolean;
 }
 
 interface EntryBase {
@@ -29,7 +33,7 @@ export interface PanelEntry extends EntryBase {
   Panel: ComponentType<ChannelPanelProps>;
 }
 
-/** Generic form for simple providers (type only for now; no renderer yet). */
+/** Generic form for simple providers; rendered by `DescriptorForm` from the providers endpoint descriptor. */
 export interface FormEntry extends EntryBase {
   kind: 'form';
   fields: DescriptorField[];

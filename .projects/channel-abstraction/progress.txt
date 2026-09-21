@@ -512,3 +512,14 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: typecheck, lint 0 errors/39 warnings, TZ=UTC tests 1537, build ok. Browser verified (see prd notes); seeds removed.
 - **Learnings:** the /connect failure after a successful create leaves the connection row (needs_action); the panel stays open in edit mode with the error. Legacy /api/whatsapp/config routes untouched (US-069).
 ---
+
+## 2026-09-21 - US-075
+- "Connect a channel" wizard: src/components/settings/connect-channel-wizard.tsx (4 steps: store, channel cards from GET /api/channels/providers, data, connect+test). Channels panel's "Conectar canal" opens it (create mode + native store select removed from ChannelsPanel). Step 3: registry `panel` entry hosts the WhatsApp panel (new props `onCreated(conn,{pin})` = create only, host connects; `hideChrome`), otherwise the generic src/components/channels/descriptor-form.tsx (text/secret/select/switch; DescriptorField type gained select/switch/options/pattern). Step 4: POST connect then POST test; failure shows the reason + a fix hint by error code + Try again; closing keeps the connection in the list.
+- Pure/tested: src/lib/channels/descriptor-form.ts (validation, payload split config/credentials) and wizard.ts (capability chips from flags, fix hint, step gating). 31 new keys x4 in Settings.channels.wizard (textual insertion, no json.dump).
+- Files: wizard, descriptor-form (tsx+ts+test), wizard.ts(+test), channels-panel.tsx, whatsapp-connection-panel.tsx, types.ts, ui-registry.tsx, messages x4, prd.json.
+- Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1546, build ok. Browser verified (see prd notes); seeds removed.
+- **Learnings:**
+  - NEVER run `npx prettier --write src/components` etc.: many committed files are not prettier-formatted and get rewritten; format only the files you touched.
+  - The wizard preselects the store when there is exactly one; providers endpoint lists only registered providers (today whatsapp_cloud), so the wizard shows only those.
+  - Field labels/help for a form provider: `Channels.providers.<type>.fields.<name>.label|help|options.<value>` (US-050 must add them).
+---

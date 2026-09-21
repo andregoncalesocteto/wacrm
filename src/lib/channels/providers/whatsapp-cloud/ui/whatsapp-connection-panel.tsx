@@ -57,6 +57,14 @@ export interface WhatsAppConnectionPanelProps {
   storeId: string;
   /** Called after any write, so the list behind the panel can refresh. */
   onChanged: () => void;
+  /**
+   * Embedding (wizard): when set, create mode only creates the connection and
+   * hands it over with the PIN, and the host runs connect + test itself. The
+   * PIN is passed along in memory only, never stored.
+   */
+  onCreated?: (connection: ChannelConnectionRow, opts: { pin: string }) => void;
+  /** Hides the panel's own heading when a host provides the chrome. */
+  hideChrome?: boolean;
 }
 
 /** The fields of the channels API responses this panel reads. */
@@ -95,6 +103,8 @@ export function WhatsAppConnectionPanel({
   connection,
   storeId,
   onChanged,
+  onCreated,
+  hideChrome = false,
 }: WhatsAppConnectionPanelProps) {
   const t = useTranslations('Settings.whatsapp');
   const format = useFormatter();
@@ -238,9 +248,13 @@ export function WhatsAppConnectionPanel({
           return;
         }
         const row = data.connection as ChannelConnectionRow;
+        onChanged();
+        if (onCreated) {
+          onCreated({ ...row, has_conversations: false }, { pin });
+          return;
+        }
         setConn({ ...row, has_conversations: false });
         setAccessToken('');
-        onChanged();
         await runConnect(row.id);
         return;
       }
@@ -327,7 +341,9 @@ export function WhatsAppConnectionPanel({
 
   return (
     <section className="animate-in fade-in-50 duration-200">
-      <SettingsPanelHead title={t('title')} description={t('description')} />
+      {hideChrome ? null : (
+        <SettingsPanelHead title={t('title')} description={t('description')} />
+      )}
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         {/* Main config form */}
         <div className="space-y-6">

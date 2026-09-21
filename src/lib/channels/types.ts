@@ -330,8 +330,12 @@ export interface DescriptorField {
   name: string;
   /** Where the value goes: `config` (non-secret) or `credentials` (secret). */
   target: 'config' | 'credentials';
-  type: 'text' | 'secret';
+  type: 'text' | 'secret' | 'select' | 'switch';
   required?: boolean;
+  /** `select` only: the allowed values (labels come from i18n). */
+  options?: string[];
+  /** `text` only: a regular expression the value must match. */
+  pattern?: string;
 }
 
 /**

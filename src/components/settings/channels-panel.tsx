@@ -17,7 +17,6 @@ import { toast } from 'sonner';
 import { useCan } from '@/hooks/use-can';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -39,6 +38,7 @@ import {
 } from '@/lib/channels/ui-registry';
 import { getDateFnsLocale } from '@/lib/i18n/date-fns-locale';
 import { connectionChipState, type ConnectionChipState } from '@/lib/stores/ui';
+import { ConnectChannelWizard } from './connect-channel-wizard';
 import { SettingsPanelHead } from './settings-panel-head';
 
 const CHIP_TONE: Record<ConnectionChipState, string> = {
@@ -52,7 +52,7 @@ const CHIP_TONE: Record<ConnectionChipState, string> = {
 // Which panel is open in place of the list: a connection (edit) or a new one.
 type View =
   | { mode: 'edit'; connection: ChannelConnectionRow }
-  | { mode: 'create'; storeId: string; channelType: string }
+  | { mode: 'wizard' }
   | null;
 
 type Pending = {
@@ -112,11 +112,7 @@ export function ChannelsPanel() {
   const channelLabel = (type: string) =>
     t.has(`type.${type}`) ? t(`type.${type}`) : type;
 
-  const openCreate = () => {
-    const channelType = configurableChannelTypes()[0];
-    if (!channelType || stores.length === 0) return;
-    setView({ mode: 'create', storeId: stores[0].id, channelType });
-  };
+  const openCreate = () => setView({ mode: 'wizard' });
 
   const runAction = async (
     c: ChannelConnectionRow,
@@ -176,13 +172,23 @@ export function ChannelsPanel() {
   const kind = emptyStateKind(stores.length, connections.length);
   const groups = groupConnectionsByStore(stores, connections);
 
-  if (view) {
-    const entry = getChannelUi(
-      view.mode === 'edit' ? view.connection.channel_type : view.channelType
+  if (view?.mode === 'wizard') {
+    return (
+      <ConnectChannelWizard
+        onClose={() => {
+          setView(null);
+          void load();
+        }}
+        onChanged={() => void load()}
+      />
     );
-    const Panel = entry?.kind === 'panel' ? entry.Panel : null;
-    const storeId =
-      view.mode === 'edit' ? view.connection.store_id : view.storeId;
+  }
+
+  if (view) {
+    const Panel = (() => {
+      const entry = getChannelUi(view.connection.channel_type);
+      return entry?.kind === 'panel' ? entry.Panel : null;
+    })();
     return (
       <div className="space-y-4">
         <Button
@@ -196,30 +202,11 @@ export function ChannelsPanel() {
           <ArrowLeft className="size-4" />
           {t('back')}
         </Button>
-        {view.mode === 'create' ? (
-          <div className="max-w-xs space-y-1.5">
-            <Label htmlFor="channel-store">{t('storeLabel')}</Label>
-            <select
-              id="channel-store"
-              value={view.storeId}
-              onChange={(e) => setView({ ...view, storeId: e.target.value })}
-              className="border-border bg-muted text-foreground h-9 w-full rounded-md border px-2 text-sm"
-            >
-              {stores.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
         {Panel ? (
           <Panel
-            // A store change in create mode must not keep half-typed state
-            // tied to the previous store, and each connection is its own form.
-            key={view.mode === 'edit' ? view.connection.id : 'create'}
-            connection={view.mode === 'edit' ? view.connection : null}
-            storeId={storeId}
+            key={view.connection.id}
+            connection={view.connection}
+            storeId={view.connection.store_id}
             onChanged={() => void load()}
           />
         ) : null}

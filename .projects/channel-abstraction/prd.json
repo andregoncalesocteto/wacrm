@@ -751,8 +751,8 @@
         "Verify in browser using dev-browser skill (conectar um WhatsApp com credenciais inválidas e ver o erro tratado; sem loja, ser levado a criá-la)"
       ],
       "priority": 44,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser (pt, :3100, QA account): no store -> list empty state links to ?tab=stores (wizard itself also shows the no-store guidance; not reachable with 0 stores from the list button); with one store: steps 1-4 for WhatsApp with invalid credentials -> explained Meta error + fix hint + Try again + close keeps the connection in the list as 'Ação necessária'; whatsapp_config stayed empty (no dual-write). Providers endpoint registers only whatsapp_cloud today, so only that card appears (Telegram after US-050). Generic DescriptorForm (text/secret/select/switch) is unit-tested but not exercised in the browser (no form provider registered yet). Real Meta success not reachable here."
     },
     {
       "id": "US-040",
