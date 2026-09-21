@@ -253,3 +253,15 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Prettier for this repo uses semicolons in new files (differs from the wa-identity style); ran prettier only on my two files.
   - Baseline: 105 files / 1308 tests, lint 41 warnings, typecheck clean.
 ---
+
+## 2026-09-21 - US-019
+- New src/lib/channels/ingest.ts: ingestInbound(db, connection, events, {auditUserId, hooks}) -> one outcome per event ('stored' | 'duplicate' | 'skipped'). Handles `message` events only: resolveOrCreateContact (US-018) -> conversation by (contact, connection) -> idempotent upsert on messages (onConflict conversation_id,message_id, ignoreDuplicates, .select('id') empty = replay) -> RPC bump_conversation_on_inbound (unread+1, last text/at) -> reopenClosedConversation. Replay returns 'duplicate' before any bump/hook. Depends only on its args.
+- Conversation lookup transition rule (documented in the code): DB index is still UNIQUE (account, contact) until US-032, so it takes the contact's oldest conversation on this connection OR with connection_id NULL and adopts the NULL one (UPDATE ... is null). A conversation on another connection is not reused (insert then hits the old index -> 'skipped', logged).
+- Hooks (extension points, errors logged, never undo the stored message): resolveMedia (US-021), onConversationCreated (fires before the message, like the route's conversation.created), onMessageStored (US-020/074; carries contentType/contentText/interactiveReplyId/isFirstInbound/contactCreated for the fan-out). Not done here: flagBroadcastReplyIfAny, dispatchInboundToFlows/automations/AI/webhooks, reactions, statuses.
+- Additive enrichment of the event contract (types.ts + whatsapp-cloud/inbound.ts) so the core reproduces the route exactly: unsupported content may carry `stored {contentType,text}` (media without id -> media type + null text; document/location likewise; interactive without option -> 'interactive' + '[Interactive reply]'); message events may carry `emptyPreview` ('[sticker]', '[button]' for last_message_text) and `parentExternalId` (parent BSUID; ingest backfills contacts.wa_parent_user_id, US-070 removes it). Existing tests untouched (toMatchObject/toEqual still hold: fields are only emitted when relevant).
+- Files: ingest.ts, ingest.test.ts (22 tests, own stateful fake with the old unique indexes), providers/whatsapp-cloud/inbound.ingest-hints.test.ts (4), types.ts, inbound.ts, prd.json, progress.txt. Webhook route NOT touched.
+- **Learnings for future iterations:**
+  - US-022 must pass auditUserId = accounts.owner_user_id and stitch hooks: resolveMedia via provider.downloadMedia + mirrorInboundMedia with proxy fallback `/api/whatsapp/media/<id>` (route falls back to it when mirror fails; ingest stores null url without a hook), and fan-out order flows -> automations -> AI -> message.received webhook, with isFirstInbound / contactCreated from the stored outcome.
+  - Preview rule: last_message_text = contentText || emptyPreview || description || `[content_type]`.
+  - Baseline: 107 files / 1335 tests, lint 41 warnings, typecheck clean.
+---

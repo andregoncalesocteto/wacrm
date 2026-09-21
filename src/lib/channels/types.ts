@@ -226,7 +226,17 @@ export type InboundContent =
       /** Ready-to-store text ("name - address - lat,lng"), as the inbox shows it. */
       text: string;
     }
-  | { type: 'unsupported'; description?: string };
+  | {
+      type: 'unsupported';
+      description?: string;
+      /**
+       * How the current webhook persists this degenerate message, when it is
+       * NOT as a text row carrying `description` (media without an id keeps
+       * its media type and a null text; an interactive reply without an
+       * option stays 'interactive'). Additive; absent = text + description.
+       */
+      stored?: { contentType: string; text: string | null };
+    };
 
 export type InboundEvent =
   | {
@@ -237,6 +247,18 @@ export type InboundEvent =
       content: InboundContent;
       replyToExternalId?: string;
       senderName?: string;
+      /**
+       * Placeholder for `last_message_text` when the message has no text and
+       * the provider's own type differs from the stored content type
+       * (WhatsApp sticker -> "[sticker]", template button -> "[button]").
+       */
+      emptyPreview?: string;
+      /**
+       * Portfolio-level parent id of the sender (WhatsApp parent BSUID).
+       * Only used to keep `contacts.wa_parent_user_id` filled until US-070
+       * removes that column.
+       */
+      parentExternalId?: string;
     }
   | {
       kind: 'status';

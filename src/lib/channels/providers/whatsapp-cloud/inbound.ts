@@ -166,6 +166,12 @@ function toDate(timestamp: string | undefined): Date | undefined {
   return Number.isNaN(seconds) ? undefined : new Date(seconds * 1000);
 }
 
+/** Types whose "[type]" preview differs from the stored content type. */
+const EMPTY_PREVIEW: Record<string, string> = {
+  sticker: '[sticker]',
+  button: '[button]',
+};
+
 const STATUSES = new Set(['sent', 'delivered', 'read', 'failed']);
 
 /**
@@ -263,6 +269,7 @@ function contentOf(m: MetaMessage): InboundContent {
         mediaContent(kind, media, caption) ?? {
           type: 'unsupported',
           description: `[${m.type}]`,
+          stored: { contentType: kind, text: null },
         }
       );
     }
@@ -272,12 +279,19 @@ function contentOf(m: MetaMessage): InboundContent {
         mediaContent('document', d, d?.caption || d?.filename, d?.filename) ?? {
           type: 'unsupported',
           description: '[document]',
+          stored: { contentType: 'document', text: null },
         }
       );
     }
     case 'location': {
       const loc = m.location;
-      if (!loc) return { type: 'unsupported', description: '[location]' };
+      if (!loc) {
+        return {
+          type: 'unsupported',
+          description: '[location]',
+          stored: { contentType: 'location', text: null },
+        };
+      }
       return {
         type: 'location',
         latitude: loc.latitude,
@@ -298,7 +312,11 @@ function contentOf(m: MetaMessage): InboundContent {
           title: reply.title || reply.id,
         };
       }
-      return { type: 'unsupported', description: '[Interactive reply]' };
+      return {
+        type: 'unsupported',
+        description: '[Interactive reply]',
+        stored: { contentType: 'interactive', text: '[Interactive reply]' },
+      };
     }
     case 'button': {
       // Template quick-reply tap: payload routes, text displays, each
@@ -373,6 +391,10 @@ export async function parse(
           content: contentOf(m),
           ...(m.context?.id && { replyToExternalId: m.context.id }),
           ...(identity.name && { senderName: identity.name }),
+          ...(EMPTY_PREVIEW[m.type] && { emptyPreview: EMPTY_PREVIEW[m.type] }),
+          ...(identity.waParentUserId && {
+            parentExternalId: identity.waParentUserId,
+          }),
         });
         return;
       }

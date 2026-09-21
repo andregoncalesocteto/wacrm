@@ -344,8 +344,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 20,
-      "passes": false,
-      "notes": "Após a US-018: o `parse` do WhatsApp não emite candidato para o BSUID do pai (`wa_parent_user_id`), então `resolveOrCreateContact` não o preenche; o `contactIdentityPatch` do webhook antigo ainda o faz. Ao ligar a ingestão, manter esse preenchimento (ou acrescentar a identidade `whatsapp:parent_bsuid`), decidindo junto com a US-070, que remove a coluna."
+      "passes": true,
+      "notes": "Após a US-018: o `parse` do WhatsApp não emite candidato para o BSUID do pai (`wa_parent_user_id`), então `resolveOrCreateContact` não o preenche; o `contactIdentityPatch` do webhook antigo ainda o faz. Ao ligar a ingestão, manter esse preenchimento (ou acrescentar a identidade `whatsapp:parent_bsuid`), decidindo junto com a US-070, que remove a coluna. | Feito: parent BSUID preenchido no ingest via campo aditivo parentExternalId do evento (backfill de contacts.wa_parent_user_id, remover na US-070); os 3 casos de borda da US-021/022 estao cobertos no nucleo por hints aditivos do parse (content.stored, emptyPreview) com testes. Fan-out, midia, status e reacao ficam nos ganchos de IngestHooks (US-020/074/021)."
     },
     {
       "id": "US-020",
