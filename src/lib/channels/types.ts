@@ -217,6 +217,15 @@ export type InboundContent =
   | { type: 'text'; text: string }
   | { type: 'media'; kind: MediaKind; media: MediaRef; caption?: string }
   | { type: 'interactive_reply'; id: string; title: string }
+  | {
+      type: 'location';
+      latitude: number;
+      longitude: number;
+      name?: string;
+      address?: string;
+      /** Ready-to-store text ("name - address - lat,lng"), as the inbox shows it. */
+      text: string;
+    }
   | { type: 'unsupported'; description?: string };
 
 export type InboundEvent =

@@ -1,5 +1,7 @@
 import type {
   ChannelErrorInfo,
+  InboundContent,
+  MediaKind,
   Connection,
   IdentityCandidate,
   InboundEvent,
@@ -7,14 +9,16 @@ import type {
 import { getConnectionByExternalId } from '../../connections';
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature';
 import {
+  hasUsableIdentity,
   resolveInboundIdentity,
   type WaContactPayload,
+  type WaIdentity,
 } from '@/lib/whatsapp/wa-identity';
 import { classifyMetaCode } from './errors';
 
 /**
  * Inbound side of the WhatsApp Cloud provider: resolveConnection, verify and
- * parse (statuses + reactions; message parsing is US-073).
+ * parse (statuses, reactions and messages).
  *
  * BODY READ-ONCE: a Request body can be consumed a single time, but the
  * contract has three methods that each need the raw text (resolveConnection
@@ -65,6 +69,30 @@ interface MetaMessage {
   timestamp?: string;
   type: string;
   reaction?: { message_id?: string; emoji?: string };
+  text?: { body?: string };
+  image?: MetaMedia;
+  video?: MetaMedia;
+  document?: MetaMedia & { filename?: string };
+  audio?: MetaMedia;
+  sticker?: MetaMedia;
+  location?: {
+    latitude: number;
+    longitude: number;
+    name?: string;
+    address?: string;
+  };
+  interactive?: {
+    button_reply?: { id: string; title: string };
+    list_reply?: { id: string; title: string };
+  };
+  button?: { text?: string; payload?: string };
+  context?: { id?: string };
+}
+
+interface MetaMedia {
+  id?: string;
+  mime_type?: string;
+  caption?: string;
 }
 
 interface MetaValue {
@@ -173,15 +201,138 @@ function reactionSender(
   return out;
 }
 
+function messageSender(identity: WaIdentity): IdentityCandidate[] {
+  const out: IdentityCandidate[] = [];
+  if (identity.phone) {
+    out.push({ kind: 'whatsapp:phone', externalId: identity.phone });
+  }
+  if (identity.waUserId) {
+    out.push({ kind: 'whatsapp:bsuid', externalId: identity.waUserId });
+  }
+  if (identity.waUsername) {
+    out.push({
+      kind: 'whatsapp:username',
+      externalId: identity.waUsername,
+      handle: `@${identity.waUsername}`,
+    });
+  }
+  return out;
+}
+
+function mediaContent(
+  kind: MediaKind,
+  m: MetaMedia | undefined,
+  caption: string | undefined,
+  fileName?: string
+): InboundContent | null {
+  if (!m?.id) return null;
+  return {
+    type: 'media',
+    kind,
+    media: {
+      kind,
+      id: m.id,
+      ...(m.mime_type && { mimeType: m.mime_type }),
+      ...(fileName && { fileName }),
+    },
+    ...(caption && { caption }),
+  };
+}
+
 /**
- * Status and reaction events of the payload, in delivery order. Message
- * events are NOT produced here (US-073); template-lifecycle fields carry no
- * statuses/messages and yield nothing. Statuses Meta may add beyond the four
+ * Mirrors parseMessageContent (without the media download/mirror, which the
+ * core does through `downloadMedia`). `caption` is the text the webhook stores
+ * as content_text: the caption, and for a document the filename when there is
+ * no caption. Stickers are images. A media message without an id, an
+ * interactive reply without a tapped option and any unknown type become
+ * `unsupported` carrying the placeholder text the webhook stores.
+ */
+function contentOf(m: MetaMessage): InboundContent {
+  switch (m.type) {
+    case 'text':
+      return { type: 'text', text: m.text?.body ?? '' };
+    case 'image':
+    case 'video':
+    case 'audio':
+    case 'sticker': {
+      const kind = m.type === 'sticker' ? 'image' : m.type;
+      const media = m[m.type];
+      const caption =
+        m.type === 'image' || m.type === 'video' ? media?.caption : undefined;
+      return (
+        mediaContent(kind, media, caption) ?? {
+          type: 'unsupported',
+          description: `[${m.type}]`,
+        }
+      );
+    }
+    case 'document': {
+      const d = m.document;
+      return (
+        mediaContent('document', d, d?.caption || d?.filename, d?.filename) ?? {
+          type: 'unsupported',
+          description: '[document]',
+        }
+      );
+    }
+    case 'location': {
+      const loc = m.location;
+      if (!loc) return { type: 'unsupported', description: '[location]' };
+      return {
+        type: 'location',
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        ...(loc.name && { name: loc.name }),
+        ...(loc.address && { address: loc.address }),
+        text: [loc.name, loc.address, `${loc.latitude},${loc.longitude}`]
+          .filter(Boolean)
+          .join(' - '),
+      };
+    }
+    case 'interactive': {
+      const reply = m.interactive?.button_reply ?? m.interactive?.list_reply;
+      if (reply?.id) {
+        return {
+          type: 'interactive_reply',
+          id: reply.id,
+          title: reply.title || reply.id,
+        };
+      }
+      return { type: 'unsupported', description: '[Interactive reply]' };
+    }
+    case 'button': {
+      // Template quick-reply tap: payload routes, text displays, each
+      // falling back to the other.
+      const payload = m.button?.payload || '';
+      const label = m.button?.text || '';
+      return {
+        type: 'interactive_reply',
+        id: payload || label,
+        title: label || payload,
+      };
+    }
+    default:
+      return {
+        type: 'unsupported',
+        description: `[Unsupported message type: ${m.type}]`,
+      };
+  }
+}
+
+/**
+ * Status, reaction and message events of the payload, in delivery order. Message
+ * template-lifecycle fields carry no statuses/messages and yield nothing.
+ * Statuses Meta may add beyond the four
  * we model (e.g. "deleted") are dropped, as are reactions without a target or
  * without any usable sender identity (the webhook skips those too).
  *
  * Events for one `value` are ordered statuses first, then messages, like
- * processWebhook. Reaction `externalId` is the TARGET message's id
+ * processWebhook. A message whose sender has neither a phone nor a valid BSUID
+ * is DROPPED (no event), exactly as processMessage drops it: there is no key to
+ * find or create a contact under. Candidates: whatsapp:phone (digits only, as
+ * the dedupe normalizes), whatsapp:bsuid, whatsapp:username (handle "@name");
+ * the portfolio-level BSUID has no candidate kind. `senderName` is the profile
+ * name; `replyToExternalId` is `context.id`. Reaction `externalId` is the TARGET message's id
  * (`reaction.message_id`), an empty emoji becomes `null` (removal).
  */
 export async function parse(
@@ -210,7 +361,22 @@ export async function parse(
     const messages = value.messages ?? [];
     const contacts = value.contacts ?? [];
     messages.forEach((m, i) => {
-      if (m.type !== 'reaction' || !m.reaction?.message_id) return;
+      if (m.type !== 'reaction') {
+        const contact = contacts[i] || contacts[0];
+        const identity = resolveInboundIdentity(m, contact);
+        if (!hasUsableIdentity(identity)) return;
+        events.push({
+          kind: 'message',
+          externalId: m.id,
+          sender: messageSender(identity),
+          at: toDate(m.timestamp) ?? new Date(),
+          content: contentOf(m),
+          ...(m.context?.id && { replyToExternalId: m.context.id }),
+          ...(identity.name && { senderName: identity.name }),
+        });
+        return;
+      }
+      if (!m.reaction?.message_id) return;
       const sender = reactionSender(m, contacts[i] || contacts[0]);
       if (sender.length === 0) return;
       events.push({

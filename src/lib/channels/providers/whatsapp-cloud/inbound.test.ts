@@ -320,20 +320,7 @@ describe('parse: reactions', () => {
     expect(events).toEqual([]);
   });
 
-  it('does not parse messages here (US-073) and ignores non-JSON', async () => {
-    const text = {
-      id: 'wamid.T1',
-      from: '15551230000',
-      timestamp: '1700000000',
-      type: 'text',
-      text: { body: 'hello' },
-    };
-    expect(
-      await provider.parse(
-        req(deliver({ messages: [text], contacts: ADA })).request,
-        CONN
-      )
-    ).toEqual([]);
+  it('ignores non-JSON', async () => {
     expect(await provider.parse(req('nope').request, CONN)).toEqual([]);
   });
 
@@ -349,5 +336,390 @@ describe('parse: reactions', () => {
       CONN
     );
     expect(events.map((e) => e.kind)).toEqual(['status', 'reaction']);
+  });
+});
+
+// ---- messages (US-073) ------------------------------------------------------
+// Payload shapes of route.characterization.test.ts. Expectations are written
+// from what the webhook persists for the same payload (content_type,
+// content_text, media_type, interactive_reply_id, reply target).
+
+const BASE = { from: '15551230000', timestamp: '1700000000' };
+const msgs = (messages: Record<string, unknown>[], contacts: unknown[] = ADA) =>
+  deliver({ messages, contacts });
+
+async function parseMessages(
+  messages: Record<string, unknown>[],
+  contacts: unknown[] = ADA
+) {
+  const { request } = req(msgs(messages, contacts));
+  return provider.parse(request, CONN);
+}
+
+const PHONE = { kind: 'whatsapp:phone', externalId: '15551230000' };
+
+describe('parse: messages', () => {
+  it('text: identity, profile name and timestamp; persisted text = body', async () => {
+    const [e] = await parseMessages([
+      { ...BASE, id: 'wamid.T1', type: 'text', text: { body: 'hello' } },
+    ]);
+    expect(e).toEqual({
+      kind: 'message',
+      externalId: 'wamid.T1',
+      sender: [PHONE],
+      at: new Date(1700000000 * 1000),
+      content: { type: 'text', text: 'hello' },
+      senderName: 'Ada',
+    });
+  });
+
+  it('image: media id, mime and caption (content_text = caption)', async () => {
+    const [e] = await parseMessages([
+      {
+        ...BASE,
+        id: 'wamid.I1',
+        type: 'image',
+        image: { id: 'media-1', mime_type: 'image/jpeg', caption: 'look' },
+      },
+    ]);
+    expect(e).toMatchObject({
+      content: {
+        type: 'media',
+        kind: 'image',
+        media: { kind: 'image', id: 'media-1', mimeType: 'image/jpeg' },
+        caption: 'look',
+      },
+    });
+  });
+
+  it('video and audio carry media; audio has no caption', async () => {
+    const [v, a] = await parseMessages([
+      {
+        ...BASE,
+        id: 'v',
+        type: 'video',
+        video: { id: 'mv', mime_type: 'video/mp4', caption: 'clip' },
+      },
+      {
+        ...BASE,
+        id: 'a',
+        type: 'audio',
+        audio: { id: 'ma', mime_type: 'audio/ogg' },
+      },
+    ]);
+    expect(v).toMatchObject({
+      content: { kind: 'video', caption: 'clip', media: { id: 'mv' } },
+    });
+    expect(a.kind === 'message' && a.content).toEqual({
+      type: 'media',
+      kind: 'audio',
+      media: { kind: 'audio', id: 'ma', mimeType: 'audio/ogg' },
+    });
+  });
+
+  it('document: filename in the MediaRef, caption falls back to the filename (content_text)', async () => {
+    const [noCaption, withCaption] = await parseMessages([
+      {
+        ...BASE,
+        id: 'd1',
+        type: 'document',
+        document: {
+          id: 'md',
+          mime_type: 'application/pdf',
+          filename: 'invoice.pdf',
+        },
+      },
+      {
+        ...BASE,
+        id: 'd2',
+        type: 'document',
+        document: {
+          id: 'md',
+          mime_type: 'application/pdf',
+          filename: 'invoice.pdf',
+          caption: 'Q3',
+        },
+      },
+    ]);
+    expect(noCaption).toMatchObject({
+      content: {
+        kind: 'document',
+        caption: 'invoice.pdf',
+        media: {
+          id: 'md',
+          mimeType: 'application/pdf',
+          fileName: 'invoice.pdf',
+        },
+      },
+    });
+    expect(withCaption).toMatchObject({
+      content: { caption: 'Q3', media: { fileName: 'invoice.pdf' } },
+    });
+  });
+
+  it('sticker is an image', async () => {
+    const [e] = await parseMessages([
+      {
+        ...BASE,
+        id: 's1',
+        type: 'sticker',
+        sticker: { id: 'ms', mime_type: 'image/webp' },
+      },
+    ]);
+    expect(e).toMatchObject({
+      content: {
+        type: 'media',
+        kind: 'image',
+        media: { kind: 'image', id: 'ms', mimeType: 'image/webp' },
+      },
+    });
+  });
+
+  it('media without an id is unsupported (the webhook stores no media)', async () => {
+    const [e] = await parseMessages([
+      { ...BASE, id: 'x', type: 'image', image: { mime_type: 'image/png' } },
+    ]);
+    expect(e).toMatchObject({
+      content: { type: 'unsupported', description: '[image]' },
+    });
+  });
+
+  it('location: text = "name - address - lat,lng"', async () => {
+    const [e] = await parseMessages([
+      {
+        ...BASE,
+        id: 'l1',
+        type: 'location',
+        location: {
+          latitude: 1.5,
+          longitude: -2.5,
+          name: 'Shop',
+          address: 'Main St',
+        },
+      },
+    ]);
+    expect(e).toMatchObject({
+      content: {
+        type: 'location',
+        latitude: 1.5,
+        longitude: -2.5,
+        text: 'Shop - Main St - 1.5,-2.5',
+      },
+    });
+  });
+
+  it('interactive button/list replies: id routes, title displays (title || id)', async () => {
+    const [b, l, noTitle] = await parseMessages([
+      {
+        ...BASE,
+        id: 'b',
+        type: 'interactive',
+        interactive: {
+          type: 'button_reply',
+          button_reply: { id: 'opt_1', title: 'Yes' },
+        },
+      },
+      {
+        ...BASE,
+        id: 'l',
+        type: 'interactive',
+        interactive: {
+          type: 'list_reply',
+          list_reply: { id: 'row_2', title: 'Plan B' },
+        },
+      },
+      {
+        ...BASE,
+        id: 'n',
+        type: 'interactive',
+        interactive: {
+          type: 'button_reply',
+          button_reply: { id: 'opt_9', title: '' },
+        },
+      },
+    ]);
+    expect(b).toMatchObject({
+      content: { type: 'interactive_reply', id: 'opt_1', title: 'Yes' },
+    });
+    expect(l).toMatchObject({ content: { id: 'row_2', title: 'Plan B' } });
+    expect(noTitle).toMatchObject({ content: { id: 'opt_9', title: 'opt_9' } });
+  });
+
+  it('interactive without a tapped option is unsupported "[Interactive reply]"', async () => {
+    const [e] = await parseMessages([
+      { ...BASE, id: 'i', type: 'interactive', interactive: {} },
+    ]);
+    expect(e).toMatchObject({
+      content: { type: 'unsupported', description: '[Interactive reply]' },
+    });
+  });
+
+  it('template quick-reply button: payload is the id, text the title, each falls back', async () => {
+    const [both, onlyText, onlyPayload] = await parseMessages([
+      {
+        ...BASE,
+        id: 'b1',
+        type: 'button',
+        button: { text: 'Sim', payload: 'P1' },
+      },
+      { ...BASE, id: 'b2', type: 'button', button: { text: 'Sim' } },
+      { ...BASE, id: 'b3', type: 'button', button: { payload: 'P3' } },
+    ]);
+    expect(both).toMatchObject({
+      content: { type: 'interactive_reply', id: 'P1', title: 'Sim' },
+    });
+    expect(onlyText).toMatchObject({ content: { id: 'Sim', title: 'Sim' } });
+    expect(onlyPayload).toMatchObject({ content: { id: 'P3', title: 'P3' } });
+  });
+
+  it('unknown type is unsupported with the webhook placeholder text', async () => {
+    const [e] = await parseMessages([{ ...BASE, id: 'u', type: 'order' }]);
+    expect(e).toMatchObject({
+      content: {
+        type: 'unsupported',
+        description: '[Unsupported message type: order]',
+      },
+    });
+  });
+
+  it('swipe-reply: context.id becomes replyToExternalId', async () => {
+    const [e, plain] = await parseMessages([
+      {
+        ...BASE,
+        id: 'r',
+        type: 'text',
+        text: { body: 'yes' },
+        context: { id: 'wamid.PARENT' },
+      },
+      { ...BASE, id: 'p', type: 'text', text: { body: 'no' } },
+    ]);
+    expect(e).toMatchObject({ replyToExternalId: 'wamid.PARENT' });
+    expect(plain).not.toHaveProperty('replyToExternalId');
+  });
+
+  it('BSUID-only sender: bsuid + username candidates (with handle), no phone, profile name', async () => {
+    const [e] = await parseMessages(
+      [
+        {
+          id: 'wamid.B1',
+          from_user_id: 'US.1111111',
+          from_parent_user_id: 'US.ENT.9999999',
+          timestamp: '1700000000',
+          type: 'text',
+          text: { body: 'hi' },
+        },
+      ],
+      [
+        {
+          profile: { name: 'Sheena', username: 'sheena_n' },
+          user_id: 'US.1111111',
+          parent_user_id: 'US.ENT.9999999',
+        },
+      ]
+    );
+    expect(e).toMatchObject({
+      kind: 'message',
+      sender: [
+        { kind: 'whatsapp:bsuid', externalId: 'US.1111111' },
+        {
+          kind: 'whatsapp:username',
+          externalId: 'sheena_n',
+          handle: '@sheena_n',
+        },
+      ],
+      senderName: 'Sheena',
+    });
+  });
+
+  it('phone with formatting is normalized to digits; phone + bsuid + username all emitted', async () => {
+    const [e] = await parseMessages(
+      [
+        {
+          id: 'w',
+          from: '+1 (555) 123-0000',
+          timestamp: '1700000000',
+          type: 'text',
+          text: { body: 'x' },
+        },
+      ],
+      [
+        {
+          wa_id: '15551230000',
+          profile: { name: 'Ada', username: '@ada' },
+          user_id: 'US.2222222',
+        },
+      ]
+    );
+    expect(e).toMatchObject({
+      sender: [
+        PHONE,
+        { kind: 'whatsapp:bsuid', externalId: 'US.2222222' },
+        { kind: 'whatsapp:username', externalId: 'ada', handle: '@ada' },
+      ],
+    });
+  });
+
+  it('phone comes from contacts[].wa_id when the message has no `from`', async () => {
+    const [e] = await parseMessages([
+      { id: 'w', timestamp: '1700000000', type: 'text', text: { body: 'x' } },
+    ]);
+    expect(e).toMatchObject({ sender: [PHONE] });
+  });
+
+  it('drops a message with neither phone nor valid BSUID (like the webhook)', async () => {
+    const events = await parseMessages(
+      [
+        {
+          id: 'wamid.X',
+          timestamp: '1700000000',
+          type: 'text',
+          text: { body: 'x' },
+        },
+        {
+          id: 'wamid.Y',
+          from_user_id: 'US',
+          timestamp: '1700000000',
+          type: 'text',
+          text: { body: 'y' },
+        },
+      ],
+      [{ profile: { name: 'Ghost' } }]
+    );
+    expect(events).toEqual([]);
+  });
+
+  it('pairs each message with its own contacts[] entry and omits an empty name', async () => {
+    const events = await parseMessages(
+      [
+        {
+          id: 'm1',
+          from: '111',
+          timestamp: '1700000000',
+          type: 'text',
+          text: { body: 'a' },
+        },
+        {
+          id: 'm2',
+          from: '222',
+          timestamp: '1700000001',
+          type: 'text',
+          text: { body: 'b' },
+        },
+      ],
+      [
+        { wa_id: '111', profile: { name: 'One' } },
+        { wa_id: '222', profile: {} },
+      ]
+    );
+    expect(events[0]).toMatchObject({ senderName: 'One' });
+    expect(events[1]).not.toHaveProperty('senderName');
+  });
+
+  it('reactions still yield reaction events, alongside messages in order', async () => {
+    const events = await parseMessages([
+      { ...BASE, id: 'm', type: 'text', text: { body: 'a' } },
+      reaction('👍'),
+    ]);
+    expect(events.map((e) => e.kind)).toEqual(['message', 'reaction']);
   });
 });

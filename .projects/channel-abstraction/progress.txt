@@ -160,3 +160,14 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - resolveConnection takes the first phone_number_id in the payload; a payload mixing several numbers would need a split by the caller (not seen from Meta).
   - Baseline: 101 files / 1230 tests, lint 41 warnings.
 ---
+
+## 2026-09-21 - US-073
+- inbound.ts `parse` now also emits `message` InboundEvents (+21 tests in inbound.test.ts; production webhook untouched). Mirrors parseMessageContent minus the media download/mirror: text; image/video/audio/sticker(->image)/document as `media` with MediaRef {kind, id, mimeType, fileName?} and `caption` = the text the webhook stores as content_text (caption; for documents caption || filename); button reply (payload=id, text=title, each falls back) and interactive button/list reply (title || id) as `interactive_reply`; location; unknown type / media without id / interactive without option as `unsupported` with the placeholder text as `description` ("[Unsupported message type: X]", "[image]", "[Interactive reply]"). `replyToExternalId` = context.id; `senderName` = profile name (omitted when empty); `at` = timestamp (fallback: now).
+- Identity: same resolveInboundIdentity and contacts[i] || contacts[0] pairing as the route. Candidates whatsapp:phone (digits only), whatsapp:bsuid, whatsapp:username (handle "@name"); parent BSUID has no candidate kind. Messages with neither phone nor valid BSUID are DROPPED (no event), like processMessage (a username-only sender is dropped too).
+- Additive type change: InboundContent gains `{type:'location', latitude, longitude, name?, address?, text}` (text = stored content_text) so the core can keep content_type 'location'.
+- Edited the US-011 test that asserted "messages are not parsed here (US-073)" (obsolete by this story; kept the non-JSON assertion).
+- Files changed: inbound.ts, inbound.test.ts, types.ts, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - US-021 (core) must map: media/`caption` -> content_text/media_type(mimeType), `interactive_reply` -> content_type 'interactive' + interactive_reply_id (button with no payload/text yields ''), `location` -> content_type 'location', `unsupported.description` -> content_text with content_type 'text'. Edge: an interactive without option is content_type 'interactive' in the webhook but 'text' via `unsupported`; a media without id is content_type image with null media in the webhook.
+  - Baseline: 101 files / 1248 tests, lint 41 warnings.
+---
