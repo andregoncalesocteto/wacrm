@@ -34,7 +34,7 @@ import {
   interactivePayloadPreviewText,
   type InteractiveMessagePayload,
 } from '@/lib/whatsapp/interactive';
-import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
+import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import {
   phoneVariants,
@@ -118,8 +118,13 @@ export function validateSendMessageParams(params: {
   templateName?: string | null;
   interactivePayload?: InteractiveMessagePayload | null;
 }): void {
-  const { messageType, contentText, mediaUrl, templateName, interactivePayload } =
-    params;
+  const {
+    messageType,
+    contentText,
+    mediaUrl,
+    templateName,
+    interactivePayload,
+  } = params;
 
   if (!messageType) {
     throw new SendMessageError('bad_request', 'message_type is required', 400);
@@ -254,14 +259,13 @@ export async function sendMessageToConversation(
   const hasValidPhone = resolvedTarget.isPhone;
   const sanitizedPhone = hasValidPhone ? sendTarget : '';
 
-  // WhatsApp config, account-scoped.
-  const { data: config, error: configError } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', accountId)
-    .single();
+  // WhatsApp connection, account-scoped: the conversation's own
+  // connection when set, else the account's active WhatsApp connection.
+  const sendConn = await loadWhatsAppSendConnection(db, accountId, {
+    connectionId: conversation.connection_id,
+  });
 
-  if (configError || !config) {
+  if (!sendConn) {
     throw new SendMessageError(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',
@@ -269,23 +273,7 @@ export async function sendMessageToConversation(
     );
   }
 
-  const accessToken = decrypt(config.access_token);
-
-  // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
-  if (isLegacyFormat(config.access_token)) {
-    void db
-      .from('whatsapp_config')
-      .update({ access_token: encrypt(accessToken) })
-      .eq('id', config.id)
-      .then(({ error }: { error: { message: string } | null }) => {
-        if (error) {
-          console.warn(
-            '[send-message] access_token GCM upgrade failed:',
-            error.message
-          );
-        }
-      });
-  }
+  const { accessToken, phoneNumberId } = sendConn;
 
   // Resolve the reply target to its Meta message_id. The parent must
   // belong to this same conversation — otherwise a caller could quote
@@ -342,7 +330,7 @@ export async function sendMessageToConversation(
   const attempt = async (phone: string): Promise<string> => {
     if (messageType === 'template') {
       const result = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
+        phoneNumberId,
         accessToken,
         to: phone,
         templateName: templateName!,
@@ -356,7 +344,7 @@ export async function sendMessageToConversation(
     }
     if (isMediaKind) {
       const result = await sendMediaMessage({
-        phoneNumberId: config.phone_number_id,
+        phoneNumberId,
         accessToken,
         to: phone,
         kind: messageType as MediaKind,
@@ -371,7 +359,7 @@ export async function sendMessageToConversation(
       const p = interactivePayload!;
       if (p.kind === 'buttons') {
         const result = await sendInteractiveButtons({
-          phoneNumberId: config.phone_number_id,
+          phoneNumberId,
           accessToken,
           to: phone,
           bodyText: p.body,
@@ -383,7 +371,7 @@ export async function sendMessageToConversation(
         return result.messageId;
       }
       const result = await sendInteractiveList({
-        phoneNumberId: config.phone_number_id,
+        phoneNumberId,
         accessToken,
         to: phone,
         bodyText: p.body,
@@ -396,7 +384,7 @@ export async function sendMessageToConversation(
       return result.messageId;
     }
     const result = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
+      phoneNumberId,
       accessToken,
       to: phone,
       text: contentText!,
@@ -413,7 +401,9 @@ export async function sendMessageToConversation(
   try {
     // Variants only make sense for a phone number — a BSUID is opaque
     // and has exactly one correct form, so it gets a single attempt.
-    const variants = hasValidPhone ? phoneVariants(sanitizedPhone) : [sendTarget];
+    const variants = hasValidPhone
+      ? phoneVariants(sanitizedPhone)
+      : [sendTarget];
     let lastError: unknown = null;
 
     for (const variant of variants) {

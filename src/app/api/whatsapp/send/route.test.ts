@@ -50,14 +50,9 @@ function makeSupabaseMock() {
           // Once created this request, a by-id reload returns it (with
           // its contact); otherwise fall back to the canned existing row.
           return { data: createdConversation ?? existingConversation, error: null }
-        case 'whatsapp_config':
+        case 'channel_connections':
           return {
-            data: {
-              id: 'cfg-1',
-              account_id: 'acct-1',
-              phone_number_id: 'PNID-1',
-              access_token: 'enc-token',
-            },
+            data: [whatsappConnectionRow('acct-1', 'PNID-1')],
             error: null,
           }
         case 'message_templates':
@@ -145,6 +140,19 @@ vi.mock('@/lib/flows/admin-client', () => ({
   }),
 }))
 
+vi.mock('@/lib/channels/admin-client', async () => {
+  const { fakeCredentialsAdmin } = await import(
+    '@/lib/channels/credentials-admin.fake'
+  )
+  return {
+    supabaseAdmin: () =>
+      fakeCredentialsAdmin(() => ({
+        secrets_encrypted: 'enc-token',
+        secrets_format: 'wa_token_v0',
+      })),
+  }
+})
+
 vi.mock('@/lib/whatsapp/encryption', () => ({
   decrypt: vi.fn(() => 'plaintext-token'),
   encrypt: vi.fn(() => 'enc-token'),
@@ -160,6 +168,7 @@ vi.mock('@/lib/whatsapp/meta-api', () => ({
   sendMediaMessage: vi.fn(),
 }))
 
+import { whatsappConnectionRow } from '@/lib/channels/credentials-admin.fake'
 import { POST } from './route'
 
 function postContactTemplate(overrides: Record<string, unknown> = {}) {

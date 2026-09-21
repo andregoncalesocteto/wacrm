@@ -9,6 +9,7 @@
  * stubbed.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { whatsappConnectionRow } from '@/lib/channels/credentials-admin.fake';
 
 import { __resetRateLimitForTests } from '@/lib/rate-limit';
 import { dispatchInboundToAiReply } from './auto-reply';
@@ -41,6 +42,22 @@ vi.mock('@/lib/whatsapp/meta-api', async (importOriginal) => ({
   sendTextMessage: h.sendTextMessage,
   sendTypingIndicator: h.sendTypingIndicator,
 }));
+vi.mock('@/lib/channels/admin-client', async () => {
+  const { fakeCredentialsAdmin } = await import(
+    '@/lib/channels/credentials-admin.fake'
+  );
+  return {
+    supabaseAdmin: () =>
+      fakeCredentialsAdmin(
+        () =>
+          (h.db.channel_connection_credentials?.[0] as {
+            secrets_encrypted: string;
+            secrets_format: string;
+          }) ?? null
+      ),
+  };
+});
+
 vi.mock('@/lib/whatsapp/encryption', () => ({
   decrypt: (v: string) => `dec:${v}`,
   encrypt: (v: string) => `enc:${v}`,
@@ -119,8 +136,9 @@ beforeEach(() => {
         last_message_at: '2020-01-01T00:00:00Z',
       },
     ],
-    whatsapp_config: [
-      { account_id: 'acct-1', phone_number_id: 'pn-1', access_token: 'cipher' },
+    channel_connections: [whatsappConnectionRow('acct-1', 'pn-1')],
+    channel_connection_credentials: [
+      { secrets_encrypted: 'cipher', secrets_format: 'wa_token_v0' },
     ],
     automations: [],
     messages: [],

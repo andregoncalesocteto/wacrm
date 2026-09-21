@@ -8,7 +8,7 @@ import {
   type MediaKind,
 } from '@/lib/whatsapp/meta-api'
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection'
 import {
   phoneVariants,
   isRecipientNotAllowedError,
@@ -33,30 +33,29 @@ import { supabaseAdmin } from './admin-client'
 
 /**
  * Resolve the account's Meta sending credentials: the phone number id
- * plus the DECRYPTED access token from `whatsapp_config`. The single
+ * plus the DECRYPTED access token of the WhatsApp connection. The single
  * home for that decrypt step — callers outside this file (the AI
  * auto-reply's typing indicator) reuse it rather than growing a copy.
  */
 export async function loadAccountMetaCredentials(
   db: ReturnType<typeof supabaseAdmin>,
   accountId: string,
+  conversationId?: string,
 ): Promise<{ phoneNumberId: string; accessToken: string }> {
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('phone_number_id, access_token')
-    .eq('account_id', accountId)
-    .single()
-  if (configErr || !config) {
+  const sendConn = await loadWhatsAppSendConnection(db, accountId, {
+    conversationId,
+  })
+  if (!sendConn) {
     throw new Error('WhatsApp not configured for this account')
   }
   return {
-    phoneNumberId: config.phone_number_id,
-    accessToken: decrypt(config.access_token),
+    phoneNumberId: sendConn.phoneNumberId,
+    accessToken: sendConn.accessToken,
   }
 }
 
 interface SendTextEngineArgs {
-  /** Account-level tenancy key. Drives contact + whatsapp_config
+  /** Account-level tenancy key. Drives contact + WhatsApp connection
    *  lookups so a flow authored by user A still sends through the
    *  WhatsApp number user B saved on the same account. */
   accountId: string
@@ -113,6 +112,7 @@ export async function engineSendText(
   const { phoneNumberId, accessToken } = await loadAccountMetaCredentials(
     db,
     args.accountId,
+    args.conversationId,
   )
 
   const attempt = async (phone: string): Promise<string> => {
@@ -222,6 +222,7 @@ export async function engineSendMedia(
   const { phoneNumberId, accessToken } = await loadAccountMetaCredentials(
     db,
     args.accountId,
+    args.conversationId,
   )
 
   const attempt = async (phone: string): Promise<string> => {
@@ -347,7 +348,7 @@ async function sendInteractiveViaMeta(
 ): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin()
 
-  // Scope the contact + whatsapp_config lookups by account_id —
+  // Scope the contact + connection lookups by account_id —
   // same defense-in-depth rationale as automations/meta-send.ts.
   // Migration 017 moved both tables to account-scoped tenancy.
   const { data: contact, error: contactErr } = await db
@@ -373,6 +374,7 @@ async function sendInteractiveViaMeta(
   const { phoneNumberId, accessToken } = await loadAccountMetaCredentials(
     db,
     input.accountId,
+    input.conversationId,
   )
 
   const attempt = async (phone: string): Promise<string> => {

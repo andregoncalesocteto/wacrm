@@ -15,7 +15,7 @@ import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 interface DispatchArgs {
-  /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
+  /** Tenancy key — drives config, contact, and WhatsApp connection lookups. */
   accountId: string
   conversationId: string
   contactId: string

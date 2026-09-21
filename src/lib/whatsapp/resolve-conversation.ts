@@ -23,6 +23,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import { SendMessageError } from '@/lib/whatsapp/send-message';
+import { findAccountWhatsAppConnection } from '@/lib/channels/whatsapp-connection';
 import { resolveAuditUserId, ContactError } from '@/lib/api/v1/contacts';
 
 export interface ResolvedConversation {
@@ -55,12 +56,8 @@ export async function resolveConversationByPhone(
 
   // Fail fast (and create nothing) when the account has no WhatsApp
   // connected — the same error the send would raise anyway.
-  const { data: config } = await db
-    .from('whatsapp_config')
-    .select('id')
-    .eq('account_id', accountId)
-    .maybeSingle();
-  if (!config) {
+  const connection = await findAccountWhatsAppConnection(db, accountId);
+  if (!connection) {
     throw new SendMessageError(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',
@@ -146,7 +143,8 @@ export async function resolveConversationByPhone(
     db,
     accountId,
     contactId,
-    ownerUserId
+    ownerUserId,
+    connection.id
   );
 
   return { conversationId, contactId, contactCreated };
@@ -162,7 +160,8 @@ async function findOrCreateConversationRow(
   db: SupabaseClient,
   accountId: string,
   contactId: string,
-  ownerUserId: string
+  ownerUserId: string,
+  connectionId: string
 ): Promise<string> {
   const { data: existing, error: findErr } = await db
     .from('conversations')
@@ -174,7 +173,11 @@ async function findOrCreateConversationRow(
 
   if (findErr) {
     console.error('[resolve-conversation] conversation lookup error:', findErr);
-    throw new SendMessageError('db_error', 'Failed to resolve conversation', 500);
+    throw new SendMessageError(
+      'db_error',
+      'Failed to resolve conversation',
+      500
+    );
   }
 
   if (existing && existing.length > 0) {
@@ -187,6 +190,7 @@ async function findOrCreateConversationRow(
       account_id: accountId,
       user_id: ownerUserId,
       contact_id: contactId,
+      connection_id: connectionId,
     })
     .select('id')
     .single();
@@ -205,7 +209,11 @@ async function findOrCreateConversationRow(
       }
     }
     console.error('[resolve-conversation] conversation create error:', convErr);
-    throw new SendMessageError('db_error', 'Failed to create conversation', 500);
+    throw new SendMessageError(
+      'db_error',
+      'Failed to create conversation',
+      500
+    );
   }
 
   return newConv.id;

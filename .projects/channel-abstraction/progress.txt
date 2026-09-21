@@ -196,3 +196,14 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Route tests use one stateful fake supabase for both the user client and supabase-js createClient (RLS not under test). Baseline now 103 files / 1283 tests, lint 41 warnings.
   - A phone_number_id mapped to another account in channel_connections makes the mirror log and skip (legacy save still succeeds).
 ---
+
+## 2026-09-21 - US-014
+- Send-side readers now use connections.ts through a shared helper src/lib/channels/whatsapp-connection.ts (resolveWhatsAppConnection / loadWhatsAppSendConnection / findAccountWhatsAppConnection): conversation.connection_id first (must be a whatsapp_cloud connection of the same account), else the account's whatsapp_cloud connection (enabled first). phone_number_id = connection.external_id; token only via getConnectionCredentials. Status is NOT checked (legacy path never did). Callers keep their own "not configured" errors (SendMessageError whatsapp_not_configured/400, Error 'WhatsApp not configured for this account').
+- Files: send-message.ts, flows/meta-send.ts (loadAccountMetaCredentials got optional 3rd arg conversationId), automations/meta-send.ts, ai/auto-reply.ts (comment only), whatsapp/resolve-conversation.ts (checks connection, sets conversations.connection_id on create), new whatsapp-connection.ts + test, credentials-admin.fake.ts (test double).
+- Tests edited (doubles/seed only, assertions unchanged): send/route.test.ts, send-message.test.ts, send-message.characterization.test.ts, resolve-conversation.test.ts, flows/engine.characterization.test.ts, automations/engine.characterization.test.ts, ai/auto-reply.characterization.test.ts.
+- **Learnings for future iterations:**
+  - Tests now seed channel_connections + channel_connection_credentials (secrets_format 'wa_token_v0', decrypt mock gives the same token as before) and mock '@/lib/channels/admin-client' via fakeCredentialsAdmin(); user-client doubles need `.order()`.
+  - auto-reply.test.ts asserts loadAccountMetaCredentials(anything, 'acct-1') exactly, so auto-reply's typing indicator uses fallback only (no conversationId).
+  - resolveAuditUserId in lib/api/v1/contacts.ts still reads whatsapp_config (used by resolve-conversation); the resolve-conversation test double keeps serving whatsapp_config for it. Migrate in the story that covers contacts.ts.
+  - Do NOT run prettier over src/lib/whatsapp/*.test.ts globally: many are not prettier-formatted and get noisy diffs.
+---

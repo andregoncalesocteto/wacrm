@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { whatsappConnectionRow } from '@/lib/channels/credentials-admin.fake';
 import { phoneVariants } from './phone-utils';
 import { sendMessageToConversation, SendMessageError } from './send-message';
 
@@ -39,6 +40,21 @@ vi.mock('@/lib/whatsapp/meta-api', async (importOriginal) => ({
   sendInteractiveButtons: h.sendInteractiveButtons,
   sendInteractiveList: h.sendInteractiveList,
 }));
+
+vi.mock('@/lib/channels/admin-client', async () => {
+  const { fakeCredentialsAdmin } =
+    await import('@/lib/channels/credentials-admin.fake');
+  return {
+    supabaseAdmin: () =>
+      fakeCredentialsAdmin(
+        () =>
+          (h.db.channel_connection_credentials?.[0] as {
+            secrets_encrypted: string;
+            secrets_format: string;
+          }) ?? null
+      ),
+  };
+});
 
 vi.mock('@/lib/whatsapp/encryption', () => ({
   decrypt: (v: string) => `dec:${v}`,
@@ -102,6 +118,9 @@ function fakeDb(): SupabaseClient {
       this.filters.push((r) => r[col] === v);
       return this;
     }
+    order() {
+      return this;
+    }
     maybeSingle() {
       this.mode = 'maybe';
       return this;
@@ -163,13 +182,9 @@ function seed(contact: Row = { phone: PHONE }, extra: Row = {}) {
         ...extra,
       },
     ],
-    whatsapp_config: [
-      {
-        id: 'cfg-1',
-        account_id: 'acct-1',
-        phone_number_id: 'pn-1',
-        access_token: 'cipher',
-      },
+    channel_connections: [whatsappConnectionRow('acct-1', 'pn-1')],
+    channel_connection_credentials: [
+      { secrets_encrypted: 'cipher', secrets_format: 'wa_token_v0' },
     ],
     messages: [],
     message_templates: [],
@@ -354,7 +369,7 @@ describe('destination resolution and pre-send failures', () => {
   });
 
   it('400s with whatsapp_not_configured when the account has no config', async () => {
-    h.db.whatsapp_config = [];
+    h.db.channel_connections = [];
     const err = await send({
       conversationId: 'cv-1',
       messageType: 'text',

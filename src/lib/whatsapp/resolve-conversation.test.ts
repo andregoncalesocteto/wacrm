@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { whatsappConnectionRow } from '@/lib/channels/credentials-admin.fake';
 import { resolveConversationByPhone } from './resolve-conversation';
 import { SendMessageError } from './send-message';
 
@@ -12,7 +13,7 @@ import { SendMessageError } from './send-message';
 type ContactRow = { id: string; phone: string; name?: string | null };
 
 interface Script {
-  config?: { user_id: string } | null; // whatsapp_config.maybeSingle
+  config?: { user_id: string } | null; // config owner (whatsapp_config, via resolveAuditUserId); present also => the account has a whatsapp_cloud connection
   contactCandidates?: ContactRow[]; // contacts .like (same every call)
   /** Per-call `.like` results — overrides contactCandidates. Lets a
    *  test simulate "miss, then hit" for the unique-race path. */
@@ -24,7 +25,7 @@ interface Script {
   existingConversation?: { id: string } | null; // conversations select.limit(1)
   /** Per-call conversation lookup results — overrides existingConversation.
    *  Lets a test simulate "miss, then hit" for the unique-race path. */
-  existingConversationByCall?: (({ id: string } | null))[];
+  existingConversationByCall?: ({ id: string } | null)[];
   insertedConversationId?: string; // conversations insert -> single
   insertConversationError?: { code?: string } | null;
 }
@@ -66,6 +67,8 @@ function makeDb(script: Script): SupabaseClient {
       return Promise.resolve({ data, error: null });
     },
     maybeSingle: () => {
+      // resolveAuditUserId (api/v1/contacts.ts, not migrated in US-014)
+      // still reads the config owner from whatsapp_config.
       if (table === 'whatsapp_config')
         return Promise.resolve({ data: script.config ?? null, error: null });
       return Promise.resolve({ data: null, error: null });
@@ -96,8 +99,16 @@ function makeDb(script: Script): SupabaseClient {
       return Promise.resolve({ data: null, error: null });
     },
     // Thenable: `await db.from().update().eq()` lands here.
-    then: (resolve: (v: { data: null; error: null }) => void) =>
-      resolve({ data: null, error: null }),
+    then: (resolve: (v: { data: unknown; error: null }) => void) =>
+      resolve({
+        data:
+          table === 'channel_connections'
+            ? script.config
+              ? [whatsappConnectionRow('acct', 'pn-1')]
+              : []
+            : null,
+        error: null,
+      }),
   };
 
   return {

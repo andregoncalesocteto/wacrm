@@ -261,8 +261,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 15,
-      "passes": false,
-      "notes": "Orientação do orquestrador: (a) qual conexão usar — a `connection_id` da conversa quando existir; senão a conexão de WhatsApp ativa da conta (fallback, porque conversas criadas pelo código antigo depois da migration 045 ainda têm `connection_id` nulo); (b) `resolve-conversation.ts` deve gravar `connection_id` ao criar uma conversa; (c) os testes de caracterização não podem ter asserções alteradas; só os dublês/dados de origem (whatsapp_config → conexões e credenciais) podem mudar."
+      "passes": true,
+      "notes": "Orientação do orquestrador: (a) qual conexão usar — a `connection_id` da conversa quando existir; senão a conexão de WhatsApp ativa da conta (fallback, porque conversas criadas pelo código antigo depois da migration 045 ainda têm `connection_id` nulo); (b) `resolve-conversation.ts` deve gravar `connection_id` ao criar uma conversa; (c) os testes de caracterização não podem ter asserções alteradas; só os dublês/dados de origem (whatsapp_config → conexões e credenciais) podem mudar. | Feito: helper src/lib/channels/whatsapp-connection.ts (connection_id da conversa, senao conexao whatsapp_cloud ativa da conta; status NAO e consultado, como antes). auto-reply.ts nao lia whatsapp_config diretamente (usa loadAccountMetaCredentials, chamada com 2 args por causa da asserção de auto-reply.test.ts -> so fallback). resolveAuditUserId (api/v1/contacts.ts) ainda le whatsapp_config: fora do escopo."
     },
     {
       "id": "US-015",

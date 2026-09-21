@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { whatsappConnectionRow } from '@/lib/channels/credentials-admin.fake';
 
 import {
   sendMessageToConversation,
@@ -176,6 +177,19 @@ vi.mock('@/lib/whatsapp/meta-api', async (importOriginal) => ({
   sendInteractiveList: vi.fn(async () => ({ messageId: 'wamid.list' })),
 }));
 
+vi.mock('@/lib/channels/admin-client', async () => {
+  const { fakeCredentialsAdmin } = await import(
+    '@/lib/channels/credentials-admin.fake'
+  );
+  return {
+    supabaseAdmin: () =>
+      fakeCredentialsAdmin(() => ({
+        secrets_encrypted: 'token',
+        secrets_format: 'wa_token_v0',
+      })),
+  };
+});
+
 vi.mock('@/lib/whatsapp/encryption', () => ({
   decrypt: (v: string) => v,
   encrypt: (v: string) => v,
@@ -213,17 +227,13 @@ function sendPathDb(
     id: 'cv-1',
     contact,
   };
-  const config = {
-    id: 'cfg-1',
-    phone_number_id: 'pn-1',
-    access_token: 'token',
-  };
 
   return {
     from(table: string) {
       const builder: Record<string, unknown> = {
         select: () => builder,
         eq: () => builder,
+        order: () => builder,
         insert: (row: Record<string, unknown>) => {
           if (table === 'messages') captured.message = row;
           return builder;
@@ -237,7 +247,6 @@ function sendPathDb(
           if (table === 'conversations') {
             return { data: conversation, error: null };
           }
-          if (table === 'whatsapp_config') return { data: config, error: null };
           if (table === 'messages') {
             return { data: { id: 'msg-1' }, error: null };
           }
@@ -246,7 +255,12 @@ function sendPathDb(
         // Bare-await result — only message_templates is read this way.
         then: (resolve: (r: { data: unknown[]; error: null }) => unknown) =>
           resolve({
-            data: table === 'message_templates' ? templateRows : [],
+            data:
+              table === 'message_templates'
+                ? templateRows
+                : table === 'channel_connections'
+                  ? [whatsappConnectionRow('acct-1', 'pn-1')]
+                  : [],
             error: null,
           }),
       };

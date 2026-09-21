@@ -4,7 +4,7 @@ import {
   engineSendInteractiveButtons,
   engineSendInteractiveList,
 } from '@/lib/flows/meta-send'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection'
 import {
   phoneVariants,
   isRecipientNotAllowedError,
@@ -28,7 +28,7 @@ import { supabaseAdmin } from './admin-client'
 // ------------------------------------------------------------
 
 interface SendTextArgs {
-  /** Account-level tenancy key. Drives contact + whatsapp_config
+  /** Account-level tenancy key. Drives contact + WhatsApp connection
    *  lookups so an automation authored by user A still sends through
    *  the WhatsApp number user B saved on the same account. */
   accountId: string
@@ -139,16 +139,14 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   }
   const sanitized = sendTarget.target
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', input.accountId)
-    .single()
-  if (configErr || !config) {
+  const sendConn = await loadWhatsAppSendConnection(db, input.accountId, {
+    conversationId: input.conversationId,
+  })
+  if (!sendConn) {
     throw new Error('WhatsApp not configured for this account')
   }
 
-  const accessToken = decrypt(config.access_token)
+  const { accessToken, phoneNumberId } = sendConn
 
   // Local template row — read for the body we persist below, not for
   // the Meta payload (the wire shape is deliberately unchanged here).
@@ -169,7 +167,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
       const r = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
+        phoneNumberId: phoneNumberId,
         accessToken,
         to: phone,
         templateName: input.templateName,
@@ -179,7 +177,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       return r.messageId
     }
     const r = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
+      phoneNumberId: phoneNumberId,
       accessToken,
       to: phone,
       text: input.text,
