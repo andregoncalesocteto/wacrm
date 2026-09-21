@@ -21,12 +21,21 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useFormatter, useTranslations } from "next-intl";
 import { formatDateAndTime } from "@/lib/i18n/format-date-time";
 import { contactHandle } from "@/lib/whatsapp/wa-identity";
+import { ContactConversations } from "./contact-conversations";
 
 interface ContactSidebarProps {
   contact: Contact | null;
+  /** The conversation open in the inbox; highlighted in the conversations list. */
+  currentConversationId?: string | null;
+  /** Select another conversation in place; true when handled. */
+  onOpenConversation?: (conversationId: string) => boolean;
 }
 
-export function ContactSidebar({ contact }: ContactSidebarProps) {
+export function ContactSidebar({
+  contact,
+  currentConversationId,
+  onOpenConversation,
+}: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
   const intlFormat = useFormatter();
@@ -187,6 +196,14 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
           {/* Divider */}
           <div className="my-4 border-t border-border" />
+
+          {/* Conversations across stores (hidden with a single one) */}
+          <ContactConversations
+            contactId={contact.id}
+            currentConversationId={currentConversationId}
+            dividerAfter
+            onOpen={onOpenConversation}
+          />
 
           {/* Tags */}
           <div>

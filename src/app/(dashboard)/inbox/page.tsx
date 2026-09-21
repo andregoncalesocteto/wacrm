@@ -584,6 +584,18 @@ function InboxPageInner() {
     [activeConversation?.id, router]
   );
 
+  // Contact-sidebar link: open a loaded conversation in place. When it is
+  // not in the loaded list, the link falls back to a normal /inbox?c= visit.
+  const handleOpenConversationById = useCallback(
+    (convId: string) => {
+      const target = conversations.find((c) => c.id === convId);
+      if (!target) return false;
+      handleSelectConversation(target);
+      return true;
+    },
+    [conversations, handleSelectConversation]
+  );
+
   // Mobile "back" — deselect the conversation so the list pane comes
   // back. Also clears the ?c= param so a refresh lands on the list
   // instead of re-opening the thread the user just backed out of.
@@ -761,7 +773,11 @@ function InboxPageInner() {
             toggle — which is itself desktop-only — never affects it. */}
         {contactPanelOpen && (
           <div className="hidden lg:block">
-            <ContactSidebar contact={activeContact} />
+            <ContactSidebar
+              contact={activeContact}
+              currentConversationId={activeConversation?.id}
+              onOpenConversation={handleOpenConversationById}
+            />
           </div>
         )}
       </div>

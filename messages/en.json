@@ -141,6 +141,19 @@
       "connectionNeedsAction": "Store {store} needs attention on its connection — messages for this store may not be arriving.",
       "connectionWarningLink": "View channels"
     },
+    "contactConversations": {
+      "title": "Conversations",
+      "noStore": "No store",
+      "unread": "{count, plural, one {# unread} other {# unread}}",
+      "noMessages": "No messages yet",
+      "disabled": "Disabled",
+      "current": "Current",
+      "status": {
+        "open": "Open",
+        "pending": "Pending",
+        "closed": "Closed"
+      }
+    },
     "conversationList": {
       "searchPlaceholder": "Search conversations...",
       "filterAll": "All",

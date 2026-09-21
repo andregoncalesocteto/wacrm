@@ -586,3 +586,10 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Automations without a conversation in context pick a conversation without checking disabled_at; it then fails visibly in sendOutbound.
   - AI auto-reply consumes a reply slot and pays an LLM call before the send is refused (a pre-gate would be a future optimization).
 ---
+
+## 2026-09-21 - US-045
+- "Conversas" section in the contact profile: inbox side panel (current conversation highlighted, click selects in place) and contacts sheet (Details tab). Hidden with <=1 conversation. One query (conversations by contact_id with CONVERSATION_SELECT embed, last_message_at desc). Pure helper lib/inbox/contact-conversations.ts `contactConversationsSummary` (order, isCurrent, visible, connectionName only when a store has several connections among the rows) + 6 tests. Component components/inbox/contact-conversations.tsx (store · channel, unread, relative time via date-fns+getDateFnsLocale, status, "Desativada" marker, link /inbox?c=<id>). Keys Inbox.contactConversations.* x4.
+- Inbox already supported ?c=<id>, but only resolves it when the list loads; a client-side Link to another conversation did not switch. Fixed with an onOpen prop (page handleOpenConversationById selects from the loaded list, returns false -> normal link navigation).
+- Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1630, build ok. Browser (pt :3100): single-conversation contact -> no section; contact with 3 conversations (2 stores, telegram + whatsapp, one disabled) -> listed newest first, current highlighted and switching on click, URL updates; contacts sheet lists them too. Seeds removed.
+- **Learnings:** the contacts sheet has no "current" conversation (no highlight there). Contacts page has a `contactId` that can be null in types; guarded.
+---

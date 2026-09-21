@@ -141,6 +141,19 @@
       "connectionNeedsAction": "A loja {store} precisa de ação na conexão — mensagens dessa loja podem não estar chegando.",
       "connectionWarningLink": "Ver canais"
     },
+    "contactConversations": {
+      "title": "Conversas",
+      "noStore": "Sem loja",
+      "unread": "{count, plural, one {# não lida} other {# não lidas}}",
+      "noMessages": "Nenhuma mensagem ainda",
+      "disabled": "Desativada",
+      "current": "Atual",
+      "status": {
+        "open": "Aberta",
+        "pending": "Pendente",
+        "closed": "Fechada"
+      }
+    },
     "conversationList": {
       "searchPlaceholder": "Buscar conversas...",
       "filterAll": "Todas",

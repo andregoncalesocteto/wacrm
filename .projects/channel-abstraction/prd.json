@@ -871,7 +871,7 @@
         "Verify in browser using dev-browser skill (um contato com conversas em duas conexões)"
       ],
       "priority": 51,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

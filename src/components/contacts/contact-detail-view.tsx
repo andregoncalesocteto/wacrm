@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { contactHandle } from '@/lib/whatsapp/wa-identity';
+import { ContactConversations } from '@/components/inbox/contact-conversations';
 
 interface ContactDetailViewProps {
   open: boolean;
@@ -537,6 +538,7 @@ export function ContactDetailView({
                     )}
                     {t('saveChangesBtn')}
                   </Button>
+                  {contactId && <ContactConversations contactId={contactId} />}
                 </div>
               </TabsContent>
 
