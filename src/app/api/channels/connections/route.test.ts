@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { decrypt } from '@/lib/whatsapp/encryption';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { decrypt, encrypt } from '@/lib/whatsapp/encryption';
 
 // Route tests for /api/channels/connections and /[id]. One in-memory db backs
 // both the session client and the service-role client (credentials). Deleting
@@ -366,6 +366,109 @@ describe('PATCH /api/channels/connections/[id]', () => {
   });
 });
 
+describe('PATCH credentials: merge semantics', () => {
+  const patch = (target: string, body: unknown) =>
+    PATCH(req(body, 'PATCH'), params(target));
+  const stored = (connId: string) => {
+    const row = h.db.channel_connection_credentials.find(
+      (c) => c.connection_id === connId
+    )!;
+    return JSON.parse(decrypt(row.secrets_encrypted as string));
+  };
+
+  it('whatsapp_cloud: a new access_token keeps the other stored keys', async () => {
+    const id = (await (await POST(req(valid()))).json()).connection.id;
+    h.db.channel_connection_credentials[0].secrets_encrypted = encrypt(
+      JSON.stringify({ access_token: 'OLD', app_secret: 'APP_CANARY' })
+    );
+    const res = await patch(id, { credentials: { access_token: 'NEW' } });
+    expect(res.status).toBe(200);
+    expect(stored(id)).toEqual({
+      access_token: 'NEW',
+      app_secret: 'APP_CANARY',
+    });
+    const text = JSON.stringify(await res.json());
+    expect(text).not.toContain('NEW');
+    expect(text).not.toContain('APP_CANARY');
+  });
+
+  describe('telegram (getMe mocked)', () => {
+    const OLD = `111:${'A'.repeat(35)}`;
+    const SAME_BOT = `111:${'B'.repeat(35)}`;
+    const OTHER_BOT = `222:${'C'.repeat(35)}`;
+    const fetchMock = vi.fn();
+    const getMe = (id: number) =>
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, result: { id } }))
+      );
+
+    beforeEach(() => {
+      fetchMock.mockReset();
+      vi.stubGlobal('fetch', fetchMock);
+      h.db.channel_connections.push({
+        id: 'tg1',
+        account_id: 'acct-1',
+        store_id: 's1',
+        channel_type: 'telegram',
+        display_name: 'Bot',
+        external_id: '111',
+        status: 'connected',
+        config: {},
+      });
+      h.db.channel_connection_credentials.push({
+        connection_id: 'tg1',
+        account_id: 'acct-1',
+        secrets_encrypted: encrypt(
+          JSON.stringify({ bot_token: OLD, secret_token: 'WEBHOOK_SECRET' })
+        ),
+        secrets_format: 'json_v1',
+      });
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('only bot_token: keeps secret_token, never returns credentials', async () => {
+      getMe(111);
+      const res = await patch('tg1', { credentials: { bot_token: SAME_BOT } });
+      expect(res.status).toBe(200);
+      expect(stored('tg1')).toEqual({
+        bot_token: SAME_BOT,
+        secret_token: 'WEBHOOK_SECRET',
+      });
+      const text = JSON.stringify(await res.json());
+      expect(text).not.toContain(SAME_BOT);
+      expect(text).not.toContain('WEBHOOK_SECRET');
+    });
+
+    it('409 credentials_mismatch when getMe returns another bot; nothing stored', async () => {
+      getMe(222);
+      const res = await patch('tg1', { credentials: { bot_token: OTHER_BOT } });
+      expect(res.status).toBe(409);
+      expect((await res.json()).code).toBe('credentials_mismatch');
+      expect(stored('tg1')).toEqual({
+        bot_token: OLD,
+        secret_token: 'WEBHOOK_SECRET',
+      });
+    });
+
+    it('400 invalid_credentials when Telegram rejects the token', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ok: false,
+            error_code: 401,
+            description: 'Unauthorized',
+          }),
+          { status: 401 }
+        )
+      );
+      const res = await patch('tg1', { credentials: { bot_token: SAME_BOT } });
+      expect(res.status).toBe(400);
+      expect((await res.json()).code).toBe('invalid_credentials');
+      expect(stored('tg1').bot_token).toBe(OLD);
+    });
+  });
+});
+
 describe('DELETE /api/channels/connections/[id]', () => {
   let id: string;
   beforeEach(async () => {
@@ -456,18 +559,16 @@ describe('POST /api/channels/connections (telegram)', () => {
   it('an invalid token is a 400 and nothing is created', async () => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              ok: false,
-              error_code: 401,
-              description: 'Unauthorized',
-            }),
-            { status: 401 }
-          )
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ok: false,
+            error_code: 401,
+            description: 'Unauthorized',
+          }),
+          { status: 401 }
         )
+      )
     );
     try {
       const res = await POST(req(tg()));

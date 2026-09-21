@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import {
   PUBLIC_COLUMNS,
+  resolveExternalIdFor,
   isObject,
   parseConfig,
   parseCredentials,
@@ -9,11 +10,14 @@ import {
   providerFor,
   publicConnection,
 } from '@/lib/channels/connection-input';
-import { saveConnectionCredentials } from '@/lib/channels/connections';
+import {
+  getConnectionCredentials,
+  saveConnectionCredentials,
+} from '@/lib/channels/connections';
 
 /**
  * PATCH  /api/channels/connections/[id] — rename, change config (merged into
- *   the stored one, then validated), replace credentials, move to another
+ *   the stored one, then validated), merge credentials (given keys replace, the rest is kept), move to another
  *   store of the same account (admin+).
  * DELETE /api/channels/connections/[id] — admin+. 409 `has_conversations`
  *   when the connection has any conversation. Credentials cascade.
@@ -53,7 +57,7 @@ export async function PATCH(request: Request, context: Ctx) {
 
     const { data: existing, error: findError } = await supabase
       .from('channel_connections')
-      .select('id, channel_type, config')
+      .select('id, channel_type, external_id, config')
       .eq('id', id)
       .eq('account_id', accountId)
       .maybeSingle();
@@ -61,6 +65,7 @@ export async function PATCH(request: Request, context: Ctx) {
     if (!existing) return notFound();
     const current = existing as {
       channel_type: string;
+      external_id: string | null;
       config: Record<string, unknown> | null;
     };
 
@@ -92,6 +97,34 @@ export async function PATCH(request: Request, context: Ctx) {
       const c = parseCredentials(provider.value, body.credentials);
       if (!c.ok) return bad(c);
       newCredentials = c.value;
+      // A provider that can identify the account behind its credentials
+      // (Telegram: bot id) must not have them swapped for another identity:
+      // that would leave this connection's external_id and webhook stale.
+      if (provider.value.deriveExternalId) {
+        const stored = await getConnectionCredentials(id);
+        const derived = await resolveExternalIdFor(
+          provider.value,
+          undefined,
+          { ...(current.config ?? {}) },
+          { ...(stored ?? {}), ...c.value }
+        );
+        if (!derived.ok) {
+          return NextResponse.json(
+            { error: derived.error, code: derived.code },
+            { status: derived.status ?? 400 }
+          );
+        }
+        if (derived.value !== current.external_id) {
+          return NextResponse.json(
+            {
+              error:
+                'These credentials belong to a different account; create a new connection instead',
+              code: 'credentials_mismatch',
+            },
+            { status: 409 }
+          );
+        }
+      }
     }
     if ('store_id' in body) {
       if (typeof body.store_id !== 'string' || !body.store_id) {
@@ -124,7 +157,9 @@ export async function PATCH(request: Request, context: Ctx) {
     if (!data) return notFound();
 
     if (newCredentials) {
-      await saveConnectionCredentials(id, accountId, newCredentials);
+      await saveConnectionCredentials(id, accountId, newCredentials, {
+        merge: true,
+      });
     }
 
     return NextResponse.json({

@@ -25,6 +25,9 @@ export const PENDING_UPDATES_DEGRADED = 100;
 /** A delivery error older than this no longer counts (seconds). */
 export const RECENT_ERROR_SECONDS = 60 * 60;
 
+/** Stable `reason` of the https guard; the UI maps it to a translated message. */
+export const PUBLIC_HTTPS_REQUIRED = 'public_https_required';
+
 const WEBHOOK_PATH = (id: string) => `/api/channels/telegram/webhook/${id}`;
 
 interface WebhookInfo {
@@ -62,7 +65,11 @@ export async function connect(conn: Connection): Promise<ConnectResult> {
   if (!origin.startsWith('https://')) {
     const message =
       'Telegram only delivers webhooks to a public HTTPS URL. Set NEXT_PUBLIC_SITE_URL to your public https:// address (use a tunnel such as ngrok or Cloudflare Tunnel in development) and connect again.';
-    return { ok: false, message, error: { code: 'invalid', message } };
+    return {
+      ok: false,
+      message,
+      error: { code: 'invalid', message, reason: PUBLIC_HTTPS_REQUIRED },
+    };
   }
   const webhookUrl = `${origin}${WEBHOOK_PATH(conn.id)}`;
 

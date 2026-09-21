@@ -18,7 +18,7 @@ import {
   type FormValues,
 } from '@/lib/channels/descriptor-form';
 import type { DescriptorField } from '@/lib/channels/types';
-import type { ChannelConnectionRow } from '@/lib/channels/ui';
+import { reasonFixKey, type ChannelConnectionRow } from '@/lib/channels/ui';
 
 interface Props {
   connection: ChannelConnectionRow;
@@ -74,7 +74,15 @@ export function CredentialsPanel({
       });
       if (!pRes.ok) {
         const d = await pRes.json().catch(() => ({}));
-        setOutcome({ ok: false, text: d.error ?? t('saveFailed') });
+        setOutcome({
+          ok: false,
+          text:
+            d.code === 'credentials_mismatch'
+              ? t('credentialsMismatch')
+              : d.code === 'invalid_credentials' && tp.has('fix.auth')
+                ? tp('fix.auth')
+                : (d.error ?? t('saveFailed')),
+        });
         return;
       }
       setEditing(null);
@@ -85,10 +93,14 @@ export function CredentialsPanel({
       if (cRes.ok && cData.ok) {
         setOutcome({ ok: true, text: t('replacedOk') });
       } else {
+        const fixKey = reasonFixKey(cData.error?.reason);
         setOutcome({
           ok: false,
           text: t('replacedNotConnected', {
-            reason: cData.message ?? cData.error ?? tw('unreachable'),
+            reason:
+              fixKey && tp.has(`fix.${fixKey}`)
+                ? tp(`fix.${fixKey}`)
+                : (cData.message ?? cData.error ?? tw('unreachable')),
           }),
         });
       }

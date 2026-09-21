@@ -79,6 +79,11 @@ export interface ChannelErrorInfo {
   title?: string;
   /** Provider's longer detail (Meta `errors[0].error_data.details`), when it has one. */
   details?: string | null;
+  /**
+   * Stable provider-specific reason code (e.g. `public_https_required`) the UI
+   * maps to a translated message; `message` stays the raw fallback.
+   */
+  reason?: string;
 }
 
 /** Typed failure every provider throws, so the core can map it to HTTP/retry decisions. */

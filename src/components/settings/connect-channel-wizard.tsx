@@ -25,7 +25,11 @@ import type {
   DescriptorField,
   ProviderDescriptor,
 } from '@/lib/channels/types';
-import type { ChannelConnectionRow, StoreRef } from '@/lib/channels/ui';
+import {
+  reasonFixKey,
+  type ChannelConnectionRow,
+  type StoreRef,
+} from '@/lib/channels/ui';
 import { getChannelUi } from '@/lib/channels/ui-registry';
 import {
   WIZARD_STEPS,
@@ -142,7 +146,9 @@ export function ConnectChannelWizard({
           setOutcome({
             state: 'failed',
             reason: cData.message ?? cData.error ?? t('unreachable'),
-            hint: fixHintKey(cData.error?.code),
+            hint:
+              reasonFixKey(cData.error?.reason) ??
+              fixHintKey(cData.error?.code),
           });
           return;
         }

@@ -166,13 +166,21 @@ export async function getConnectionCredentials(
  * Writes (creates or REPLACES) the credentials of a connection as `json_v1`:
  * the JSON object encrypted with encrypt(). Service role only, same as the
  * read side; callers must already have authorised the write (account + role).
+ * With `{ merge: true }` the given keys are shallow-merged over the stored
+ * ones (keys not given, such as Telegram's `secret_token`, are preserved); a
+ * connection without stored credentials just gets the given ones.
  * Never log `credentials`.
  */
 export async function saveConnectionCredentials(
   connectionId: string,
   accountId: string,
-  credentials: Record<string, unknown>
+  credentials: Record<string, unknown>,
+  options: { merge?: boolean } = {}
 ): Promise<void> {
+  if (options.merge) {
+    const existing = await getConnectionCredentials(connectionId);
+    credentials = { ...(existing ?? {}), ...credentials };
+  }
   const { error } = await supabaseAdmin()
     .from('channel_connection_credentials')
     .upsert(

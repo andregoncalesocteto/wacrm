@@ -975,8 +975,8 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "notes": "Adicionada pelo orquestrador após a US-050: PATCH de credenciais sobrescrevia todo o blob e descartava o `secret_token` do Telegram; um reconnect falho deixava a conexão sem segredo, e o recebimento parava. A mensagem de guarda https do provedor é só em inglês.",
-      "passes": false,
+      "notes": "Adicionada pelo orquestrador após a US-050: PATCH de credenciais sobrescrevia todo o blob e descartava o `secret_token` do Telegram; um reconnect falho deixava a conexão sem segredo, e o recebimento parava. A mensagem de guarda https do provedor é só em inglês. Implementada: PATCH mescla (saveConnectionCredentials {merge:true}); para providers com deriveExternalId a troca de credenciais é bloqueada com 409 credentials_mismatch se o getMe apontar outro bot; ChannelErrorInfo.reason='public_https_required' -> Channels.providers.telegram.fix.publicHttps (wizard, detalhe e painel). Verificação em browser NÃO feita (opcional).",
+      "passes": true,
       "priority": 57
     },
     {

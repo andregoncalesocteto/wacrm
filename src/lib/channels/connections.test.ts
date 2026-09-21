@@ -22,6 +22,13 @@ function makeClient(label: string) {
       const q = {
         select: () => q,
         update: (v: Row) => ((updateValues = v), q),
+        upsert: (v: Row) => {
+          const rows = (h.tables[table] ??= []);
+          const ex = rows.find((x) => x.connection_id === v.connection_id);
+          if (ex) Object.assign(ex, v);
+          else rows.push({ ...v });
+          return Promise.resolve({ data: null, error: null });
+        },
         eq: (k: string, v: unknown) => ((filters[k] = v), q),
         order: () => q,
         maybeSingle: async () => {
@@ -67,6 +74,7 @@ import {
   listConnectionsByAccount,
   listConnectionsByStore,
   getConnectionCredentials,
+  saveConnectionCredentials,
 } from './connections';
 
 const conn = (o: Row): Row => ({
@@ -222,6 +230,63 @@ describe('credentials', () => {
     await expect(getConnectionCredentials('c1')).rejects.toThrow(
       /secrets_format/
     );
+  });
+});
+
+describe('saveConnectionCredentials', () => {
+  const stored = () =>
+    JSON.parse(
+      decrypt(
+        h.tables.channel_connection_credentials[0].secrets_encrypted as string
+      )
+    );
+
+  it('replaces the whole blob by default', async () => {
+    await saveConnectionCredentials('c2', 'a1', {
+      bot_token: 'T1',
+      secret_token: 'S1',
+    });
+    await saveConnectionCredentials('c2', 'a1', { bot_token: 'T2' });
+    expect(stored()).toEqual({ bot_token: 'T2' });
+  });
+
+  it('merge keeps keys not given (Telegram secret_token)', async () => {
+    await saveConnectionCredentials('c2', 'a1', {
+      bot_token: 'T1',
+      secret_token: 'S1',
+    });
+    await saveConnectionCredentials(
+      'c2',
+      'a1',
+      { bot_token: 'T2' },
+      { merge: true }
+    );
+    expect(stored()).toEqual({ bot_token: 'T2', secret_token: 'S1' });
+    expect(h.tables.channel_connection_credentials).toHaveLength(1);
+  });
+
+  it('merge keeps other WhatsApp keys when only access_token changes', async () => {
+    await saveConnectionCredentials('c1', 'a1', {
+      access_token: 'OLD',
+      app_secret: 'APP',
+    });
+    await saveConnectionCredentials(
+      'c1',
+      'a1',
+      { access_token: 'NEW' },
+      { merge: true }
+    );
+    expect(stored()).toEqual({ access_token: 'NEW', app_secret: 'APP' });
+  });
+
+  it('merge on a connection without credentials just inserts', async () => {
+    await saveConnectionCredentials(
+      'c2',
+      'a1',
+      { bot_token: 'T' },
+      { merge: true }
+    );
+    expect(stored()).toEqual({ bot_token: 'T' });
   });
 });
 

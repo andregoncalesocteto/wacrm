@@ -21,6 +21,7 @@ import {
   errorSuggestion,
   moveTargets,
   parseLastError,
+  reasonFixKey,
   type ChannelConnectionRow,
   type StoreRef,
 } from '@/lib/channels/ui';
@@ -66,6 +67,13 @@ export function ConnectionDetail({
 }: Props) {
   const t = useTranslations('Settings.channels');
   const td = useTranslations('Settings.channels.detail');
+  const tpp = useTranslations('Channels.providers');
+  // Translated text for a provider's stable error reason, else the raw message.
+  const reasonText = (reason: string | undefined, raw: string) => {
+    const k = reasonFixKey(reason);
+    const key = `${c.channel_type}.fix.${k}`;
+    return k && tpp.has(key) ? tpp(key) : raw;
+  };
   const format = useFormatter();
 
   const [stats, setStats] = useState<Stats | null>(null);
@@ -153,7 +161,10 @@ export function ConnectionDetail({
       setResult({
         ok: false,
         text: td('reconnectFailed', {
-          reason: (data.message as string) ?? (data.error as string) ?? '',
+          reason: reasonText(
+            (data.error as { reason?: string } | undefined)?.reason,
+            (data.message as string) ?? (data.error as string) ?? ''
+          ),
         }),
       });
     }
@@ -240,7 +251,7 @@ export function ConnectionDetail({
           {state === 'disabled'
             ? td('reasonDisabled')
             : lastError?.message
-              ? lastError.message
+              ? reasonText(lastError.reason, lastError.message)
               : t(`status.${state}`)}
         </p>
 
@@ -253,7 +264,9 @@ export function ConnectionDetail({
             <p className="text-muted-foreground text-xs">
               {td('errorCode')}: <code>{lastError.code ?? '–'}</code>
             </p>
-            <p className="text-foreground">{lastError.message}</p>
+            <p className="text-foreground">
+              {reasonText(lastError.reason, lastError.message)}
+            </p>
             <p className="text-muted-foreground">
               {td(`suggestion.${errorSuggestion(lastError.code)}`)}
             </p>

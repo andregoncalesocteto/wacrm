@@ -64,16 +64,30 @@ export function emptyStateKind(
 export interface LastError {
   code: string | null;
   message: string;
+  /** Stable provider reason (ChannelErrorInfo.reason), when the provider set one. */
+  reason?: string;
+}
+
+/**
+ * Suffix of `Channels.providers.<type>.fix.<suffix>` for a provider's stable
+ * error `reason`; undefined = no translated text, show the raw message.
+ */
+export function reasonFixKey(reason: unknown): string | undefined {
+  return reason === 'public_https_required' ? 'publicHttps' : undefined;
 }
 
 /** Normalizes the stored `last_error` jsonb (may be null, partial or odd). */
 export function parseLastError(raw: unknown): LastError | null {
   if (!raw || typeof raw !== 'object') return null;
-  const r = raw as { code?: unknown; message?: unknown };
+  const r = raw as { code?: unknown; message?: unknown; reason?: unknown };
   const message = typeof r.message === 'string' ? r.message : '';
   const code = typeof r.code === 'string' ? r.code : null;
   if (!message && !code) return null;
-  return { code, message };
+  return {
+    code,
+    message,
+    ...(typeof r.reason === 'string' && { reason: r.reason }),
+  };
 }
 
 export type ErrorSuggestion = 'auth' | 'rate_limited' | 'generic';

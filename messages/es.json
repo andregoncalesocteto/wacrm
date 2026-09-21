@@ -1949,7 +1949,8 @@
         "cancel": "Cancelar",
         "saveFailed": "No se pudieron guardar las credenciales.",
         "replacedOk": "Credenciales reemplazadas y canal reconectado.",
-        "replacedNotConnected": "Credenciales reemplazadas, pero el canal no se reconectó: {reason}"
+        "replacedNotConnected": "Credenciales reemplazadas, pero el canal no se reconectó: {reason}",
+        "credentialsMismatch": "El token pertenece a otro bot. Para usar otro bot, crea una nueva conexión."
       },
       "detail": {
         "reasonDisabled": "Conexión desactivada: no envía ni recibe hasta que se active de nuevo.",
@@ -2432,7 +2433,8 @@
         "docsLabel": "Cómo crear el bot y el túnel",
         "fix": {
           "auth": "Telegram rechazó el token. Cópielo de nuevo en @BotFather (/mybots, luego API Token) y reemplácelo en la conexión.",
-          "invalid": "Defina NEXT_PUBLIC_SITE_URL con su dirección pública https:// (en desarrollo, un túnel como cloudflared o ngrok; reconstruya la app en Docker) y pulse Intentar de nuevo."
+          "invalid": "Defina NEXT_PUBLIC_SITE_URL con su dirección pública https:// (en desarrollo, un túnel como cloudflared o ngrok; reconstruya la app en Docker) y pulse Intentar de nuevo.",
+          "publicHttps": "Telegram solo entrega webhooks a una URL HTTPS pública. Define NEXT_PUBLIC_SITE_URL con tu dirección pública https:// (en desarrollo, un túnel como cloudflared o ngrok; reconstruye la app en Docker) y conecta de nuevo. El webhook ya configurado no se modificó."
         }
       }
     }

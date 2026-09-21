@@ -1959,7 +1959,8 @@
         "cancel": "취소",
         "saveFailed": "자격 증명을 저장하지 못했습니다.",
         "replacedOk": "자격 증명을 교체하고 채널을 다시 연결했습니다.",
-        "replacedNotConnected": "자격 증명을 교체했지만 채널이 다시 연결되지 않았습니다: {reason}"
+        "replacedNotConnected": "자격 증명을 교체했지만 채널이 다시 연결되지 않았습니다: {reason}",
+        "credentialsMismatch": "이 토큰은 다른 봇의 것입니다. 다른 봇을 사용하려면 새 연결을 만드세요."
       },
       "detail": {
         "reasonDisabled": "연결이 비활성화되었습니다. 다시 활성화할 때까지 보내지도 받지도 않습니다.",
@@ -2444,7 +2445,8 @@
         "docsLabel": "봇과 터널 설정 방법",
         "fix": {
           "auth": "Telegram이 토큰을 거부했습니다. @BotFather(/mybots, API Token)에서 다시 복사해 연결의 토큰을 교체하세요.",
-          "invalid": "NEXT_PUBLIC_SITE_URL을 공개 https:// 주소로 설정한 뒤(개발 환경은 cloudflared나 ngrok 터널, Docker 앱은 재빌드) 다시 시도를 누르세요."
+          "invalid": "NEXT_PUBLIC_SITE_URL을 공개 https:// 주소로 설정한 뒤(개발 환경은 cloudflared나 ngrok 터널, Docker 앱은 재빌드) 다시 시도를 누르세요.",
+          "publicHttps": "텔레그램은 공개 HTTPS URL로만 웹훅을 전달합니다. NEXT_PUBLIC_SITE_URL을 공개 https:// 주소로 설정하고(개발 중에는 cloudflared나 ngrok 같은 터널 사용, Docker 앱 재빌드) 다시 연결하세요. 이미 설정된 웹훅은 변경되지 않았습니다."
         }
       }
     }

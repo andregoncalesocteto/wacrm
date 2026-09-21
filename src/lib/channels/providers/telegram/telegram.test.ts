@@ -139,6 +139,7 @@ describe('connect', () => {
       const r = await telegramProvider.connect(conn);
       expect(r.ok).toBe(false);
       expect(r.error?.code).toBe('invalid');
+      expect(r.error?.reason).toBe('public_https_required');
       expect(r.message).toMatch(/HTTPS/);
       expect(fetchMock).not.toHaveBeenCalled();
       expect(h.saved).toEqual([]);

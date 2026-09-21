@@ -8,6 +8,7 @@ import {
   groupConnectionsByStore,
   moveTargets,
   parseLastError,
+  reasonFixKey,
   summarizeChannels,
   templatesForConnection,
   type ChannelConnectionRow,
@@ -58,6 +59,17 @@ describe('emptyStateKind', () => {
     expect(emptyStateKind(0, 0)).toBe('no-stores');
     expect(emptyStateKind(2, 0)).toBe('no-connections');
     expect(emptyStateKind(2, 1)).toBe('has-connections');
+  });
+});
+
+describe('reasonFixKey', () => {
+  it('maps the https guard reason, ignores anything else', () => {
+    expect(reasonFixKey('public_https_required')).toBe('publicHttps');
+    expect(reasonFixKey('other')).toBeUndefined();
+    expect(reasonFixKey(undefined)).toBeUndefined();
+    expect(
+      parseLastError({ code: 'invalid', message: 'm', reason: 'r' })
+    ).toEqual({ code: 'invalid', message: 'm', reason: 'r' });
   });
 });
 
