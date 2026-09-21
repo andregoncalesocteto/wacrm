@@ -38,6 +38,12 @@ export interface ResolveContactInput {
   senderName?: string | null;
   /** NOT NULL audit column `contacts.user_id`. */
   auditUserId: string;
+  /**
+   * Portfolio-level BSUID, kept in `contacts.wa_parent_user_id` (no identity
+   * kind; US-070 removes the column). Written with the same INSERT / backfill
+   * UPDATE as the other legacy columns.
+   */
+  parentExternalId?: string;
 }
 
 export interface ResolveContactOutcome {
@@ -213,7 +219,8 @@ async function addIdentities(
 function legacyPatch(
   existing: ContactRow,
   candidates: IdentityCandidate[],
-  senderName?: string | null
+  senderName?: string | null,
+  parentExternalId?: string
 ): Record<string, unknown> | null {
   const patch: Record<string, unknown> = {};
   const username = usernameOf(byKind(candidates, WA_USERNAME_KIND));
@@ -227,6 +234,9 @@ function legacyPatch(
     patch.wa_username = username;
   }
   if (phone && !normalizePhone(existing.phone ?? '')) patch.phone = phone;
+  if (parentExternalId && parentExternalId !== existing.wa_parent_user_id) {
+    patch.wa_parent_user_id = parentExternalId;
+  }
 
   return Object.keys(patch).length > 0 ? patch : null;
 }
@@ -240,14 +250,14 @@ export async function resolveOrCreateContact(
   db: SupabaseClient,
   input: ResolveContactInput
 ): Promise<ResolveContactOutcome | null> {
-  const { accountId, senderName, auditUserId } = input;
+  const { accountId, senderName, auditUserId, parentExternalId } = input;
   const candidates = clean(input.candidates);
   if (candidates.length === 0) return null;
 
   const existing = await findContact(db, accountId, candidates);
   if (existing)
     return {
-      contact: await enrich(db, accountId, existing, candidates, senderName),
+      contact: await enrich(db, accountId, existing, candidates, senderName, parentExternalId),
       wasCreated: false,
     };
 
@@ -261,6 +271,7 @@ export async function resolveOrCreateContact(
       name: newContactName(candidates, senderName),
       wa_user_id: byKind(candidates, WA_BSUID_KIND)?.externalId ?? null,
       wa_username: usernameOf(byKind(candidates, WA_USERNAME_KIND)),
+      ...(parentExternalId && { wa_parent_user_id: parentExternalId }),
     })
     .select()
     .single();
@@ -271,7 +282,7 @@ export async function resolveOrCreateContact(
       const raced = await findContact(db, accountId, candidates);
       if (raced) {
         return {
-          contact: await enrich(db, accountId, raced, candidates, senderName),
+          contact: await enrich(db, accountId, raced, candidates, senderName, parentExternalId),
           wasCreated: false,
         };
       }
@@ -290,11 +301,12 @@ async function enrich(
   accountId: string,
   contact: ContactRow,
   candidates: IdentityCandidate[],
-  senderName?: string | null
+  senderName?: string | null,
+  parentExternalId?: string
 ): Promise<ContactRow> {
   await addIdentities(db, accountId, contact.id, candidates);
 
-  const patch = legacyPatch(contact, candidates, senderName);
+  const patch = legacyPatch(contact, candidates, senderName, parentExternalId);
   if (!patch) return contact;
   const { data: updated, error } = await db
     .from('contacts')

@@ -281,26 +281,6 @@ async function lookupInternalIdByExternalId(
   return (data as { id: string } | null)?.id ?? null;
 }
 
-/** Keep `contacts.wa_parent_user_id` filled (US-070 removes the column). */
-async function backfillParent(
-  db: SupabaseClient,
-  contact: ContactRow,
-  parent: string | undefined
-): Promise<ContactRow> {
-  if (!parent || parent === contact.wa_parent_user_id) return contact;
-  const { data, error } = await db
-    .from('contacts')
-    .update({ wa_parent_user_id: parent, updated_at: new Date().toISOString() })
-    .eq('id', contact.id)
-    .select()
-    .maybeSingle();
-  if (error) {
-    console.error('[ingest] parent BSUID backfill failed:', error.message);
-    return contact;
-  }
-  return (data as ContactRow | null) ?? contact;
-}
-
 async function runHook<A>(
   name: string,
   fn: ((arg: A) => Promise<void> | void) | undefined,
@@ -337,13 +317,10 @@ async function resolveThread(
     candidates: input.sender,
     senderName: input.senderName,
     auditUserId: opts.auditUserId,
+    parentExternalId: input.parentExternalId,
   });
   if (!outcome) return { skip: 'no contact' };
-  const contact = await backfillParent(
-    db,
-    outcome.contact,
-    input.parentExternalId
-  );
+  const contact = outcome.contact;
 
   const conv = await findOrCreateConversation(
     db,

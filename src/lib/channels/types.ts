@@ -119,6 +119,13 @@ export class ChannelError extends Error {
   }
 }
 
+/**
+ * The media was located but could not be fetched (over the size limit, or the
+ * transfer failed). Unlike a failed lookup, the id is still valid, so a caller
+ * may keep a fallback link to it instead of dropping the media.
+ */
+export class MediaTransferError extends ChannelError {}
+
 /** A contact identity as stored in `contact_identities`. */
 export interface ContactIdentity {
   /** e.g. 'whatsapp:phone', 'whatsapp:bsuid', 'telegram:chat_id'. */

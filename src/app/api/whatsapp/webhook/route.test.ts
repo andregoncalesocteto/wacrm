@@ -68,6 +68,7 @@ vi.mock('@supabase/supabase-js', () => ({
                       data: {
                         id: 'conn-1',
                         account_id: 'acc-1',
+                        channel_type: 'whatsapp_cloud',
                         config: {
                           mirror_inbound_media: h.state.mirrorInboundMedia,
                         },
@@ -111,21 +112,42 @@ vi.mock('@supabase/supabase-js', () => ({
             }),
           }
         case 'conversations':
-          // findOrCreateConversation: select().eq().eq().order().limit()
+          // ingest findOrCreateConversation: select().eq().eq().order() (awaited)
+          // adopt a NULL-connection thread:   update().eq().is()
+          // reopenClosedConversation:         update().eq().eq()
           return {
             select: () => ({
               eq: () => ({
                 eq: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [h.state.conversation],
-                        error: null,
-                      }),
-                  }),
+                  order: () =>
+                    Promise.resolve({
+                      data: [h.state.conversation],
+                      error: null,
+                    }),
                 }),
               }),
             }),
+            update: () => ({
+              eq: () => {
+                const done = Promise.resolve({ error: null })
+                return Object.assign(done, {
+                  is: () => Promise.resolve({ error: null }),
+                  eq: () => Promise.resolve({ error: null }),
+                })
+              },
+            }),
+          }
+        case 'contact_identities':
+          // resolveOrCreateContact: select().eq().in() finds nothing (the
+          // legacy columns and findExistingContact decide), then
+          // upsert() records the identities.
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => Promise.resolve({ data: [], error: null }),
+              }),
+            }),
+            upsert: () => Promise.resolve({ error: null }),
           }
         case 'broadcast_recipients':
           // Two chains land here:
@@ -281,7 +303,9 @@ vi.mock('@/lib/whatsapp/encryption', () => ({
   encrypt: (v: string) => v,
   isLegacyFormat: () => false,
 }))
-vi.mock('@/lib/whatsapp/meta-api', () => ({
+// The provider's error mapping needs the real MetaApiError class.
+vi.mock('@/lib/whatsapp/meta-api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/whatsapp/meta-api')>()),
   getMediaUrl: vi.fn(),
   downloadMedia: vi.fn(),
 }))

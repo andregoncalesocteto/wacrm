@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { ChannelError } from '../../types';
+import { ChannelError, MediaTransferError } from '../../types';
 import type { Connection, MediaRef, Target } from '../../types';
 
 const h = vi.hoisted(() => ({
@@ -206,6 +206,36 @@ describe('health', () => {
 
 describe('downloadMedia', () => {
   const ref: MediaRef = { kind: 'image', id: 'media-1' };
+
+  it('refuses oversized media before downloading it (MediaTransferError)', async () => {
+    h.getMediaUrl.mockResolvedValue({
+      url: 'https://cdn/big',
+      mimeType: 'application/pdf',
+      fileSize: 40 * 1024 * 1024,
+    });
+    await expect(provider.downloadMedia!(conn, ref)).rejects.toBeInstanceOf(
+      MediaTransferError
+    );
+    expect(h.downloadMedia).not.toHaveBeenCalled();
+  });
+
+  it('a failed transfer is a MediaTransferError, a failed lookup is not', async () => {
+    h.getMediaUrl.mockResolvedValue({
+      url: 'https://cdn/x',
+      mimeType: 'image/jpeg',
+      fileSize: 3,
+    });
+    h.downloadMedia.mockRejectedValue(
+      metaErr(null, 'Media download failed', 404)
+    );
+    await expect(provider.downloadMedia!(conn, ref)).rejects.toBeInstanceOf(
+      MediaTransferError
+    );
+    h.getMediaUrl.mockRejectedValue(metaErr(100, 'Unsupported get request'));
+    const err = await provider.downloadMedia!(conn, ref).catch((e) => e);
+    expect(err).toBeInstanceOf(ChannelError);
+    expect(err).not.toBeInstanceOf(MediaTransferError);
+  });
 
   it('resolves the URL then downloads the bytes into a Blob', async () => {
     h.getMediaUrl.mockResolvedValue({

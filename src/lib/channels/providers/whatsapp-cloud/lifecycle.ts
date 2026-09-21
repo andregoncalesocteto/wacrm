@@ -1,4 +1,5 @@
-import { ChannelError } from '../../types';
+import { ChannelError, MediaTransferError } from '../../types';
+import { MEDIA_MAX_BYTES } from '@/lib/storage/upload-media';
 import type {
   Connection,
   ConnectOptions,
@@ -208,20 +209,35 @@ export async function downloadMedia(
   ref: MediaRef
 ): Promise<Blob> {
   const token = await requireAccessToken(conn);
+  let meta: Awaited<ReturnType<typeof getMediaUrl>>;
   try {
-    const { url, mimeType } = await getMediaUrl({
-      mediaId: ref.id,
-      accessToken: token,
-    });
+    meta = await getMediaUrl({ mediaId: ref.id, accessToken: token });
+  } catch (err) {
+    throw toChannelError(err);
+  }
+  // Skip oversized media BEFORE spending the transfer (Meta's `file_size` is
+  // advisory; the mirror re-checks the bytes it gets).
+  if (typeof meta.fileSize === 'number' && meta.fileSize > MEDIA_MAX_BYTES) {
+    throw new MediaTransferError(
+      'invalid',
+      `Media ${ref.id} is ${meta.fileSize} bytes, over the ${MEDIA_MAX_BYTES}-byte limit`
+    );
+  }
+  try {
     const { buffer, contentType } = await metaDownloadMedia({
-      downloadUrl: url,
+      downloadUrl: meta.url,
       accessToken: token,
     });
     return new Blob([new Uint8Array(buffer)], {
-      type: contentType || mimeType,
+      type: contentType || meta.mimeType,
     });
   } catch (err) {
-    throw toChannelError(err);
+    const e = toChannelError(err);
+    throw new MediaTransferError(e.code, e.message, {
+      providerCode: e.providerCode,
+      retryable: e.retryable,
+      cause: err,
+    });
   }
 }
 

@@ -84,6 +84,11 @@ vi.mock('@supabase/supabase-js', () => {
       if (!col.includes('.')) this.filters.push((r) => r[col] === v);
       return this;
     }
+    is(col: string, v: unknown) {
+      // `.is(col, null)`: the ingestion core adopts NULL-connection threads.
+      this.filters.push((r) => (v === null ? r[col] == null : r[col] === v));
+      return this;
+    }
     in(col: string, vs: unknown[]) {
       this.filters.push((r) => vs.includes(r[col]));
       return this;

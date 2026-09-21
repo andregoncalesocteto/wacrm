@@ -4,7 +4,7 @@ import {
   type MirrorStorage,
 } from '@/lib/whatsapp/mirror-inbound-media';
 import type { IngestHooks } from './ingest';
-import type { ChannelProvider } from './types';
+import { MediaTransferError, type ChannelProvider } from './types';
 
 /**
  * `IngestHooks.resolveMedia` implementation (US-021): copies inbound media
@@ -19,8 +19,9 @@ import type { ChannelProvider } from './types';
  *    (oversized, MIME outside the bucket allow-list, storage outage)
  *                        -> the provider's fallback URL (WhatsApp: the Meta
  *                           proxy `/api/whatsapp/media/<id>`);
- *  - the provider download itself throws -> null (the route returned null
- *    when Meta refused the media lookup).
+ *  - the provider's media LOOKUP fails -> null (the route returned null when
+ *    Meta refused the media lookup); a MediaTransferError (oversized, transfer
+ *    failed) keeps the fallback URL like a refused mirror.
  * Never throws and never logs or stores a token: the provider resolves
  * credentials itself, and no download URL reaches the stored value.
  *
@@ -75,7 +76,9 @@ export function createMediaResolver(
               contentType: blob.type,
             };
           } catch (err) {
-            downloadFailed = true;
+            // A failed lookup means Meta no longer has the media (nothing to
+            // link to); a failed transfer keeps the proxy link.
+            downloadFailed = !(err instanceof MediaTransferError);
             throw err;
           }
         },

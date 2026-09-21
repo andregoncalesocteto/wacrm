@@ -37,7 +37,7 @@ const CHANNEL_TYPE = 'whatsapp_cloud';
 
 const rawBodies = new WeakMap<Request, Promise<string>>();
 
-function readRawBody(req: Request): Promise<string> {
+export function readRawBody(req: Request): Promise<string> {
   let cached = rawBodies.get(req);
   if (!cached) {
     cached = req.text();
