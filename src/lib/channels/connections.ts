@@ -161,3 +161,30 @@ export async function getConnectionCredentials(
 
   return credentials;
 }
+
+/**
+ * Writes (creates or REPLACES) the credentials of a connection as `json_v1`:
+ * the JSON object encrypted with encrypt(). Service role only, same as the
+ * read side; callers must already have authorised the write (account + role).
+ * Never log `credentials`.
+ */
+export async function saveConnectionCredentials(
+  connectionId: string,
+  accountId: string,
+  credentials: Record<string, unknown>
+): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from('channel_connection_credentials')
+    .upsert(
+      {
+        connection_id: connectionId,
+        account_id: accountId,
+        secrets_encrypted: encrypt(JSON.stringify(credentials)),
+        secrets_format: 'json_v1',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'connection_id' }
+    );
+  if (error)
+    throw new Error(`saveConnectionCredentials failed: ${error.message}`);
+}

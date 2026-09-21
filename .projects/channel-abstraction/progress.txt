@@ -450,3 +450,15 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - The fake client in the test honours .eq and select columns; reusable pattern for RLS-client route tests with the real role check over a mocked getCurrentAccount.
   - Baseline: 118 files / 1456 tests, lint 40 warnings, typecheck clean. Build not run (new routes only).
 ---
+
+## 2026-09-21 - US-034
+- New routes: src/app/api/channels/connections/route.ts (GET any member; POST admin+ -> 201 {connection}) and [id]/route.ts (PATCH, DELETE admin+). Helpers in src/lib/channels/connection-input.ts (provider lookup via registerBuiltinProviders+getProvider, display_name, config/credentials schema parsing, external_id resolution, response shaping) and saveConnectionCredentials() appended to src/lib/channels/connections.ts (service role upsert, encrypt(JSON) as json_v1).
+- POST: unknown channel_type 400 code unknown_channel_type; invalid config/credentials 400 {error, code: invalid_config|invalid_credentials, details: schema error}; store of another account 404; UNIQUE(channel_type, external_id) 23505 -> 409 duplicate_connection; starts `disconnected`; if the credentials write fails the row is deleted. external_id = body.external_id, else config.phone_number_id, else 400 (providers have no derive hook yet; Telegram will pass external_id).
+- Responses go through publicConnection(): fixed column list, config with keys matching /token|secret|password|api_?key|private/ dropped (whatsapp verify_token). Credentials never selected by the session client.
+- PATCH: display_name, config (SHALLOW-merged over the stored config then validated, so the hidden verify_token survives), credentials (replace), store_id (must be the account's, else 404). DELETE: 409 has_conversations (pre-check + FK 23503), credentials cascade.
+- Tests: src/app/api/channels/connections/route.test.ts (18): roles, validation, unknown channel, other-account store 404, duplicate 409, canary, encrypted credentials (decrypt round-trip), PATCH rename/merge/move/replace, DELETE 409/200 + credentials gone.
+- **Learnings for future iterations:**
+  - No secret-field metadata exists in the provider contract; the secret-key regex in connection-input.ts is the guard. A provider with a secret config key not matching it needs the regex extended (or a contract field).
+  - middleware.ts does not protect /api/channels; routes authenticate themselves via requireRole (401/403).
+  - Baseline: 119 files / 1474 tests, lint 40 warnings, typecheck clean. Build not run.
+---
