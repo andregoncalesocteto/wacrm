@@ -139,6 +139,137 @@ export async function ensurePhoneIdentity(
   }
 }
 
+/** Rows per `in (...)` lookup / per identity upsert in the bulk helpers. */
+const IDENTITY_BATCH = 100;
+
+/**
+ * Bulk form of the identity duplicate check, for CSV import: of the given
+ * normalized (digits-only) phones, returns the ones some contact of the
+ * account already holds as a `whatsapp:phone` identity. Chunked `in`
+ * queries, so a large file costs a handful of reads instead of one per row.
+ * Throws on a DB error (a silent miss would import duplicates).
+ */
+export async function findExistingPhoneIdentityKeys(
+  db: SupabaseClient,
+  accountId: string,
+  keys: string[]
+): Promise<Set<string>> {
+  const found = new Set<string>();
+  const unique = [...new Set(keys.filter(Boolean))];
+  for (let i = 0; i < unique.length; i += IDENTITY_BATCH) {
+    const { data, error } = await db
+      .from('contact_identities')
+      .select('external_id')
+      .eq('account_id', accountId)
+      .eq('kind', PHONE_IDENTITY_KIND)
+      .in('external_id', unique.slice(i, i + IDENTITY_BATCH));
+    if (error) throw error;
+    for (const r of (data ?? []) as { external_id: string }[]) {
+      found.add(r.external_id);
+    }
+  }
+  return found;
+}
+
+/**
+ * Bulk `ensurePhoneIdentity` for freshly imported contacts: one chunked
+ * upsert (ON CONFLICT DO NOTHING). Never throws — the contacts are already
+ * saved; a failure is logged, like the single-row helper.
+ */
+export async function ensurePhoneIdentities(
+  db: SupabaseClient,
+  accountId: string,
+  items: { contactId: string; phone: string }[]
+): Promise<void> {
+  const rows = items
+    .map((it) => ({
+      account_id: accountId,
+      contact_id: it.contactId,
+      kind: PHONE_IDENTITY_KIND,
+      external_id: normalizePhone(it.phone),
+    }))
+    .filter((r) => r.external_id);
+  for (let i = 0; i < rows.length; i += IDENTITY_BATCH) {
+    const { error } = await db
+      .from('contact_identities')
+      .upsert(rows.slice(i, i + IDENTITY_BATCH), {
+        onConflict: 'account_id,kind,external_id',
+        ignoreDuplicates: true,
+      });
+    if (error) {
+      console.error('[dedupe] adding phone identities failed:', error.message);
+    }
+  }
+}
+
+export type SyncPhoneIdentityResult =
+  { ok: true } | { ok: false; conflictContactId: string };
+
+/**
+ * Keep the `whatsapp:phone` identity in step with an edited phone: ensure
+ * the new number's identity and drop this contact's identity for the OLD
+ * number, so the old number stops resolving to it. Cleared phone → identity
+ * removed. Never steals: if another contact already holds the new number
+ * as an identity, nothing is changed and `{ ok: false, conflictContactId }`
+ * is returned. Call it BEFORE saving the contacts row so a conflict can
+ * abort the edit. Throws on a DB error.
+ */
+export async function syncPhoneIdentity(
+  db: SupabaseClient,
+  args: {
+    accountId: string;
+    contactId: string;
+    oldPhone: string | null | undefined;
+    newPhone: string | null | undefined;
+  }
+): Promise<SyncPhoneIdentityResult> {
+  const { accountId, contactId } = args;
+  const oldPhone = args.oldPhone ?? '';
+  const newKey = normalizePhone(args.newPhone ?? '');
+  const oldKey = normalizePhone(oldPhone);
+
+  if (newKey) {
+    const { data, error } = await db
+      .from('contact_identities')
+      .select('contact_id')
+      .eq('account_id', accountId)
+      .eq('kind', PHONE_IDENTITY_KIND)
+      .eq('external_id', newKey)
+      .maybeSingle();
+    if (error) throw error;
+    const owner = (data as { contact_id: string } | null)?.contact_id;
+    if (owner && owner !== contactId) {
+      return { ok: false, conflictContactId: owner };
+    }
+  }
+
+  if (oldKey && oldKey !== newKey) {
+    const { data, error } = await db
+      .from('contact_identities')
+      .select('external_id')
+      .eq('account_id', accountId)
+      .eq('contact_id', contactId)
+      .eq('kind', PHONE_IDENTITY_KIND);
+    if (error) throw error;
+    const stale = ((data ?? []) as { external_id: string }[])
+      .map((r) => r.external_id)
+      .filter((id) => id !== newKey && phonesMatch(id, oldPhone));
+    for (const externalId of stale) {
+      const { error: delError } = await db
+        .from('contact_identities')
+        .delete()
+        .eq('account_id', accountId)
+        .eq('contact_id', contactId)
+        .eq('kind', PHONE_IDENTITY_KIND)
+        .eq('external_id', externalId);
+      if (delError) throw delError;
+    }
+  }
+
+  if (newKey) await ensurePhoneIdentity(db, accountId, contactId, newKey);
+  return { ok: true };
+}
+
 /**
  * True when an existing contact is an *exact* normalized match for
  * `phone` (vs only a fuzzy trunk-variant match). The form hard-blocks

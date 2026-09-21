@@ -11,6 +11,7 @@ import {
   findDuplicateContact,
   isExactMatch,
   isUniqueViolation,
+  syncPhoneIdentity,
   type ExistingContact,
 } from '@/lib/contacts/dedupe';
 import {
@@ -158,6 +159,20 @@ export function ContactForm({
       let contactId = contact?.id;
 
       if (isEdit && contactId) {
+        // Move the whatsapp:phone identity first: it refuses to take a
+        // number another contact holds, and that must abort the edit.
+        if (showPhone) {
+          const sync = await syncPhoneIdentity(supabase, {
+            accountId,
+            contactId,
+            oldPhone: contact?.phone,
+            newPhone: phone.trim(),
+          });
+          if (!sync.ok) {
+            toast.error(t('toastConflict'));
+            return;
+          }
+        }
         const { error } = await supabase
           .from('contacts')
           .update({
@@ -168,14 +183,17 @@ export function ContactForm({
             updated_at: new Date().toISOString(),
           })
           .eq('id', contactId);
-        if (error) throw error;
-        if (showPhone) {
-          await ensurePhoneIdentity(
-            supabase,
-            accountId,
-            contactId,
-            phone.trim()
-          );
+        if (error) {
+          // Put the identity back so it keeps matching the saved phone.
+          if (showPhone) {
+            await syncPhoneIdentity(supabase, {
+              accountId,
+              contactId,
+              oldPhone: phone.trim(),
+              newPhone: contact?.phone,
+            }).catch(() => undefined);
+          }
+          throw error;
         }
       } else {
         const { data, error } = await supabase

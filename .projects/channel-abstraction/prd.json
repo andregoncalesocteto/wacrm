@@ -1079,8 +1079,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 63,
-      "passes": false,
-      "notes": "Após a US-054: a importação por CSV ainda deduplica só por contacts.phone e editar o telefone deixa a identidade antiga no lugar; ambos entram aqui."
+      "passes": true,
+      "notes": "Após a US-054: a importação por CSV ainda deduplica só por contacts.phone e editar o telefone deixa a identidade antiga no lugar; ambos entram aqui. Feito: CSV usa lookup em lote de identidades (match exato, como o índice único) e cria identidades em lote; syncPhoneIdentity no formulário e no detalhe. A API v1 PATCH não edita telefone (só name/email/company), nada a fazer lá."
     },
     {
       "id": "US-056",

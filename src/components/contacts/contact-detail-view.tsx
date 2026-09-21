@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
+import { syncPhoneIdentity } from '@/lib/contacts/dedupe';
 import { useAuth } from '@/hooks/use-auth';
 import { formatCurrency } from '@/lib/currency';
 import { toast } from 'sonner';
@@ -73,6 +74,7 @@ export function ContactDetailView({
   onUpdated,
 }: ContactDetailViewProps) {
   const t = useTranslations('Contacts.detailView');
+  const tForm = useTranslations('Contacts.form');
   const display = useContactDisplay();
   const format = useFormatter();
   const locale = useLocale();
@@ -237,6 +239,27 @@ export function ContactDetailView({
     }
 
     setSavingDetails(true);
+    // Move the whatsapp:phone identity first: it refuses a number another
+    // contact holds, and the old number must stop resolving to this contact.
+    if (showPhoneField && accountId) {
+      try {
+        const sync = await syncPhoneIdentity(supabase, {
+          accountId,
+          contactId,
+          oldPhone: contact?.phone,
+          newPhone: editPhone.trim(),
+        });
+        if (!sync.ok) {
+          toast.error(tForm('toastConflict'));
+          setSavingDetails(false);
+          return;
+        }
+      } catch {
+        toast.error(t('toastUpdateFailed'));
+        setSavingDetails(false);
+        return;
+      }
+    }
     const { error } = await supabase
       .from('contacts')
       .update({
@@ -251,6 +274,14 @@ export function ContactDetailView({
       .eq('id', contactId);
 
     if (error) {
+      if (showPhoneField && accountId) {
+        await syncPhoneIdentity(supabase, {
+          accountId,
+          contactId,
+          oldPhone: editPhone.trim(),
+          newPhone: contact?.phone,
+        }).catch(() => undefined);
+      }
       toast.error(t('toastUpdateFailed'));
     } else {
       toast.success(t('toastUpdated'));

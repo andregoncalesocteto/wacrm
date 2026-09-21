@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   dedupeByPhone,
+  ensurePhoneIdentities,
   ensurePhoneIdentity,
   findDuplicateContact,
+  findExistingPhoneIdentityKeys,
   findExistingContact,
   isExactMatch,
   isUniqueViolation,
   normalizeKey,
+  syncPhoneIdentity,
 } from './dedupe';
 
 describe('normalizeKey', () => {
@@ -210,5 +213,169 @@ describe('identity-aware duplicate detection', () => {
     ]);
     await ensurePhoneIdentity(db, 'acct', 'c1', '   ');
     expect(upserts).toHaveLength(1);
+  });
+});
+
+/**
+ * Mutable in-memory `contact_identities` stub for the bulk/sync helpers:
+ * eq / in / select / delete / upsert (ignoreDuplicates) / maybeSingle.
+ */
+function identityDb(initial: Array<Record<string, string>>) {
+  const rows = [...initial];
+  const calls = { selects: 0, upserts: 0 };
+  const db = {
+    from() {
+      let scope = rows;
+      let deleting = false;
+      const builder = {
+        select: () => {
+          calls.selects++;
+          return builder;
+        },
+        delete: () => {
+          deleting = true;
+          return builder;
+        },
+        eq: (col: string, val: string) => {
+          scope = scope.filter((r) => r[col] === val);
+          return builder;
+        },
+        in: (col: string, vals: string[]) => {
+          scope = scope.filter((r) => vals.includes(r[col]));
+          return builder;
+        },
+        maybeSingle: () =>
+          Promise.resolve({ data: scope[0] ?? null, error: null }),
+        upsert: (input: Record<string, string> | Record<string, string>[]) => {
+          calls.upserts++;
+          for (const row of Array.isArray(input) ? input : [input]) {
+            const clash = rows.some(
+              (r) =>
+                r.account_id === row.account_id &&
+                r.kind === row.kind &&
+                r.external_id === row.external_id
+            );
+            if (!clash) rows.push(row);
+          }
+          return Promise.resolve({ error: null });
+        },
+        then: (resolve: (v: unknown) => unknown) => {
+          if (deleting) {
+            for (const r of scope) rows.splice(rows.indexOf(r), 1);
+            return resolve({ error: null });
+          }
+          return resolve({ data: scope, error: null });
+        },
+      };
+      return builder;
+    },
+  };
+  return { db: db as unknown as SupabaseClient, rows, calls };
+}
+
+const idn = (contact_id: string, external_id: string) => ({
+  account_id: 'acct',
+  contact_id,
+  kind: 'whatsapp:phone',
+  external_id,
+});
+
+describe('findExistingPhoneIdentityKeys', () => {
+  it('returns only the keys held as identities, in chunked queries', async () => {
+    const { db, calls } = identityDb([idn('c1', '5511'), idn('c2', '5522')]);
+    const keys = Array.from({ length: 250 }, (_, i) => `9${i}`).concat([
+      '5511',
+      '5522',
+    ]);
+    const found = await findExistingPhoneIdentityKeys(db, 'acct', keys);
+    expect([...found].sort()).toEqual(['5511', '5522']);
+    expect(calls.selects).toBe(3); // 252 keys / 100 per chunk
+  });
+
+  it('does not query for an empty list', async () => {
+    const { db, calls } = identityDb([]);
+    expect((await findExistingPhoneIdentityKeys(db, 'acct', [''])).size).toBe(
+      0
+    );
+    expect(calls.selects).toBe(0);
+  });
+});
+
+describe('ensurePhoneIdentities', () => {
+  it('batch-inserts digits-only identities, skipping blanks and existing ones', async () => {
+    const { db, rows, calls } = identityDb([idn('c0', '5599')]);
+    await ensurePhoneIdentities(db, 'acct', [
+      { contactId: 'c1', phone: '+55 (11)' },
+      { contactId: 'c2', phone: '5599' },
+      { contactId: 'c3', phone: 'abc' },
+    ]);
+    expect(calls.upserts).toBe(1);
+    expect(rows.map((r) => `${r.contact_id}:${r.external_id}`)).toEqual([
+      'c0:5599',
+      'c1:5511',
+    ]);
+  });
+});
+
+describe('syncPhoneIdentity', () => {
+  const args = (oldPhone: string, newPhone: string) => ({
+    accountId: 'acct',
+    contactId: 'c1',
+    oldPhone,
+    newPhone,
+  });
+
+  it('replaces the identity of the old number with the new one', async () => {
+    const { db, rows } = identityDb([idn('c1', '15551234567')]);
+    const res = await syncPhoneIdentity(
+      db,
+      args('+1 555 123 4567', '+1 555 999 0000')
+    );
+    expect(res).toEqual({ ok: true });
+    expect(rows).toEqual([idn('c1', '15559990000')]);
+  });
+
+  it('removes the identity when the phone is cleared', async () => {
+    const { db, rows } = identityDb([idn('c1', '15551234567')]);
+    expect(await syncPhoneIdentity(db, args('15551234567', ''))).toEqual({
+      ok: true,
+    });
+    expect(rows).toEqual([]);
+  });
+
+  it('keeps the identity when the phone did not change (formatting aside)', async () => {
+    const { db, rows } = identityDb([idn('c1', '15551234567')]);
+    await syncPhoneIdentity(db, args('15551234567', '+1 (555) 123-4567'));
+    expect(rows).toEqual([idn('c1', '15551234567')]);
+  });
+
+  it('creates the identity for a contact that had none', async () => {
+    const { db, rows } = identityDb([]);
+    await syncPhoneIdentity(db, args('', '15551234567'));
+    expect(rows).toEqual([idn('c1', '15551234567')]);
+  });
+
+  it('does not steal a number held by another contact', async () => {
+    const { db, rows } = identityDb([
+      idn('c1', '15551234567'),
+      idn('c2', '15559990000'),
+    ]);
+    const res = await syncPhoneIdentity(db, args('15551234567', '15559990000'));
+    expect(res).toEqual({ ok: false, conflictContactId: 'c2' });
+    expect(rows).toEqual([idn('c1', '15551234567'), idn('c2', '15559990000')]);
+  });
+
+  it("leaves other contacts' identities and other kinds alone", async () => {
+    const other = { ...idn('c1', 'zed'), kind: 'telegram:handle' };
+    const { db, rows } = identityDb([
+      idn('c1', '15551234567'),
+      idn('c2', '15550001111'),
+      other,
+    ]);
+    await syncPhoneIdentity(db, args('15551234567', '15559990000'));
+    expect(rows).toContainEqual(other);
+    expect(rows).toContainEqual(idn('c2', '15550001111'));
+    expect(rows).toContainEqual(idn('c1', '15559990000'));
+    expect(rows).not.toContainEqual(idn('c1', '15551234567'));
   });
 });
