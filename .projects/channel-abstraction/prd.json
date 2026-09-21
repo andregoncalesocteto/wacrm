@@ -229,7 +229,7 @@
       ],
       "priority": 13,
       "passes": false,
-      "notes": ""
+      "notes": "Após a US-010: `typing` não foi implementado porque o contrato não carrega o id da mensagem recebida (wamid), que a chamada de \"digitando\" da Meta exige. Nesta história, estender de forma aditiva a assinatura (ex.: `typing(conn, target, { inboundExternalId })`) em types.ts e implementar `typing` no provedor do WhatsApp; a US-029 (IA) passa o id da mensagem recebida."
     },
     {
       "id": "US-013",
@@ -524,7 +524,7 @@
       ],
       "priority": 31,
       "passes": false,
-      "notes": ""
+      "notes": "Após a US-010: o \"digitando\" precisa do id externo da mensagem recebida; passar `inboundExternalId` a `provider.typing` (assinatura estendida na US-012)."
     },
     {
       "id": "US-030",
