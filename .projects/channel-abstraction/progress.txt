@@ -106,3 +106,15 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - verify-schema.sql must stay ONE statement: assertions go inside the existing DO block.
   - Dev DB and isolated replay (44 migrations) both pass verify-schema. Baseline: 97 files / 1162 tests, lint 41 warnings.
 ---
+
+## 2026-09-21 - US-007
+- Added supabase/migrations/045_backfill_channel_model.sql (pure SQL, idempotent): per whatsapp_config a store (accounts.name, fallback 'Loja principal') + whatsapp_cloud connection (external_id=phone_number_id, status connected/disconnected, config jsonb = waba_id, mirror_inbound_media, registered_at, subscribed_apps_at, last_registration_error, verify_token, nulls stripped) + credentials row (access_token copied as-is, secrets_format='wa_token_v0'); fills conversations/message_templates/broadcasts.connection_id and pending executions conversation_id (contact's most recent conversation, NULL if none) + connection_id; contact_identities for whatsapp:phone / whatsapp:bsuid / whatsapp:username (DISTINCT ON + ON CONFLICT DO NOTHING).
+- verify-schema.sql: asserts every whatsapp_config has a connection + byte-identical credentials, and no NULL connection_id in conversations/templates/broadcasts of accounts that have a whatsapp_config.
+- Proof on dev DB: seeded config + contacts (phone, BSUID+username) + conversation + template + broadcast + 2 pending runs + a second account without config; ran 045; asserted; deleted the 045 row from wacrm_migrations and reran: md5 snapshot of all new/filled rows identical; seed cleaned. Isolated replay (-p wacrm-replay): 45 applied, verify passes.
+- Files changed: 045 migration, verify-schema.sql, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - Accounts WITHOUT whatsapp_config keep connection_id NULL on conversations (and the contact_identities still get created); the contract phase must handle/decide them before NOT NULL.
+  - contacts.phone_normalized is GENERATED (cannot be inserted); unique (account_id, phone_normalized) and (account_id, contact_id) on conversations make phone collisions / several conversations per contact unreachable today; the SQL still guards both.
+  - wacrm_migrations tracking column is `name` (not filename); to re-run a migration on dev: delete its row, `$FULL run --rm -T migrate`.
+  - The dev DB had no whatsapp_config, so on dev the migration only created the identities of existing contacts (1 real row kept).
+---

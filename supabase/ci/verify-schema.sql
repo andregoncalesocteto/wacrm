@@ -120,6 +120,45 @@ BEGIN
     RAISE EXCEPTION 'notifications.type must accept connection_down (migration 044)';
   END IF;
 
+  -- Backfill (045): accounts that had a whatsapp_config must have a
+  -- connection, and none of their conversations/templates/broadcasts may be
+  -- left without connection_id. Accounts WITHOUT a whatsapp_config get no
+  -- connection and are deliberately excluded (their rows stay NULL).
+  IF EXISTS (
+    SELECT 1 FROM whatsapp_config wc
+    WHERE NOT EXISTS (
+      SELECT 1 FROM channel_connections cc
+      WHERE cc.account_id = wc.account_id AND cc.channel_type = 'whatsapp_cloud'
+        AND cc.external_id = wc.phone_number_id
+    )
+    OR NOT EXISTS (
+      SELECT 1 FROM channel_connections cc
+      JOIN channel_connection_credentials cr ON cr.connection_id = cc.id
+      WHERE cc.account_id = wc.account_id AND cc.external_id = wc.phone_number_id
+        AND cr.secrets_format = 'wa_token_v0' AND cr.secrets_encrypted = wc.access_token
+    )
+  ) THEN
+    RAISE EXCEPTION 'whatsapp_config without connection/credentials after backfill (migration 045)';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM conversations c
+    WHERE c.connection_id IS NULL
+      AND EXISTS (SELECT 1 FROM whatsapp_config wc WHERE wc.account_id = c.account_id)
+  ) THEN
+    RAISE EXCEPTION 'conversations with NULL connection_id in an account that has a connection (migration 045)';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM message_templates t
+    WHERE t.connection_id IS NULL
+      AND EXISTS (SELECT 1 FROM whatsapp_config wc WHERE wc.account_id = t.account_id)
+  ) OR EXISTS (
+    SELECT 1 FROM broadcasts b
+    WHERE b.connection_id IS NULL
+      AND EXISTS (SELECT 1 FROM whatsapp_config wc WHERE wc.account_id = b.account_id)
+  ) THEN
+    RAISE EXCEPTION 'templates/broadcasts with NULL connection_id in an account that has a connection (migration 045)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

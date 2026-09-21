@@ -124,8 +124,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Migration 045 (pure SQL, idempotent). Accounts without whatsapp_config get no store/connection (their conversations stay NULL; verify-schema excludes them). Proven on dev DB with seed + rerun (identical row snapshot) + isolated replay."
     },
     {
       "id": "US-008",
