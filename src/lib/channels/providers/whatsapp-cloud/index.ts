@@ -207,6 +207,7 @@ async function send(
 
 export const whatsappCloudProvider: ChannelProvider = {
   type: 'whatsapp_cloud',
+  descriptor: { panel: 'custom', fields: [] },
   identityKinds: [PHONE_KIND, BSUID_KIND],
   capabilities: whatsappCloudCapabilities,
   configSchema: whatsappCloudConfigSchema,

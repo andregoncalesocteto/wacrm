@@ -325,8 +325,28 @@ export interface Health {
   checkedAt: Date;
 }
 
+/** One input of the generic connection form (never carries a value). */
+export interface DescriptorField {
+  name: string;
+  /** Where the value goes: `config` (non-secret) or `credentials` (secret). */
+  target: 'config' | 'credentials';
+  type: 'text' | 'secret';
+  required?: boolean;
+}
+
+/**
+ * What the UI needs to render the connect form. `panel: 'custom'` means the
+ * provider has its own panel and `fields` may be empty.
+ */
+export interface ProviderDescriptor {
+  panel?: 'form' | 'custom';
+  fields: DescriptorField[];
+}
+
 export interface ChannelProvider {
   readonly type: ChannelType;
+  /** Form descriptor for GET /api/channels/providers; absent = generic form, no fields. */
+  readonly descriptor?: ProviderDescriptor;
   /** Identity kinds this channel produces, e.g. ['whatsapp:phone', 'whatsapp:bsuid']. */
   readonly identityKinds: string[];
   readonly capabilities: Capabilities;
