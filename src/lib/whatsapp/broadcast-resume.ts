@@ -241,6 +241,7 @@ export async function planBroadcastResume(
     broadcastId,
     templateName: broadcast.template_name,
     templateLanguage: resolvedTemplate.language,
+    connection: conn.connection,
     phoneNumberId: conn.phoneNumberId,
     accessToken: conn.accessToken,
     templateRow: resolvedTemplate.row,

@@ -9,6 +9,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { whatsappConnectionRow } from '@/lib/channels/credentials-admin.fake';
+import type { ChannelConnection } from '@/lib/channels/connections';
 import { phoneVariants } from './phone-utils';
 import {
   deliverBroadcast,
@@ -28,6 +30,20 @@ vi.mock('@/lib/whatsapp/meta-api', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   sendTemplateMessage: h.sendTemplateMessage,
 }));
+
+// Credentials come from channel_connection_credentials through the provider.
+vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: () => 'tok' }));
+vi.mock('@/lib/channels/admin-client', async () => {
+  const { fakeCredentialsAdmin } =
+    await import('@/lib/channels/credentials-admin.fake');
+  return {
+    supabaseAdmin: () =>
+      fakeCredentialsAdmin(() => ({
+        secrets_encrypted: 'enc',
+        secrets_format: 'wa_token_v0',
+      })),
+  };
+});
 
 function fakeDb(): SupabaseClient {
   class Query {
@@ -76,6 +92,10 @@ function plan(ids: string[], phones?: string[]): BroadcastPlan {
     broadcastId: 'bc-1',
     templateName: 'promo',
     templateLanguage: 'pt_BR',
+    connection: whatsappConnectionRow(
+      'acc',
+      'pn-1'
+    ) as unknown as ChannelConnection,
     phoneNumberId: 'pn-1',
     accessToken: 'tok',
     templateRow: null,

@@ -388,3 +388,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - flows/meta-send.ts and automations meta-send are now unused by production code (US-031 removes them).
   - src/lib/ai files are not prettier-formatted (no semicolons style); don't run prettier over them.
 ---
+
+## 2026-09-21 - US-030
+- deliverBroadcast (src/lib/whatsapp/broadcast-core.ts) now sends through the provider of the plan's connection: registerBuiltinProviders + getProvider(connection.channel_type), REQUIRES capabilities.templates (missing -> broadcast marked 'failed' and ChannelError('unsupported') thrown before any recipient), then per recipient provider.send(connection, {kind:'whatsapp:phone', address: phone}, {type:'template', template:{name, language, provider:{row, params}}}). The phone-variant loop is gone (the provider owns it, US-010). Error text identical: provider keeps Meta's message; a non-Error rejection (wrapped by toChannelError) is mapped back to 'Unknown error'.
+- BroadcastPlan gained `connection: ChannelConnection` (createBroadcast and planBroadcastResume fill it from loadWhatsAppSendConnection; resume uses the broadcast's connection_id). phoneNumberId/accessToken stay on the plan (pinned by existing core/resume assertions) but are informational now.
+- Tests: assertions unchanged; characterization test only got a `connection` in its plan fixture plus credential mocks (encryption decrypt + channels/admin-client), since the provider reads credentials itself; meta-api sendTemplateMessage mock still works. New broadcast-core.provider.test.ts (unsupported capability).
+- Deviation: credentials are read by the provider per send (one PK lookup + decrypt per recipient), not once per broadcast; the connection row is resolved once. Dashboard route /api/whatsapp/broadcast still sends directly via meta-api (not deliverBroadcast; out of scope). /api/v1/broadcasts and resume route use deliverBroadcast unchanged. Not verified against real Meta.
+- **Learnings for future iterations:**
+  - Any test that calls a provider send needs credential mocks (fakeCredentialsAdmin + decrypt).
+  - Baseline: 114 files / 1439 tests, lint 40 warnings, typecheck clean, build OK.
+---
