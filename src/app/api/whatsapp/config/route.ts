@@ -21,6 +21,10 @@ import {
   phoneNumberBelongsToWaba,
 } from '@/lib/whatsapp/waba-pairing'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
+import {
+  removeWhatsappConnection,
+  syncWhatsappConnection,
+} from '@/lib/channels/whatsapp-dual-write'
 
 /**
  * Resolve the caller's account_id from their profile. Inlined here
@@ -541,6 +545,9 @@ export async function POST(request: Request) {
       }
     }
 
+    // Mirror into channel_connections (+ credentials). Never throws.
+    await syncWhatsappConnection(accountId)
+
     if (registrationError) {
       // Save succeeded but the number isn't actually live. Return
       // 200 with a structured error so the UI can show the specific
@@ -613,6 +620,9 @@ export async function DELETE() {
         { status: 500 }
       )
     }
+
+    // Remove (or disable, when it has conversations) the mirrored connection.
+    await removeWhatsappConnection(accountId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

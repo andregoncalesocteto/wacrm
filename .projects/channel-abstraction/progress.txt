@@ -185,3 +185,14 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Meta's downloadMedia helper throws a plain Error (no code) so failures map to 'unknown'.
   - Baseline: 102 files / 1274 tests, lint 41 warnings.
 ---
+
+## 2026-09-21 - US-013
+- Dual write into channel_connections / channel_connection_credentials on every whatsapp_config write. New src/lib/channels/whatsapp-dual-write.ts: syncWhatsappConnection(accountId) reads the whatsapp_config row (service role) and reconciles store (default = account name, created if the account has none), whatsapp_cloud connection (matched by external_id, else the account's own; phone_number_id change moves external_id of the same row; re-enables a disabled one), config jsonb (waba_id, mirror_inbound_media, registered_at, subscribed_apps_at, last_registration_error, verify_token[encrypted as in whatsapp_config], nulls stripped) and credentials (json_v1 {access_token}, GCM). removeWhatsappConnection: no conversations -> delete; otherwise disabled_at=now + status disconnected + credentials dropped (ADR-007). Both never throw; failures log "[channel:whatsapp_cloud] dual-write ... failed".
+- Hooked into POST/DELETE /api/whatsapp/config (after the legacy write succeeded; responses unchanged) and the mirror toggle: browser still updates whatsapp_config under RLS, then calls new POST /api/whatsapp/config/mirror-media (no body; account from session, requires visible whatsapp_config row, mirror rebuilt from that row so the client cannot inject values).
+- verify-registration is read-only today (never writes registered_at/last_registration_error), so nothing to mirror; left untouched.
+- Files: src/lib/channels/whatsapp-dual-write.ts, src/app/api/whatsapp/config/{route.ts,mirror-media/route.ts,route.dualwrite.test.ts}, src/components/settings/whatsapp-config.tsx, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - Deriving the mirror FROM the whatsapp_config row (not from request input) keeps the two tables consistent and makes every hook a one-liner; reuse for any future writer of whatsapp_config.
+  - Route tests use one stateful fake supabase for both the user client and supabase-js createClient (RLS not under test). Baseline now 103 files / 1283 tests, lint 41 warnings.
+  - A phone_number_id mapped to another account in channel_connections makes the mirror log and skip (legacy save still succeeds).
+---

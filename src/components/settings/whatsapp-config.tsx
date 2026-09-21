@@ -251,6 +251,11 @@ export function WhatsAppConfig() {
         .update({ mirror_inbound_media: next })
         .eq('account_id', accountId);
       if (error) throw new Error(error.message);
+      // Mirror into channel_connections (server-side, credentials/RLS-safe).
+      // Best-effort: the legacy save above already succeeded.
+      fetch('/api/whatsapp/config/mirror-media', { method: 'POST' }).catch(
+        (err) => console.error('[channel:whatsapp_cloud] mirror sync failed:', err)
+      );
       setConfig({ ...config, mirror_inbound_media: next });
     } catch (error) {
       console.error('Failed to update media retention setting:', error);

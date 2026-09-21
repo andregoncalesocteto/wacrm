@@ -245,8 +245,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 14,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Dual write via src/lib/channels/whatsapp-dual-write.ts (syncWhatsappConnection/removeWhatsappConnection, service role, non-fatal, always rebuilt FROM whatsapp_config). verify-registration is a read-only diagnostic that never writes registered_at/last_registration_error (POST config does), so it has nothing to mirror and was not changed. Toggle: new POST /api/whatsapp/config/mirror-media called after the browser update. Not verified in browser/with real Meta."
     },
     {
       "id": "US-014",
