@@ -906,8 +906,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 53,
-      "passes": false,
-      "notes": "Após a US-034: a rota `POST /api/channels/connections` usa `external_id` do corpo, senão `config.phone_number_id`, senão 400 (não há gancho no provedor). O id do bot do Telegram só é conhecido com o token (`getMe`): acrescentar de forma aditiva ao contrato um método opcional `deriveExternalId(config, credentials)` que o POST chama quando o `external_id` não vem, e implementá-lo no provedor Telegram. Chaves secretas de configuração são filtradas por regex `/token|secret|password|api_?key|private/`; nomear chaves do Telegram de forma compatível."
+      "passes": true,
+      "notes": "Após a US-034: a rota `POST /api/channels/connections` usa `external_id` do corpo, senão `config.phone_number_id`, senão 400 (não há gancho no provedor). O id do bot do Telegram só é conhecido com o token (`getMe`): acrescentar de forma aditiva ao contrato um método opcional `deriveExternalId(config, credentials)` que o POST chama quando o `external_id` não vem, e implementá-lo no provedor Telegram. Chaves secretas de configuração são filtradas por regex `/token|secret|password|api_?key|private/`; nomear chaves do Telegram de forma compatível. | Implementado: contrato ganhou `deriveExternalId?` (POST usa quando external_id não vem; falha de credencial = 400 invalid_credentials, rede = 502). Telegram real não testado (inalcançável): fatos da Bot API validados na doc oficial via Context7."
     },
     {
       "id": "US-048",

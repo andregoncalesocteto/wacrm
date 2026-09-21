@@ -2419,6 +2419,16 @@
       "whatsapp_cloud": {
         "name": "WhatsApp Cloud API",
         "description": "Meta 공식 Cloud API를 통한 WhatsApp Business입니다."
+      },
+      "telegram": {
+        "name": "Telegram",
+        "description": "공식 Bot API를 통한 Telegram 봇입니다.",
+        "fields": {
+          "bot_token": {
+            "label": "봇 토큰",
+            "help": "@BotFather로 봇을 만들고 토큰을 붙여넣으세요. 웹훅에는 공개 HTTPS URL이 필요합니다."
+          }
+        }
       }
     }
   },

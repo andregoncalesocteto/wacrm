@@ -12,7 +12,7 @@ import {
   parseDisplayName,
   providerFor,
   publicConnection,
-  resolveExternalId,
+  resolveExternalIdFor,
 } from '@/lib/channels/connection-input';
 import { saveConnectionCredentials } from '@/lib/channels/connections';
 
@@ -78,10 +78,15 @@ export async function POST(request: Request) {
     if (!isObject(body)) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
-    const bad = (f: { error: string; code?: string; details?: unknown }) =>
+    const bad = (f: {
+      error: string;
+      code?: string;
+      details?: unknown;
+      status?: number;
+    }) =>
       NextResponse.json(
         { error: f.error, code: f.code, details: f.details },
-        { status: 400 }
+        { status: f.status ?? 400 }
       );
 
     const provider = providerFor(body.channel_type);
@@ -95,7 +100,12 @@ export async function POST(request: Request) {
     if (!config.ok) return bad(config);
     const credentials = parseCredentials(provider.value, body.credentials);
     if (!credentials.ok) return bad(credentials);
-    const externalId = resolveExternalId(body.external_id, config.value);
+    const externalId = await resolveExternalIdFor(
+      provider.value,
+      body.external_id,
+      config.value,
+      credentials.value
+    );
     if (!externalId.ok) return bad(externalId);
 
     const { data: store, error: storeError } = await supabase

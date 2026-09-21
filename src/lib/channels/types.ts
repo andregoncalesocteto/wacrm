@@ -370,6 +370,15 @@ export interface ChannelProvider {
   readonly type: ChannelType;
   /** Form descriptor for GET /api/channels/providers; absent = generic form, no fields. */
   readonly descriptor?: ProviderDescriptor;
+  /**
+   * Optional: the provider-side id of the connection (Telegram: bot id via
+   * getMe) when it is not in the config. Called by POST /api/channels/connections
+   * when `external_id` is not sent. Throws ChannelError (`auth` = bad credentials).
+   */
+  deriveExternalId?(
+    config: Record<string, unknown>,
+    credentials: Record<string, unknown>
+  ): Promise<string>;
   /** Identity kinds this channel produces, e.g. ['whatsapp:phone', 'whatsapp:bsuid']. */
   readonly identityKinds: string[];
   readonly capabilities: Capabilities;

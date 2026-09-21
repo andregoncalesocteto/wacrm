@@ -400,3 +400,93 @@ describe('DELETE /api/channels/connections/[id]', () => {
     expect(h.db.channel_connections).toHaveLength(2);
   });
 });
+
+describe('POST /api/channels/connections (telegram)', () => {
+  const TG_TOKEN = '555:TELEGRAM-SECRET_xyz';
+  const tg = () => ({
+    store_id: 's1',
+    channel_type: 'telegram',
+    display_name: 'Bot Loja',
+    credentials: { bot_token: TG_TOKEN },
+  });
+
+  it('derives external_id from getMe (bot id) when it is not sent', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ ok: true, result: { id: 42, is_bot: true } })
+        )
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const res = await POST(req(tg()));
+      expect(res.status).toBe(201);
+      const { connection } = await res.json();
+      expect(connection).toMatchObject({
+        channel_type: 'telegram',
+        external_id: '42',
+        status: 'disconnected',
+      });
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        `https://api.telegram.org/bot${TG_TOKEN}/getMe`
+      );
+      const cred = h.db.channel_connection_credentials[0];
+      expect(JSON.parse(decrypt(cred.secrets_encrypted as string))).toEqual({
+        bot_token: TG_TOKEN,
+      });
+      expect(JSON.stringify(connection)).not.toContain(TG_TOKEN);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('an explicit external_id skips getMe', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const res = await POST(req({ ...tg(), external_id: '77' }));
+      expect(res.status).toBe(201);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('an invalid token is a 400 and nothing is created', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              ok: false,
+              error_code: 401,
+              description: 'Unauthorized',
+            }),
+            { status: 401 }
+          )
+        )
+    );
+    try {
+      const res = await POST(req(tg()));
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.code).toBe('invalid_credentials');
+      expect(JSON.stringify(body)).not.toContain(TG_TOKEN);
+      expect(h.db.channel_connections).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('Telegram unreachable is a 502', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')));
+    try {
+      expect((await POST(req(tg()))).status).toBe(502);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

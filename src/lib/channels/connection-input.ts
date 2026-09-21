@@ -1,5 +1,6 @@
 import { getProvider } from './registry';
 import { registerBuiltinProviders } from './providers';
+import { ChannelError } from './types';
 import type { ChannelProvider } from './types';
 
 // Input validation and response shaping for /api/channels/connections.
@@ -12,6 +13,8 @@ export type Fail = {
   error: string;
   code?: string;
   details?: unknown;
+  /** HTTP status to answer with (default 400). */
+  status?: number;
 };
 type Ok<T> = { ok: true; value: T };
 
@@ -129,4 +132,44 @@ export function resolveExternalId(
     return { ok: false, error: 'external_id is too long' };
   }
   return { ok: true, value: v };
+}
+
+/**
+ * Like `resolveExternalId`, but when no explicit id is sent and the provider
+ * can derive one from its credentials (Telegram: bot id via getMe) it is asked
+ * first. A failed derivation is reported without echoing provider internals.
+ */
+export async function resolveExternalIdFor(
+  provider: ChannelProvider,
+  explicit: unknown,
+  config: Record<string, unknown>,
+  credentials: Record<string, unknown>
+): Promise<Ok<string> | Fail> {
+  const hasExplicit =
+    (typeof explicit === 'string' && explicit.trim() !== '') ||
+    typeof explicit === 'number';
+  if (hasExplicit || !provider.deriveExternalId) {
+    return resolveExternalId(explicit, config);
+  }
+  try {
+    return resolveExternalId(
+      await provider.deriveExternalId(config, credentials),
+      config
+    );
+  } catch (err) {
+    const ce = err instanceof ChannelError ? err : null;
+    if (ce?.code === 'auth' || ce?.code === 'invalid') {
+      return {
+        ok: false,
+        error: 'The provider rejected the credentials',
+        code: 'invalid_credentials',
+      };
+    }
+    return {
+      ok: false,
+      error: 'Could not reach the provider to identify the connection',
+      code: 'provider_unreachable',
+      status: 502,
+    };
+  }
 }

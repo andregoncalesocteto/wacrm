@@ -2407,6 +2407,16 @@
       "whatsapp_cloud": {
         "name": "WhatsApp Cloud API",
         "description": "WhatsApp Business mediante la API oficial Cloud de Meta."
+      },
+      "telegram": {
+        "name": "Telegram",
+        "description": "Bot de Telegram mediante la Bot API oficial.",
+        "fields": {
+          "bot_token": {
+            "label": "Token del bot",
+            "help": "Cree un bot con @BotFather y pegue su token. El webhook requiere una URL pública HTTPS."
+          }
+        }
       }
     }
   },

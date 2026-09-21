@@ -1,4 +1,5 @@
 import { hasProvider, registerProvider } from '../registry';
+import { telegramProvider } from './telegram';
 import { whatsappCloudProvider } from './whatsapp-cloud';
 
 /**
@@ -7,7 +8,7 @@ import { whatsappCloudProvider } from './whatsapp-cloud';
  * concrete providers.
  */
 export function registerBuiltinProviders(): void {
-  for (const provider of [whatsappCloudProvider]) {
+  for (const provider of [whatsappCloudProvider, telegramProvider]) {
     if (!hasProvider(provider.type)) registerProvider(provider);
   }
 }
