@@ -39,7 +39,11 @@
 **Desfecho (decisão humana):** dividir o pedido em dois. pt-BR segue direto, sem ferramenta de
 planejamento; a abstração de canais + três canais segue pelo **BMAD** (ainda não instalado neste projeto).
 
-**Ferramenta escolhida:** pendente — decisão humana (resolvida acima)
+**Atualização (2026-09-21, decisão humana):** em vez de instalar o BMAD, seguir com o fluxo `workflow_v1`
+(`solution-debate` → `gen-design` → `gen-adr` → `ralph-prd` → `ralph-prd-json` → `ralph-exec`), o mesmo
+usado no pt-BR. O BMAD continua não instalado.
+
+**Ferramenta escolhida:** `workflow_v1` (decisão humana; a triagem original indicava BMAD)
 **Placar:** 3 votos BMAD vs 3 votos Spec Kit (0 abstenções) — margem 0
 **Força:** decisão humana (empate)
 **Justificativa:** os sinais se dividem porque o pedido junta duas coisas de pesos diferentes. Triado
