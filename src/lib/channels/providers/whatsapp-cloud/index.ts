@@ -24,6 +24,7 @@ import {
 } from '@/lib/whatsapp/phone-utils';
 import { resolveContactSendTarget } from '@/lib/whatsapp/wa-identity';
 import { toChannelError } from './errors';
+import { parse, resolveConnection, verify } from './inbound';
 import {
   whatsappCloudConfigSchema,
   whatsappCloudCredentialsSchema,
@@ -32,8 +33,9 @@ import {
 /**
  * WhatsApp Cloud API provider. An ADAPTER over `lib/whatsapp/*` (which stays
  * where it is and still serves production paths until the later migration
- * stories). This story covers the outbound side only; inbound/lifecycle
- * arrive with US-011+ and throw `unsupported` until then.
+ * stories). Outbound is in this file, inbound in ./inbound.ts (status and
+ * reaction parsing only; messages arrive with US-073). Lifecycle (connect,
+ * disconnect, health) throws `unsupported` until its story.
  */
 
 export const PHONE_KIND = 'whatsapp:phone';
@@ -210,9 +212,9 @@ export const whatsappCloudProvider: ChannelProvider = {
   connect: () => notYet('connect'),
   disconnect: () => notYet('disconnect'),
   health: () => notYet('health'),
-  resolveConnection: () => notYet('resolveConnection'),
-  verify: () => notYet('verify'),
-  parse: () => notYet('parse'),
+  resolveConnection,
+  verify,
+  parse,
 
   resolveTarget,
   send,

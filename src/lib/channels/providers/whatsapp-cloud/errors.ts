@@ -1,4 +1,5 @@
 import { ChannelError } from '../../types';
+import type { ChannelErrorCode } from '../../types';
 import { MetaApiError } from '@/lib/whatsapp/meta-api';
 
 /** Meta (Graph / WhatsApp Cloud) error codes grouped by what the core should do. */
@@ -20,6 +21,16 @@ function codeFromMessage(message: string): number | null {
   return raw ? Number(raw) : null;
 }
 
+/** Channel error code for a Meta error code, or null when it is not a known one. */
+export function classifyMetaCode(code: number): ChannelErrorCode | null {
+  if (AUTH_CODES.has(code)) return 'auth';
+  if (RATE_LIMIT_CODES.has(code)) return 'rate_limited';
+  if (UNREACHABLE_CODES.has(code)) return 'recipient_unreachable';
+  if (WINDOW_CLOSED_CODES.has(code)) return 'window_closed';
+  if (INVALID_CODES.has(code)) return 'invalid';
+  return null;
+}
+
 /**
  * Converts anything thrown by `lib/whatsapp/meta-api.ts` into a typed
  * ChannelError, keeping Meta's original message and code (`providerCode`).
@@ -35,18 +46,8 @@ export function toChannelError(err: unknown): ChannelError {
   const opts = { providerCode, cause: err };
 
   if (code !== null) {
-    if (AUTH_CODES.has(code)) return new ChannelError('auth', message, opts);
-    if (RATE_LIMIT_CODES.has(code)) {
-      return new ChannelError('rate_limited', message, opts);
-    }
-    if (UNREACHABLE_CODES.has(code)) {
-      return new ChannelError('recipient_unreachable', message, opts);
-    }
-    if (WINDOW_CLOSED_CODES.has(code)) {
-      return new ChannelError('window_closed', message, opts);
-    }
-    if (INVALID_CODES.has(code))
-      return new ChannelError('invalid', message, opts);
+    const known = classifyMetaCode(code);
+    if (known) return new ChannelError(known, message, opts);
   }
 
   if (meta) {

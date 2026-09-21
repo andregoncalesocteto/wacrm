@@ -75,6 +75,10 @@ export interface ChannelErrorInfo {
   code: ChannelErrorCode;
   message: string;
   providerCode?: string | number;
+  /** Provider's short title for the failure (Meta `errors[0].title`), when it has one. */
+  title?: string;
+  /** Provider's longer detail (Meta `errors[0].error_data.details`), when it has one. */
+  details?: string | null;
 }
 
 /** Typed failure every provider throws, so the core can map it to HTTP/retry decisions. */
@@ -229,7 +233,12 @@ export type InboundEvent =
       kind: 'status';
       externalId: string;
       status: 'sent' | 'delivered' | 'read' | 'failed';
+      /** Failure reason; only set when status is 'failed'. */
       error?: ChannelErrorInfo;
+      /** When the provider reported the status (Meta `timestamp`), if it says. */
+      at?: Date;
+      /** Provider address of the recipient (Meta `recipient_id`), if it says. */
+      recipient?: string;
     }
   | {
       kind: 'reaction';
@@ -237,6 +246,8 @@ export type InboundEvent =
       sender: IdentityCandidate[];
       /** null = reaction removed. */
       emoji: string | null;
+      /** When the reaction was sent, if the provider says. */
+      at?: Date;
     }
   | {
       kind: 'connection';

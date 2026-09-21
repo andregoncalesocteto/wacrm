@@ -148,3 +148,15 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - maxMediaBytes is 16 MB (upload-media MEDIA_MAX_BYTES); the composer caps images at 5 MB per kind, the contract has one number only.
   - Baseline: 100 files / 1208 tests, lint 41 warnings.
 ---
+
+## 2026-09-21 - US-011
+- Added providers/whatsapp-cloud/inbound.ts (+ inbound.test.ts, 22 tests) and wired resolveConnection/verify/parse into the provider (connect/disconnect/health still `unsupported`). resolveConnection: metadata.phone_number_id -> getConnectionByExternalId('whatsapp_cloud', id). verify: reuses verifyMetaWebhookSignature (comma-separated META_APP_SECRET, timingSafeEqual, fail closed). parse: STATUS (sent/delivered/read/failed; others such as "deleted" dropped) and REACTION; messages are NOT parsed (US-073). The production webhook is untouched.
+- Body read-once: raw text is memoised per Request in a WeakMap (readRawBody), so resolveConnection -> verify -> parse can run in any order on one Request; the contract (Request params) is unchanged. Works with the fake {text, headers.get} Request used by the characterization test.
+- Additive type changes (types.ts): status event gains `at?: Date` and `recipient?`; reaction event gains `at?`; ChannelErrorInfo gains `title?`/`details?`. errors.ts exports classifyMetaCode (toChannelError refactored to use it, behaviour unchanged).
+- Event semantics for US-021: status.error.message = "[code] title: details" (exactly what broadcast_recipients.error_message stores), providerCode = code, title/details = messages.error_title/error_details, code is the mapped ChannelErrorCode. Reaction `externalId` = the TARGET wamid (reaction.message_id), emoji null = removal; sender = whatsapp:phone / whatsapp:bsuid / whatsapp:username identities (same resolveInboundIdentity as the webhook; contact paired by messages index, fallback contacts[0]). Reactions without target or identity are skipped like the webhook. Events keep delivery order (statuses first, then messages, per value).
+- Files changed: inbound.ts, inbound.test.ts, index.ts, errors.ts, types.ts, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - Meta status `timestamp` and `recipient_id` are needed by the ladder mirror (sent_at/delivered_at/read_at), hence the additive `at`.
+  - resolveConnection takes the first phone_number_id in the payload; a payload mixing several numbers would need a split by the caller (not seen from Meta).
+  - Baseline: 101 files / 1230 tests, lint 41 warnings.
+---
