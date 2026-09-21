@@ -6,6 +6,7 @@ import type {
   Connection,
   MessageRef,
   OutboundMessage,
+  SendOptions,
   SendResult,
   Target,
 } from '../../types';
@@ -158,8 +159,8 @@ async function sendOnce(
   }
 }
 
-async function authFor(conn: Connection) {
-  const creds = await getConnectionCredentials(conn.id);
+async function authFor(conn: Connection, opts?: SendOptions) {
+  const creds = opts?.credentials ?? (await getConnectionCredentials(conn.id));
   const accessToken = creds?.access_token;
   if (!accessToken) {
     throw new ChannelError('auth', 'WhatsApp connection has no access token');
@@ -170,9 +171,10 @@ async function authFor(conn: Connection) {
 async function send(
   conn: Connection,
   target: Target,
-  msg: OutboundMessage
+  msg: OutboundMessage,
+  opts?: SendOptions
 ): Promise<SendResult> {
-  const auth = await authFor(conn);
+  const auth = await authFor(conn, opts);
 
   // Variants only make sense for a phone number: a BSUID is opaque and has
   // exactly one correct form, so it gets a single attempt.

@@ -555,8 +555,8 @@
         "Lint passes",
         "Tests pass (`TZ=UTC npm test`)"
       ],
-      "notes": "Adicionada pelo orquestrador após a US-030: o subagente notou que a US-030 lê as credenciais por destinatário (o provider as carrega a cada `send`) e que a rota `/api/whatsapp/broadcast` ainda envia direto pela Meta. Ambos precisam ser fechados antes da US-031 (limpeza).",
-      "passes": false,
+      "notes": "Adicionada pelo orquestrador após a US-030: o subagente notou que a US-030 lê as credenciais por destinatário (o provider as carrega a cada `send`) e que a rota `/api/whatsapp/broadcast` ainda envia direto pela Meta. Ambos precisam ser fechados antes da US-031 (limpeza). Concluída: SendOptions{credentials?} aditivo no contrato send; deliverBroadcast lê credenciais uma vez; rota do dashboard envia por provider.send (templates exigido, 400 se ausente). Restante: src/lib/automations/meta-send.ts ainda importa sendTemplateMessage (arquivo órfão, nada em produção o importa; remover na US-031).",
+      "passes": true,
       "priority": 33
     },
     {

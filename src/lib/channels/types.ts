@@ -1,4 +1,4 @@
-import type { ChannelConnection } from './connections';
+import type { ChannelConnection, ConnectionCredentials } from './connections';
 
 /**
  * Provider contract: everything a messaging channel must implement so the CRM
@@ -209,6 +209,16 @@ type OutboundContentMessage =
   | { type: 'interactive'; interactive: InteractivePayload }
   | { type: 'reaction'; target: MessageRef; emoji: string | null };
 
+/**
+ * Optional per-call hints for `send`. `credentials` lets a caller that sends
+ * many messages on the SAME connection (a broadcast) resolve them once and
+ * hand them to every call, instead of one lookup + decrypt per message.
+ * Scope it to one delivery run; never cache it globally.
+ */
+export interface SendOptions {
+  credentials?: ConnectionCredentials;
+}
+
 export interface SendResult {
   /** Provider message id (wamid, Telegram message_id), used for status/idempotency. */
   externalId: string;
@@ -347,7 +357,8 @@ export interface ChannelProvider {
   send(
     conn: Connection,
     target: Target,
-    msg: OutboundMessage
+    msg: OutboundMessage,
+    opts?: SendOptions
   ): Promise<SendResult>;
   react?(
     conn: Connection,

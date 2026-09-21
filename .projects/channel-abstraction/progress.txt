@@ -398,3 +398,14 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Any test that calls a provider send needs credential mocks (fakeCredentialsAdmin + decrypt).
   - Baseline: 114 files / 1439 tests, lint 40 warnings, typecheck clean, build OK.
 ---
+
+## 2026-09-21 - US-076
+- Contract: `ChannelProvider.send(conn, target, msg, opts?: SendOptions)`, `SendOptions { credentials?: ConnectionCredentials }` (additive). The WhatsApp provider uses `opts.credentials` when given, else reads them (unchanged). Scope is one delivery run, no global cache (credentials can be replaced).
+- deliverBroadcast reads getConnectionCredentials(connection.id) ONCE (`?? {}` when none -> provider raises its auth error per recipient without re-reading) and passes it to every send. New broadcast-core.credentials.test.ts: 5 recipients -> 1 read.
+- Dashboard route POST /api/whatsapp/broadcast now sends via provider.send of conn.connection (registerBuiltinProviders + getProvider, requires capabilities.templates -> 400 otherwise), passing the credentials loadWhatsAppSendConnection already resolved. Request/response shapes and per-recipient results identical. New route.test.ts (12 tests) pinned the old behavior BEFORE the migration (meta-api mocked) and passes unchanged after.
+- Files: types.ts, whatsapp-cloud/index.ts, broadcast-core.ts, api/whatsapp/broadcast/route.ts (+2 new test files), prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - route.ts of the broadcast is not prettier-formatted (no semicolons); left as is to keep the diff surgical.
+  - `sendTemplateMessage` grep: only meta-api.ts, provider, and src/lib/automations/meta-send.ts (orphan: nothing in production imports it since US-028; engine uses automations/send.ts). Delete it in US-031.
+  - Baseline: 116 files / 1453 tests, lint 40 warnings, typecheck clean, build OK.
+---

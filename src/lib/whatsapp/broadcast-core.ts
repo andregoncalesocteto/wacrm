@@ -19,7 +19,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection';
-import type { ChannelConnection } from '@/lib/channels/connections';
+import {
+  getConnectionCredentials,
+  type ChannelConnection,
+} from '@/lib/channels/connections';
 import { getProvider } from '@/lib/channels/registry';
 import { registerBuiltinProviders } from '@/lib/channels/providers';
 import { ChannelError } from '@/lib/channels/types';
@@ -283,6 +286,12 @@ export async function deliverBroadcast(
     );
   }
 
+  // Credentials are read (and decrypted) ONCE for the whole delivery and
+  // handed to every send. `{}` when the connection has none: the provider then
+  // fails each recipient with its own auth error, without re-reading.
+  const credentials =
+    (await getConnectionCredentials(plan.connection.id)) ?? {};
+
   for (const recipient of plan.planned) {
     let sentMessageId: string | null = null;
     let lastError: string | null = null;
@@ -303,7 +312,8 @@ export async function deliverBroadcast(
               params: recipient.params,
             },
           },
-        }
+        },
+        { credentials }
       );
       sentMessageId = result.externalId;
     } catch (error) {
