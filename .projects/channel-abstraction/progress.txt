@@ -440,3 +440,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - engine.ts is NOT prettier-formatted (double quotes); do not run prettier on it (rewrites ~600 lines).
   - Existing dispatch.test.ts fake ignores .eq filters, so it cannot prove scoping; use a filtering fake.
 ---
+
+## 2026-09-21 - US-033
+- New routes: src/app/api/stores/route.ts (GET any member: stores of the account + `connections` summary [id, channel_type, display_name, status, disabled_at] via a second query on channel_connections, never config/credentials; POST admin+ -> 201 {store}) and src/app/api/stores/[id]/route.ts (PATCH admin+, 404 for other account / empty patch 400; DELETE admin+: 404, 409 {error, code:'has_connections'} when ANY connection exists (active or disabled), FK 23503 on delete (race) mapped to the same 409, else {ok:true}).
+- Validation in src/lib/stores/validation.ts: name required, trimmed, max 120; address 300, phone 40, manager_name 120 (trimmed, ''->null); business_hours object|null; settings object.
+- Uses the session (RLS) client from requireRole/getCurrentAccount, always also filtered by account_id. Errors: { error } via toErrorResponse (401/403).
+- Tests: src/app/api/stores/route.test.ts (15): list scoping + summary, create validation (empty/too long/bad json fields), agent 403, patch, 404 other account, delete 409 (active and disabled), delete ok, FK race 409. No UI, no migration.
+- **Learnings for future iterations:**
+  - The fake client in the test honours .eq and select columns; reusable pattern for RLS-client route tests with the real role check over a mocked getCurrentAccount.
+  - Baseline: 118 files / 1456 tests, lint 40 warnings, typecheck clean. Build not run (new routes only).
+---
