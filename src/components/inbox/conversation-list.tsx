@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
   matchesContactFilters,
+  matchesConversationScope,
+  NO_SCOPE_FILTERS,
   normalizeConversations,
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
@@ -73,6 +75,8 @@ export function ConversationList({
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  // Store / connection / channel scope. No UI yet (US-043): stays at "all".
+  const [scope] = useState(NO_SCOPE_FILTERS);
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
@@ -178,6 +182,8 @@ export function ConversationList({
       );
     }
 
+    result = result.filter((c) => matchesConversationScope(c, scope));
+
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((c) => {
@@ -189,7 +195,7 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, search, selectedTagIds, selectedCompany]);
+  }, [conversations, filter, search, selectedTagIds, selectedCompany, scope]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>

@@ -168,10 +168,27 @@ export interface ContactNote {
 
 export type ConversationStatus = 'open' | 'pending' | 'closed';
 
+/**
+ * The channel connection a conversation belongs to, embedded (with its store)
+ * by CONVERSATION_SELECT. Absent on rows that did not go through that select
+ * (e.g. a realtime payload), so consumers must tolerate `undefined`.
+ */
+export interface ConversationConnection {
+  id: string;
+  channel_type: string;
+  display_name: string;
+  status: string;
+  disabled_at: string | null;
+  store_id: string;
+  store?: { id: string; name: string } | null;
+}
+
 export interface Conversation {
   id: string;
   user_id: string;
   contact_id: string;
+  connection_id?: string | null;
+  connection?: ConversationConnection | null;
   status: ConversationStatus;
   assigned_agent_id?: string;
   last_message_text?: string;

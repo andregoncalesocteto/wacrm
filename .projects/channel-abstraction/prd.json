@@ -802,8 +802,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 47,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "CONVERSATION_SELECT embeds connection+store (verified against dev DB in browser). Pure matchesConversationScope/deriveScopeOptions in lib/inbox/conversations.ts; scope state wired in conversation-list at default (no UI: US-043)."
     },
     {
       "id": "US-043",

@@ -543,3 +543,14 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Template PATCH/DELETE ([id] route) already resolve the connection from the template's connection_id (US-016); untouched.
   - Old overview keys (connected, needsReconnecting) are unused now; US-069 can prune.
 ---
+
+## 2026-09-21 - US-042
+- CONVERSATION_SELECT now embeds `connection:channel_connections(id, channel_type, display_name, status, disabled_at, store_id, store:stores(id, name))`; types ConversationConnection + Conversation.connection/connection_id (optional). normalizeConversation passes the embed through (undefined when absent, null when null, unwraps array embeds).
+- lib/inbox/conversations.ts: ConversationScopeFilters, NO_SCOPE_FILTERS, matchesConversationScope (AND of store/connection/channel; null = no-op), deriveScopeOptions (stores/connections/channelTypes present in loaded conversations). conversation-list applies the predicate with a constant default scope (no visible change); inbox page hydrateConversation now backfills `connection` too.
+- Files: src/lib/inbox/conversations(.test).ts, src/types/index.ts, conversation-list.tsx, inbox/page.tsx, prd.json.
+- Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1599, build ok. Browser (pt, :3100): seeded conversation linked to a connection+store renders in /inbox, no PostgREST error on /rest/v1/conversations; seeds removed.
+- **Learnings:**
+  - The only other consumers of the select are the v1 API routes, whose serializeConversation is an explicit projection, so the embed does not leak into the public API.
+  - Realtime UPDATE payloads carry no `connection`; state merges keep the old embed (spread), only hydrate backfills it. US-043 UI should read the store/channel from `conversation.connection`.
+  - prettier --write on src/types/index.ts and the existing test file reformats unrelated lines: edit those textually.
+---
