@@ -118,3 +118,12 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - wacrm_migrations tracking column is `name` (not filename); to re-run a migration on dev: delete its row, `$FULL run --rm -T migrate`.
   - The dev DB had no whatsapp_config, so on dev the migration only created the identities of existing contacts (1 real row kept).
 ---
+
+## 2026-09-21 - US-008
+- Added src/lib/channels/{admin-client,connections,connections.test}.ts (no reader migrated). connections.ts: getConnectionById, getConnectionByExternalId(channelType, externalId), listConnectionsByAccount, listConnectionsByStore (optional client param, default service role; never touch the credentials table) and getConnectionCredentials(connectionId) (NO client param: uses only the module's service-role client). wa_token_v0 -> { access_token }; json_v1 -> parsed JSON; wa_token_v0 rows and legacy CBC ciphertexts are rewritten as GCM json_v1 on first read, best-effort (try/catch, guarded by .eq('secrets_format', old) against races).
+- Files changed: the three new files, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - "Service client only" is enforced by API shape (no client param on credentials) plus a test asserting a user client passed anyway is never touched and reads with a user client never query channel_connection_credentials.
+  - Credentials shape is snake_case (access_token) for every provider; verify_token of WhatsApp stays in connection.config, not in credentials.
+  - Tests mock './admin-client' with a chainable fake; encryption uses the vitest dummy ENCRYPTION_KEY. Baseline: 98 files, lint 41 warnings.
+---
