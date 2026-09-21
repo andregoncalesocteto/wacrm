@@ -474,3 +474,13 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Route tests: mock '@/lib/channels/providers' (registerBuiltinProviders noop) and registerProvider a fake as 'whatsapp_cloud'.
   - Success with registration 'skipped' still sets status connected (per story); /test then reports degraded.
 ---
+
+## 2026-09-21 - US-036
+- Settings rail: `whatsapp` section replaced by `stores` (Store icon) and `channels` (PlugZap) in the workspace group; resolveSection('whatsapp') -> 'channels'. Overview WhatsApp tile now targets `channels`. New StoresPanel (placeholder) and ChannelsPanel (head + provider card + the existing WhatsAppConfig below, so the current setup flow is intact). Non-edit-settings roles see a read-only note.
+- i18n (4 catalogues): Settings.sections.{stores,channels}, Settings.stores.*, Settings.channels.*, Channels.providers.whatsapp_cloud.{name,description}.
+- Files: src/components/settings/{settings-sections.ts,settings-overview.tsx,stores-panel.tsx,channels-panel.tsx,settings-sections.test.ts}, src/app/(dashboard)/settings/page.tsx, messages/*.json.
+- Browser (pt, :3100): rail shows Lojas and Canais; ?tab=whatsapp lands on Canais with the WhatsApp config form; ?tab=stores works. Screenshots in scratchpad (us036-*.png).
+- **Learnings for future iterations:**
+  - Sidebar/header links still use ?tab=whatsapp on purpose (legacy mapping). Later stories fill StoresPanel (US-037/038?) and ChannelsPanel (US-039); keep WhatsAppConfig reachable until then.
+  - Panel copy keys live under Settings.stores / Settings.channels; provider labels under Channels.providers.<type>.{name,description}.
+---

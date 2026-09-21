@@ -1765,13 +1765,28 @@
       "profile": "Seu perfil",
       "security": "Login e segurança",
       "appearance": "Aparência",
-      "whatsapp": "WhatsApp",
+      "stores": "Lojas",
+      "channels": "Canais",
       "templates": "Templates",
       "quick-replies": "Respostas rápidas",
       "fields": "Campos e tags",
       "deals": "Negócios e moeda",
       "members": "Membros da equipe",
       "api": "Chaves de API"
+    },
+    "stores": {
+      "title": "Lojas",
+      "description": "Cadastre as lojas da sua rede.",
+      "listTitle": "Nenhuma loja ainda",
+      "empty": "As lojas cadastradas aqui aparecerão nesta lista.",
+      "readOnly": "Somente proprietários e administradores podem cadastrar lojas."
+    },
+    "channels": {
+      "title": "Canais",
+      "description": "Conecte os canais de cada loja.",
+      "listTitle": "Canais conectados",
+      "empty": "Os canais são conectados por loja. Por enquanto, a conexão com o WhatsApp abaixo é a única disponível.",
+      "readOnly": "Somente proprietários e administradores podem alterar as conexões dos canais."
     },
     "groups": {
       "account": "Conta",
@@ -2172,6 +2187,14 @@
   },
   "DashboardShell": {
     "loading": "Carregando..."
+  },
+  "Channels": {
+    "providers": {
+      "whatsapp_cloud": {
+        "name": "WhatsApp Cloud API",
+        "description": "WhatsApp Business pela API oficial Cloud da Meta."
+      }
+    }
   },
   "Ui": {
     "close": "Fechar",

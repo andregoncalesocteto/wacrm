@@ -1775,13 +1775,28 @@
       "profile": "Your profile",
       "security": "Login & security",
       "appearance": "Appearance",
-      "whatsapp": "WhatsApp",
+      "stores": "Stores",
+      "channels": "Channels",
       "templates": "Templates",
       "quick-replies": "Quick replies",
       "fields": "Fields & tags",
       "deals": "Deals & currency",
       "members": "Team members",
       "api": "API keys"
+    },
+    "stores": {
+      "title": "Stores",
+      "description": "Register the stores in your network.",
+      "listTitle": "No stores yet",
+      "empty": "Stores you register here will appear in this list.",
+      "readOnly": "Only owners and admins can register stores."
+    },
+    "channels": {
+      "title": "Channels",
+      "description": "Connect the channels of each store.",
+      "listTitle": "Connected channels",
+      "empty": "Channels are connected per store. For now, the WhatsApp connection below is the only one available.",
+      "readOnly": "Only owners and admins can change channel connections."
     },
     "groups": {
       "account": "Account",
@@ -2184,6 +2199,14 @@
   },
   "DashboardShell": {
     "loading": "Loading..."
+  },
+  "Channels": {
+    "providers": {
+      "whatsapp_cloud": {
+        "name": "WhatsApp Cloud API",
+        "description": "WhatsApp Business through the official Meta Cloud API."
+      }
+    }
   },
   "Ui": {
     "close": "Close",
