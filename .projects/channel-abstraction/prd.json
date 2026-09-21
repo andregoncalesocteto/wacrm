@@ -345,7 +345,7 @@
       ],
       "priority": 20,
       "passes": false,
-      "notes": ""
+      "notes": "Após a US-018: o `parse` do WhatsApp não emite candidato para o BSUID do pai (`wa_parent_user_id`), então `resolveOrCreateContact` não o preenche; o `contactIdentityPatch` do webhook antigo ainda o faz. Ao ligar a ingestão, manter esse preenchimento (ou acrescentar a identidade `whatsapp:parent_bsuid`), decidindo junto com a US-070, que remove a coluna."
     },
     {
       "id": "US-020",
@@ -1237,7 +1237,7 @@
       ],
       "priority": 73,
       "passes": false,
-      "notes": "O número \"047\" do critério é indicativo: use o próximo número livre depois das migrations já existentes."
+      "notes": "O número \"047\" do critério é indicativo: use o próximo número livre depois das migrations já existentes. Antes de remover `wa_parent_user_id`, confirmar que nenhum código o lê; se algum caminho usar o BSUID do pai, migrá-lo para uma identidade `whatsapp:parent_bsuid` (backfill incluso)."
     },
     {
       "id": "US-071",
