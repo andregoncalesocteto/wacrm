@@ -63,7 +63,7 @@ interface Props {
  * "Connect a channel" in four steps: store, channel, data, connect and test.
  * Channels come from GET /api/channels/providers and the form from the UI
  * registry; nothing here names a channel. Writes go through the channels API
- * only (never the legacy whatsapp_config dual-write). Closing at any point
+ * only. Closing at any point
  * leaves the connection (if already created) in the list with its state.
  */
 export function ConnectChannelWizard({

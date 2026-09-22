@@ -193,6 +193,6 @@ If the server cannot reach `graph.facebook.com` at all:
   and 400/502 side. Pure and unit-tested; add new codes there.
 * `src/lib/whatsapp/waba-pairing.ts` — id format check and the
   phone-under-WABA check.
-* `src/app/api/whatsapp/config/route.ts` — the connect flow. Every
+* `src/lib/channels/providers/whatsapp-cloud/lifecycle.ts` — the connect flow. Every
   Meta failure returns `{ error, meta: { code, subcode, fbtrace_id,
   step, field, message } }`.

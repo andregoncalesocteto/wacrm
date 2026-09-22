@@ -30,8 +30,8 @@ import { toChannelError } from './errors';
 
 /**
  * Lifecycle and optional operations of the WhatsApp provider. Reuses the same
- * meta-api calls and pairing/explain helpers as the production routes
- * (`api/whatsapp/config` and `config/verify-registration`, untouched).
+ * meta-api calls and pairing/explain helpers as the former
+ * legacy config routes (removed in US-069).
  */
 
 async function requireAccessToken(conn: Connection): Promise<string> {
@@ -48,7 +48,7 @@ const wabaIdOf = (conn: Connection): string | null => {
 };
 
 /**
- * Same steps and order as POST /api/whatsapp/config: read the number, check it
+ * Same steps and order as the former legacy config route: read the number, check it
  * belongs to the WABA, register it (only with a PIN), subscribe the WABA.
  * Never persists anything (the PIN included); the core stores the outcome.
  * A missing PIN is not a failure (Meta test numbers, issue #242).

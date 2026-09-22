@@ -1309,8 +1309,8 @@
         "Tests pass (`TZ=UTC npm test`)"
       ],
       "priority": 77,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Removed src/app/api/whatsapp/config (POST/DELETE/GET, mirror-media, verify-registration; no UI caller used them) and lib/channels/whatsapp-dual-write.ts with their dual-write test. No code reads or writes whatsapp_config anymore (only stale comments in encryption.ts/meta-api.ts, a fake-DB assertion in telegram crm.integration.test.ts and a comment in broadcast-resume.test.ts remain). ?tab=whatsapp still resolves to channels (resolveSection). The table itself is dropped in US-070. npm run build OK."
     },
     {
       "id": "US-070",

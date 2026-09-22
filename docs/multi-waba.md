@@ -11,7 +11,7 @@ app secrets. This page walks through the three setups.
 
 | Value | Lives in | Scope |
 | --- | --- | --- |
-| Phone Number ID, WABA ID, access token, verify token, two-step PIN | `whatsapp_config` (one row per wacrm account, token encrypted) | per account |
+| Phone Number ID, WABA ID, access token, verify token, two-step PIN | `channel_connections` + `channel_connection_credentials` (one connection per number, token encrypted) | per account |
 | Webhook callback URL | your Meta App → WhatsApp → Configuration | per Meta App |
 | `META_APP_SECRET` | server environment | per deployment — **may list several** |
 | `META_APP_ID` | server environment | per deployment — single value |
@@ -103,7 +103,7 @@ Workarounds until a per-account app id exists:
 * Create image-header templates directly in WhatsApp Manager — once
   approved, wacrm lists and sends them like any other template.
 
-A per-account `app_id` column on `whatsapp_config` would lift this; it
+A per-connection `app_id` column would lift this; it
 is not planned for the near term because the only consumer is the
 template header upload.
 

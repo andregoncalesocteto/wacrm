@@ -254,7 +254,7 @@ export interface WabaPhoneNumber {
 /**
  * List the phone numbers that live under a WABA.
  *
- * Used by POST /api/whatsapp/config to prove the Phone Number ID the
+ * Used when connecting a WhatsApp channel to prove the Phone Number ID the
  * user typed actually belongs to the WABA ID they typed. A mismatch
  * used to save fine and surface days later as "the webhook never
  * fires" — the WABA that got subscribed wasn't the one owning the

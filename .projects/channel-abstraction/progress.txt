@@ -815,3 +815,11 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 160 files/1944 tests. No build, no browser (no UI).
 - **Learnings:** new code under lib/channels must log via channelLog, never console.* directly. Helpers without a loaded connection (identity, fanout engines) log with an empty context (`[channel:-] conn=- event=-`); pass connCtx(conn, eventId) when a connection is at hand.
 ---
+
+## 2026-09-21 - US-069
+- Deleted the legacy config path: src/app/api/whatsapp/config/{route.ts (GET/POST/DELETE), mirror-media, verify-registration, route.dualwrite.test.ts} and src/lib/channels/whatsapp-dual-write.ts. Nothing in the UI called them (settings use /api/channels/*). Comments/docs that pointed at the removed routes (lifecycle.ts, wizard, meta-api, meta-error-explain, troubleshooting, multi-waba) updated. ?tab=whatsapp still maps to channels via resolveSection.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 159 files/1935 tests, npm run build OK (dev server restarted afterwards). No browser (no UI change).
+- **Learnings for future iterations:**
+  - After deleting routes, `npm run typecheck` fails on stale .next/types/validator.ts until a build/dev run regenerates it.
+  - whatsapp_config table still exists (dropped in US-070); remaining textual mentions are comments and a fake-DB assertion in telegram crm.integration.test.ts.
+---
