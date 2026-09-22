@@ -84,6 +84,13 @@ No test-scenarios.json (acceptanceCriteria are the bar).
   left inconsistent (`SELECT count(*), count(distinct name) FROM public.wacrm_migrations` should match, no
   duplicates) before trusting it after a collision. Future migration stories (US-002) should use this
   `-e PGHOST=wacrm-replay-db-1` override every time the main stack might be up.
+- **Auditing "already covered" before writing a characterization test is worth doing literally, not just
+  skimming the summary bullet above.** For US-003, the capability-reject branch of `deliverBroadcast`
+  (`!provider.capabilities.templates` -> `ChannelError('unsupported', ...)`) turned out to be already fully
+  pinned by `broadcast-core.provider.test.ts` (pre-existing, from channel-abstraction's US-030) — same error
+  code, `send` never called, only the broadcast row stamped `failed`. Re-reading that file's actual assertions
+  (not just trusting the "what it covers" list above, which happened not to mention that branch) avoided a
+  duplicate test. Only `createBroadcast`'s connection resolution needed new coverage.
 
 ## 2026-09-22 - US-001
 - Implemented: new migration `052_broadcast_content_columns.sql` — drops NOT NULL from
@@ -160,4 +167,36 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     description. `git grep -n whatsapp_message_id` and reading each hit's surrounding code (DB column vs. unrelated
     variable/JSON-field of the same name) was necessary to get the true scope right without either under- or
     over-reaching.
+---
+
+## 2026-09-22 - US-003
+- Implemented: audited the six existing characterization test files named in the story's AC first. Found
+  `broadcast-core.provider.test.ts` (pre-existing, from channel-abstraction's US-030) already fully pins the
+  `deliverBroadcast` capability-reject branch (`!provider.capabilities.templates` ->
+  `ChannelError('unsupported', ...)`, `send` never called, only the broadcast row stamped `failed`) — did not
+  duplicate it. Added new coverage only for the other half of the AC, `createBroadcast`'s connection
+  resolution (nothing pinned this before): a new file, `broadcast-core.connection-resolution.test.ts`, with 3
+  tests — (1) `createBroadcast` calls `loadWhatsAppSendConnection(db, accountId)` with exactly those two
+  args, no `connectionId`/opts (pins "no parameter" ahead of US-004 adding one), (2) throws
+  `BroadcastError('whatsapp_not_configured', ..., 400)` when that resolver returns null, (3) uses whichever
+  connection comes back as-is (phoneNumberId/accessToken/persisted `p_connection_id`) — createBroadcast has
+  no independent connection-selection logic of its own.
+- Files changed: `src/lib/whatsapp/broadcast-core.connection-resolution.test.ts` (new),
+  `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches
+  baseline exactly), `TZ=UTC npm test` 161 files / 1938 tests passed (baseline 160/1935 + 1 new file/3 new
+  tests, nothing else changed). No build/browser check needed (story is test-only, no routing/UI/config
+  touched).
+- **Learnings for future iterations:**
+  - See the new "Auditing 'already covered'..." entry at the top of Codebase Patterns.
+  - US-004 (createBroadcast accepts an explicit `connection_id`) can lean on this story's
+    `toHaveBeenCalledWith(db, 'acc')` assertion as the signal that the "no parameter" behavior is being
+    intentionally changed — that one assert (not the whole file) is expected to need updating when
+    `connection_id` starts threading through; the `whatsapp_not_configured` and "uses whichever connection
+    comes back" tests should still hold conceptually (just resolved differently) even if their exact mocking
+    of `loadWhatsAppSendConnection` gets replaced by whatever generic resolver US-004 introduces.
+  - US-005's own AC already acknowledges the capability-reject branch is about to become a send branch, so
+    `broadcast-core.provider.test.ts`'s "fails typed unsupported" test is NOT expected to survive US-005
+    unchanged — it tests exactly the behavior being replaced, not a permanent characterization guard. Don't
+    be surprised when US-005 needs to touch it.
 ---
