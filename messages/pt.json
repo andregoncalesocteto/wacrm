@@ -892,8 +892,10 @@
       "personalize": {
         "title": "Personalizar variáveis",
         "subtitle": "Associe as variáveis do template a campos do contato ou informe valores fixos.",
+        "subtitleMessage": "Associe as variáveis a campos do contato ou informe valores fixos.",
         "headerImage": "Imagem do cabeçalho",
         "headerImageDesc": "Este template exige uma imagem de cabeçalho.",
+        "attachedMedia": "Mídia anexada",
         "imageUrl": "URL da imagem",
         "imageUrlPlaceholder": "https://example.com/image.jpg",
         "variables": "Variáveis",

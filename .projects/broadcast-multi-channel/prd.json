@@ -190,8 +190,8 @@
         "Typecheck passes"
       ],
       "priority": 12,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "step3-personalize.tsx's own media block is READ-ONLY for the free-message case (no URL input) — the attachment was already uploaded/validated at step1-compose-message.tsx (US-011); step3 just previews it and carries it forward via page.tsx's existing messageMediaUrl state (no new prop plumbing needed for propagation itself, only for step3 to read/display it). new/page.tsx's step 4 gate is still `template &&` (US-013's job, unchanged here) — after step 3 a free-message broadcast currently has no step 4 to advance into; not attempted here per design.md's phasing, same precedent as US-011 leaving step 2->4 unwired. Verified in browser: Telegram/free-message path reads the {{1}} token from the composed message (not template.variables), type/value mapping and the live preview substitute correctly, the uploaded step1 attachment renders as a read-only 'Mídia anexada' preview; WhatsApp/template path (text-only header) renders byte-identical to before (unchanged subtitle copy, no media block, same {{1}} mapping/preview)."
     },
     {
       "id": "US-013",

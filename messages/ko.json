@@ -892,8 +892,10 @@
       "personalize": {
         "title": "변수 개인화",
         "subtitle": "템플릿 변수를 연락처 필드에 매핑하거나 고정 값을 입력하세요.",
+        "subtitleMessage": "변수를 연락처 필드에 매핑하거나 고정 값을 입력하세요.",
         "headerImage": "헤더 이미지",
         "headerImageDesc": "이 템플릿에는 헤더 이미지가 필요합니다.",
+        "attachedMedia": "첨부된 미디어",
         "imageUrl": "이미지 URL",
         "imageUrlPlaceholder": "https://example.com/image.jpg",
         "variables": "변수",

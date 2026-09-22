@@ -240,9 +240,11 @@ export default function NewBroadcastPage() {
               connection={connection}
             />
           )}
-          {currentStep === 3 && template && (
+          {currentStep === 3 && (template || messageText) && (
             <Step3Personalize
               template={template}
+              messageText={messageText}
+              messageMediaUrl={messageMediaUrl}
               variables={variables}
               onUpdate={setVariables}
               headerMediaUrl={headerMediaUrl}

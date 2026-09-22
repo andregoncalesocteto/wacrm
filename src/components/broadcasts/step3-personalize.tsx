@@ -29,7 +29,12 @@ interface VariableMapping {
 }
 
 interface Step3Props {
-  template: MessageTemplate;
+  /** null when the chosen connection has no templates (US-011's free message is used instead). */
+  template: MessageTemplate | null;
+  /** The free message body (US-011), read when `template` is null. */
+  messageText?: string;
+  /** The free message's optional attachment (US-011), read when `template` is null. */
+  messageMediaUrl?: string;
   variables: Record<string, VariableMapping>;
   onUpdate: (variables: Record<string, VariableMapping>) => void;
   /** Media URL for an IMAGE/VIDEO/DOCUMENT header, when the template has one. */
@@ -37,6 +42,14 @@ interface Step3Props {
   onHeaderMediaUrlChange: (url: string) => void;
   onNext: () => void;
   onBack: () => void;
+}
+
+function looksLikeImageUrl(url: string): boolean {
+  try {
+    return /\.(png|jpe?g|gif|webp)$/i.test(new URL(url, 'http://x').pathname);
+  } catch {
+    return false;
+  }
 }
 
 const MEDIA_HEADER_TYPES = ['image', 'video', 'document'] as const;
@@ -75,6 +88,8 @@ const SAMPLE_CONTACT: Contact = {
 
 export function Step3Personalize({
   template,
+  messageText,
+  messageMediaUrl,
   variables,
   onUpdate,
   headerMediaUrl,
@@ -137,30 +152,43 @@ export function Step3Personalize({
     };
   }, []);
 
+  // When there's no template (US-011's free message connection), the
+  // tokens/preview/media come from the free message instead of
+  // `template.body_text`/`template.header_*` — same {{n}} token style,
+  // so the rest of this component (mapping + preview) doesn't need to
+  // know which case it's in.
+  const bodyText = template ? template.body_text : (messageText ?? '');
+
   const placeholders = useMemo(() => {
-    const matches = template.body_text.match(/\{\{(\d+)\}\}/g);
+    const matches = bodyText.match(/\{\{(\d+)\}\}/g);
     if (!matches) return [];
     return [...new Set(matches)].sort();
-  }, [template.body_text]);
+  }, [bodyText]);
 
   // Templates with an IMAGE/VIDEO/DOCUMENT header need a media URL at
   // send time — Meta requires the media component on every delivery and
   // rejects the broadcast without it. The field is hidden for text-only
   // headers.
-  const mediaHeaderType = isMediaHeaderType(template.header_type)
-    ? template.header_type
-    : null;
+  const mediaHeaderType =
+    template && isMediaHeaderType(template.header_type)
+      ? template.header_type
+      : null;
+
+  // A free message's attachment (if any) was already uploaded/validated
+  // in step 1 (US-011) — shown here read-only, just passed forward, not
+  // re-editable like a template's header media URL.
+  const hasFreeMessageMedia = !template && !!messageMediaUrl;
 
   // Seed the field with the template's stored sample URL the first time
   // we land on a media-header template, so the common "reuse the
   // approved media" case needs no typing. Only seeds when empty to avoid
   // clobbering a URL the user already edited.
   useEffect(() => {
-    if (mediaHeaderType && !headerMediaUrl && template.header_media_url) {
+    if (mediaHeaderType && !headerMediaUrl && template?.header_media_url) {
       onHeaderMediaUrlChange(template.header_media_url);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mediaHeaderType, template.header_media_url]);
+  }, [mediaHeaderType, template?.header_media_url]);
 
   const headerMediaError = useMemo<'missing' | 'invalid' | null>(() => {
     if (!mediaHeaderType) return null;
@@ -209,7 +237,7 @@ export function Step3Personalize({
       ? firstContactCustomValues
       : new Map<string, string>();
 
-    let text = template.body_text;
+    let text = bodyText;
     for (const placeholder of placeholders) {
       const key = placeholder.replace(/^\{\{|\}\}$/g, '');
       const mapping = variables[key];
@@ -233,13 +261,7 @@ export function Step3Personalize({
       text = text.replaceAll(placeholder, replacement);
     }
     return text;
-  }, [
-    template.body_text,
-    variables,
-    placeholders,
-    firstContact,
-    firstContactCustomValues,
-  ]);
+  }, [bodyText, variables, placeholders, firstContact, firstContactCustomValues]);
 
   const previewLabel = firstContact
     ? display.name(firstContact)
@@ -252,9 +274,32 @@ export function Step3Personalize({
           {t('personalize.title')}
         </h2>
         <p className="text-muted-foreground mt-1 text-sm">
-          {t('personalize.subtitle')}
+          {template ? t('personalize.subtitle') : t('personalize.subtitleMessage')}
         </p>
       </div>
+
+      {hasFreeMessageMedia && (
+        <div className="border-border bg-card/50 rounded-xl border p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <ImageIcon className="text-primary h-4 w-4" />
+            <p className="text-foreground text-sm font-medium">
+              {t('personalize.attachedMedia')}
+            </p>
+          </div>
+          {looksLikeImageUrl(messageMediaUrl as string) ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={messageMediaUrl}
+              alt={t('personalize.headerPreviewAlt')}
+              className="border-border max-h-40 rounded-lg border object-contain"
+            />
+          ) : (
+            <p className="text-muted-foreground text-xs break-all">
+              {messageMediaUrl}
+            </p>
+          )}
+        </div>
+      )}
 
       {mediaHeaderType && (
         <div className="border-border bg-card/50 rounded-xl border p-4">
@@ -300,7 +345,7 @@ export function Step3Personalize({
         </div>
       )}
 
-      {placeholders.length === 0 && !mediaHeaderType ? (
+      {placeholders.length === 0 && !mediaHeaderType && !hasFreeMessageMedia ? (
         <div className="border-border bg-card/50 rounded-xl border p-6 text-center">
           <p className="text-muted-foreground text-sm">
             {t('personalize.noPreview')}

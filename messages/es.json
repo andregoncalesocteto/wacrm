@@ -892,8 +892,10 @@
       "personalize": {
         "title": "Personalizar variables",
         "subtitle": "Asigna las variables de la plantilla a campos del contacto o ingresa valores fijos.",
+        "subtitleMessage": "Asigna las variables a campos del contacto o ingresa valores fijos.",
         "headerImage": "Imagen del encabezado",
         "headerImageDesc": "Esta plantilla requiere una imagen de encabezado.",
+        "attachedMedia": "Archivo adjunto",
         "imageUrl": "URL de la imagen",
         "imageUrlPlaceholder": "https://example.com/image.jpg",
         "variables": "Variables",

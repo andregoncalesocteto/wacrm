@@ -802,3 +802,77 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     zero-filled `new Uint8Array(size)` constructed entirely in-page, which avoids piping megabytes of base64
     through the sandbox pipe. Useful for any future story that needs to browser-test a file upload.
 ---
+
+## 2026-09-22 - US-012
+- Implemented: `step3-personalize.tsx`'s `template` prop is now `MessageTemplate | null`, with two new optional
+  props (`messageText`, `messageMediaUrl`) read only when `template` is null. A new `bodyText` local
+  (`template ? template.body_text : (messageText ?? '')`) feeds `placeholders`/the preview memo — both were
+  `template.body_text`-only before; every other piece of the mapping logic (type static/field/custom_field,
+  `previewFieldValue`, `updateVariable`, `unmappedKeys`) was already generic over `placeholders`/`variables` and
+  needed zero changes, matching the AC's "funciona igual pros dois casos" literally rather than by intent.
+  `mediaHeaderType` is now `template && isMediaHeaderType(...)` (was unconditional on `template.body_text`), so
+  the template-only editable media-header block (URL input, seed-from-template-sample, missing/invalid validation)
+  is untouched and unreachable when there's no template. A new sibling block (`hasFreeMessageMedia = !template &&
+  !!messageMediaUrl`) renders when a free message has an attachment: READ-ONLY (no input — the file was already
+  uploaded/validated by step1-compose-message.tsx in US-011, there's nothing to re-edit here), a local
+  `looksLikeImageUrl` extension sniff decides between an `<img>` preview (mirrors the template block's own
+  image-only preview rule) or a plain URL line for non-image kinds. The "no preview" empty state
+  (`placeholders.length === 0 && !mediaHeaderType`) gained `&& !hasFreeMessageMedia` so a media-only free message
+  doesn't show a contradictory "preview not available" card next to its own media preview. Subtitle copy is now
+  `template ? t('personalize.subtitle') : t('personalize.subtitleMessage')` — the original copy literally says
+  "template variables", which would have been a real (if cosmetic) bug for the free-message case; a second i18n
+  key was the smallest fix (added to all 4 catalogues, along with `personalize.attachedMedia` for the new block's
+  label).
+  `new/page.tsx`: the step-3 gate changed from `currentStep === 3 && template` to `currentStep === 3 && (template
+  || messageText)`, and `Step3Personalize` now also receives `messageText`/`messageMediaUrl` (both already existed
+  as page-level state from US-011, just weren't threaded to step 3 yet — exactly the note this iteration started
+  from). Step 4's own gate is UNCHANGED (`currentStep === 4 && template`) — deliberately, per design.md's phasing
+  and the US-011 iteration's own precedent (it left step 2->4 unwired for the same reason): wiring step 4 to
+  render for a free-message broadcast is US-013's job (route + `use-broadcast-sending.ts` payload), not this
+  story's. Concretely this means clicking "Avançar" from a fully-mapped free-message step 3 today advances
+  `currentStep` to 4, but nothing renders there yet — a known, intentional dead end until US-013 lands, not a bug
+  introduced here.
+- Files changed: `src/components/broadcasts/step3-personalize.tsx`,
+  `src/app/(dashboard)/broadcasts/new/page.tsx`, `messages/en.json`, `messages/pt.json`, `messages/es.json`,
+  `messages/ko.json` (`Broadcasts.wizard.personalize.subtitleMessage` + `.attachedMedia` in all four),
+  `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `npx vitest run src/i18n` 3 files/19 tests passed, `TZ=UTC npm test` 161 files/1950 tests passed
+  (matches baseline exactly — no unit-test AC for this story, same precedent as US-010/US-011: UI/wizard-state
+  only). No `npm run build` run standalone (not an AC criterion; the containerized rebuild's Next build already
+  compiles the route/component).
+- Browser check (dev-browser, containerized app rebuilt with `up -d --build app --no-deps`): seeded a throwaway QA
+  account (`/auth/v1/signup`, auto-confirmed), visited `/dashboard` once to trigger lazy account/profile creation,
+  then seeded one `stores` row, a `telegram` `channel_connections` row, a phoneless contact + `contact_identities`
+  (telegram) + a `conversations` row for that connection (US-006's eligibility requirement), and separately a
+  `whatsapp_cloud` connection + one `APPROVED` text-header template (for the regression check). Free-message path:
+  step 0 auto-pre-selected the lone-at-that-point Telegram connection; step 1 composed "Olá! Sua compra
+  chegou." + `{{1}}` via "Inserir variável" + a tiny synthetic PNG upload; step 2 showed "1 destinatários
+  estimados" (the seeded contact); step 3 rendered (previously impossible — gated on `template`) showing a
+  read-only "Mídia anexada" block with the step-1-uploaded image (confirmed via `img.src`/`naturalWidth` in-page
+  that it's the same `chat-media` storage URL from step 1, not a stale/wrong one), the `{{1}}` token read from the
+  free message text (not `template.variables`), the same static/field/custom-field type selector, a live preview
+  substituting the mapped value ("Olá! Sua compra chegou.Pedido #4821"), and the same unmapped-placeholder warning
+  gating "Avançar" until mapped. Regression check: added a second, `whatsapp_cloud` connection + template in the
+  same account, re-ran the wizard picking WhatsApp explicitly at step 0 (now unselected with 2 options, per
+  US-010) through `Step1ChooseTemplate` (unchanged) — step 3 rendered byte-identical to pre-story behavior: the
+  original `personalize.subtitle` copy ("...variáveis do template..."), no media block (text-only header), same
+  `{{1}}` mapping/preview mechanics. All seeded rows deleted afterwards (`delete from accounts where id=...`
+  cascades store/connections/templates/contacts/identities/conversations/profile; `delete from auth.users where
+  id=...` separately) — verified 0 rows remain by id.
+- **Learnings for future iterations:**
+  - Generalizing a step component to accept "template OR free message" only required touching the few spots that
+    read `template.<field>` directly (`body_text`, `header_type`, `header_media_url`) — everything downstream of
+    `placeholders`/`variables` (the actual mapping/preview logic) was already parametric and needed no changes.
+    Worth checking for the same shape (does the logic depend on the SOURCE of the tokens, or just on the tokens
+    themselves?) before generalizing any other template-shaped component in this PRD.
+  - The free-message media preview in step 3 is intentionally NOT editable (no URL input, unlike the template's
+    header-media block) — it's a pass-through display of what step 1 already collected/validated. Don't add an
+    edit affordance there without a reason; step 1 is the single place a free-message attachment gets chosen.
+  - `messageText`/`messageMediaUrl` living as page-level state in `new/page.tsx` (since US-011) meant they were
+    already "passed forward" across step transitions without step 3 doing anything special — the only work this
+    story needed for AC3 was making step 3 itself READ and DISPLAY them, not any new propagation plumbing.
+  - US-013 will need to change `new/page.tsx`'s step-4 gate (`currentStep === 4 && template`) to also cover the
+    free-message case, mirroring this story's own step-3 gate change (`template || messageText`) — that gate is
+    the one remaining piece of `new/page.tsx` still hardcoded to template-only.
+---

@@ -892,8 +892,10 @@
       "personalize": {
         "title": "Personalize Variables",
         "subtitle": "Map your template variables to contact fields or provide static values.",
+        "subtitleMessage": "Map your variables to contact fields or provide static values.",
         "headerImage": "Header Image",
         "headerImageDesc": "This template requires a header image.",
+        "attachedMedia": "Attached media",
         "imageUrl": "Image URL",
         "imageUrlPlaceholder": "https://example.com/image.jpg",
         "variables": "Variables",
