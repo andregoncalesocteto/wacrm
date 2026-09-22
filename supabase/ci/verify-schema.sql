@@ -241,6 +241,32 @@ BEGIN
     RAISE EXCEPTION 'message_templates (connection_id, name, language) unique index is missing (migration 051)';
   END IF;
 
+  -- 052: broadcasts can carry a template OR a free message. template_name/
+  -- template_language become nullable, message_text/message_media_url are
+  -- new nullable columns, and a CHECK enforces exclusivity.
+  IF (
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'broadcasts'
+      AND column_name IN ('template_name', 'template_language')
+      AND is_nullable = 'YES'
+  ) <> 2 THEN
+    RAISE EXCEPTION 'broadcasts.template_name/template_language must be nullable (migration 052)';
+  END IF;
+  IF (
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'broadcasts'
+      AND column_name IN ('message_text', 'message_media_url')
+  ) <> 2 THEN
+    RAISE EXCEPTION 'broadcasts.message_text/message_media_url are missing (migration 052)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.broadcasts'::regclass AND contype = 'c'
+      AND conname = 'broadcasts_content_exclusive_check'
+  ) THEN
+    RAISE EXCEPTION 'broadcasts_content_exclusive_check is missing (migration 052)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

@@ -67,3 +67,46 @@ No test-scenarios.json (acceptanceCriteria are the bar).
   scratchpad, never in the repo. `waitUntil: "networkidle"` can hang forever on a page with an open websocket
   (Realtime) — use `waitUntil: "load"` + a fixed `waitForTimeout` instead.
 - Never commit AGENTS.md (Next dev/build can touch it) or `.vscode/`. Never `git add -f` an ignored file.
+- **Replay DB network collision when the dev stack is already up**: `docker-compose.yml` declares `wacrm-net` as a
+  fixed-name network (`networks.wacrm-net.name: wacrm-net`), shared literally (not project-scoped) between the
+  default `wacrm` project and any `-p wacrm-replay` run — both `db` containers register the SAME network alias
+  `db`, so anything resolving hostname `db` while both stacks are up gets Docker's DNS round-robin between the
+  two Postgres instances (symptom: `migrate` mid-run suddenly sees "relation does not exist" or a duplicate-key
+  error on an already-applied migration name — it silently bounced between the two DBs). The `migrate.sh` script
+  and the `migrate` compose service always use `PGHOST: db` from the compose file's `environment:`, so you can't
+  avoid this by just being careful. Fix: override PGHOST to the replay container's own unique alias when running
+  migrate: `$R run --rm -T -e PGHOST=wacrm-replay-db-1 migrate` (the container's own alias is always
+  `<project>-<service>-1`, confirm with `docker inspect wacrm-replay-db-1 --format '{{json
+  .NetworkSettings.Networks}}'`). `$R exec -T db ...` for `auth`/`rest`/`storage`/`verify-schema` is fine as-is
+  (those are project-scoped `docker compose exec`, which targets the container by compose project, not DNS). Every
+  migration file's DDL is idempotent (`IF NOT EXISTS`/`DROP ... IF EXISTS`) and `migrate.sh` runs one transaction
+  per file, so a collision aborts cleanly with no partial state on either DB — but still confirm the dev DB wasn't
+  left inconsistent (`SELECT count(*), count(distinct name) FROM public.wacrm_migrations` should match, no
+  duplicates) before trusting it after a collision. Future migration stories (US-002) should use this
+  `-e PGHOST=wacrm-replay-db-1` override every time the main stack might be up.
+
+## 2026-09-22 - US-001
+- Implemented: new migration `052_broadcast_content_columns.sql` — drops NOT NULL from
+  `broadcasts.template_name`/`template_language`, adds nullable `broadcasts.message_text` and
+  `broadcasts.message_media_url`, adds CHECK `broadcasts_content_exclusive_check` enforcing
+  `(template_name IS NOT NULL) <> (message_text IS NOT NULL OR message_media_url IS NOT NULL)` (ADR-002, option A).
+  Extended `supabase/ci/verify-schema.sql` with checks for the two nullable columns, the two new columns, and the
+  CHECK constraint's presence.
+- Files changed: `supabase/migrations/052_broadcast_content_columns.sql` (new), `supabase/ci/verify-schema.sql`,
+  `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Applied to dev DB (`$FULL run --rm -T migrate` — 1 migration applied) and to the isolated replay
+  (`-p wacrm-replay`, full 52-migration replay + `verify-schema.sql` — both passed); replay torn down with
+  `down -v` on the replay project only, dev DB verified unchanged/intact afterwards.
+- No app code touched (US-001 is migration-only per the PRD; `create_broadcast_with_recipients` and the TS
+  `Broadcast` type still assume template-only — that's US-004/US-005's job, not a regression from this story).
+- Checks: `npm run typecheck` clean, `npm run lint` 0 errors/41 warnings (matches baseline exactly), `TZ=UTC npm
+  test` 160 files / 1935 tests passed (matches baseline exactly). No build/browser check needed (story doesn't
+  touch routing/config or UI).
+- **Learnings for future iterations:**
+  - See the new "Replay DB network collision" entry at the top of Codebase Patterns — hit it live on this story
+    (migrate bounced between the dev and replay Postgres instances via the shared `db` DNS alias) and worked
+    around it with `-e PGHOST=wacrm-replay-db-1`. US-002 also touches migrations — reuse that recipe.
+  - The dev stack was NOT already up at the start of this iteration (despite the earlier Codebase Patterns note
+    assuming it is) — had to `up -d --wait db auth storage` first. Its `wacrm_db-data` volume did already have
+    migrations 001-051 applied (persisted from a prior session), so only 052 was new there.
+---
