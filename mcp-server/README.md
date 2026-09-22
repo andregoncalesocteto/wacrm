@@ -71,14 +71,16 @@ when their guard is set.
 | Tool                 | Group     | Scope needed         | What it does                                    |
 | -------------------- | --------- | -------------------- | ----------------------------------------------- |
 | `whoami`             | read      | _(any valid key)_    | Show the account + scopes the key carries       |
-| `list_contacts`      | read      | `contacts:read`      | List/search contacts (paginated)                |
+| `list_stores`        | read      | `connections:read`   | List the account's stores                       |
+| `list_connections`   | read      | `connections:read`   | List channel connections (id, channel, store)   |
+| `list_contacts`      | read      | `contacts:read`      | List/search contacts, with their identities     |
 | `get_contact`        | read      | `contacts:read`      | Read one contact                                |
 | `list_conversations` | read      | `conversations:read` | List conversations, filter by status/contact    |
 | `get_conversation`   | read      | `conversations:read` | Read one conversation                           |
 | `list_messages`      | read      | `messages:read`      | List a conversation's messages                  |
 | `get_broadcast`      | read      | `broadcasts:send`    | Poll a broadcast's delivery status              |
-| `send_message`       | write     | `messages:send`      | Send a WhatsApp message (text/template/media)   |
-| `create_contact`     | write     | `contacts:write`     | Create (find-or-create) a contact               |
+| `send_message`       | write     | `messages:send`      | Send a message by `conversation_id` or `connection_id` + `to` |
+| `create_contact`     | write     | `contacts:write`     | Create (find-or-create) a contact by phone/identities |
 | `update_contact`     | write     | `contacts:write`     | Update a contact / replace its tags             |
 | `send_broadcast`     | broadcast | `broadcasts:send`    | Launch a template broadcast (requires `confirm`)|
 

@@ -8,6 +8,12 @@ broadcasts — without going through the dashboard UI.
 > messages / contacts / conversations / broadcasts endpoints, and
 > outbound event [webhooks](#webhooks) all ship now.
 
+> **Pre-stable until the first client:** the multi-store, multi-channel
+> contract (`/stores`, `/connections`, `connection_id` / `channel` /
+> `external_message_id` on messages and conversations, contact `identities`,
+> and the new webhook fields) may still change before it is frozen. Breaking
+> changes to it are announced in the release notes.
+
 ## Authentication
 
 Every request authenticates with an **API key**, sent as a bearer

@@ -779,3 +779,10 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 156 files/1904 tests. No build, no browser (API only).
 - **Learnings:** the status path gets its connection from the ingest call, not from the message row; the fanout test's admin mock needed maybeSingle/then for the origin lookup. MCP (US-064) may want the new webhook fields documented.
 ---
+
+## 2026-09-21 - US-064
+- MCP (mcp-server, 0.1.1 -> 0.2.0 in package.json, package-lock root, server.json, VERSION in index.ts): new read tools list_stores and list_connections (scope connections:read, optional store_id) + client methods; send_message now takes conversation_id or connection_id + to (never both) and documents external_message_id/connection_id/channel in the response; create_contact takes phone and/or identities [{kind, external_id, handle?}]; list/get contact and conversation descriptions mention identities, connection_id, store_id, channel. README tool table updated.
+- Docs: docs/mcp.md (pre-stable banner, new tools/fields), docs/public-api.md (pre-stable banner; endpoint sections were already updated by US-060..063).
+- Checks: mcp-server `npm run build` clean (no tests exist there), typecheck, lint 0 errors/43 warnings, TZ=UTC 156 files/1904 tests. No root build, no browser.
+- **Learnings:** mcp-server has no test script; src/index.ts VERSION was already stale (0.1.0 vs 0.1.1) and is now synced. Tool zod schema for identities mirrors parseIdentities server-side (kind validated by the API, not the MCP).
+---

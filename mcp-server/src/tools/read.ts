@@ -28,11 +28,37 @@ export function registerReadTools(server: McpServer, client: WacrmClient): void 
   );
 
   server.registerTool(
+    'list_stores',
+    {
+      title: 'List stores',
+      description:
+        'List the stores (branches) of the account. Each connection belongs to one store. Needs the connections:read scope.',
+      inputSchema: {},
+      annotations: { ...READ_ONLY, title: 'List stores' },
+    },
+    handle(async () => jsonResult(await client.listStores())),
+  );
+
+  server.registerTool(
+    'list_connections',
+    {
+      title: 'List channel connections',
+      description:
+        'List the channel connections (WhatsApp, Telegram, ...) with their id, channel, store, status and whether they are enabled. Use the id as connection_id in send_message. Optionally filter by store_id. Needs the connections:read scope.',
+      inputSchema: {
+        store_id: z.string().optional().describe('Only connections of this store.'),
+      },
+      annotations: { ...READ_ONLY, title: 'List channel connections' },
+    },
+    handle(async (args) => jsonResult(await client.listConnections(args))),
+  );
+
+  server.registerTool(
     'list_contacts',
     {
       title: 'List contacts',
       description:
-        'List contacts in the CRM, newest first. Optionally filter by a free-text search (matches name or phone) or by a tag id. Results are paginated: pass the returned next_cursor to fetch the next page.',
+        'List contacts in the CRM, newest first. Each contact carries its identities (channel address list: kind, external_id, handle); phone is null for contacts without a phone. Optionally filter by a free-text search (matches name or phone) or by a tag id. Results are paginated: pass the returned next_cursor to fetch the next page.',
       inputSchema: {
         search: z.string().optional().describe('Free-text search over name or phone number.'),
         tag: z.string().optional().describe('Tag id to filter by.'),
@@ -54,7 +80,7 @@ export function registerReadTools(server: McpServer, client: WacrmClient): void 
     'get_contact',
     {
       title: 'Get contact',
-      description: 'Read a single contact by its id.',
+      description: 'Read a single contact by its id, including its identities (kind, external_id, handle).',
       inputSchema: {
         id: z.string().describe('Contact id.'),
       },
@@ -84,7 +110,7 @@ export function registerReadTools(server: McpServer, client: WacrmClient): void 
     'get_conversation',
     {
       title: 'Get conversation',
-      description: 'Read a single conversation by id, including its contact and tags.',
+      description: 'Read a single conversation by id, including its contact (with identities), tags, connection_id, store_id and channel.',
       inputSchema: {
         id: z.string().describe('Conversation id.'),
       },
