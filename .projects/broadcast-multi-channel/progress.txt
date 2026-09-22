@@ -991,3 +991,79 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     against accidentally reusing a real bot/number's external id for a second, throwaway QA connection — don't
     rely on memory alone to avoid touching the real account's channel; the DB itself refuses the collision.
 ---
+
+## 2026-09-22 - US-014
+- Implemented: `[id]/page.tsx` (broadcast report) no longer shows a literal `0`/`0%` for Delivered/Read when the
+  broadcast's connection is on a channel that has no delivery/read receipts (Telegram's Bot API has neither) — it
+  now shows "—" there, with a title tooltip explaining why. Added a `connectionChannelType` state, populated by a
+  new query in `fetchData` (`channel_connections.channel_type` by `bc.connection_id`, one extra `.maybeSingle()`
+  call alongside the existing broadcast/recipients reads — same raw-supabase-read style already used in this file,
+  no new API route). Read the connection's real `Capabilities` via the existing `useChannelProviders()` hook
+  (`GET /api/channels/providers`, already used by `step0-choose-connection.tsx`/`step1-compose-message.tsx`) —
+  `deliveryUnavailable = !capabilities.deliveryStatus`, `readUnavailable = !capabilities.readStatus`, defaulting
+  to "available" (`false`) while `providers`/`connectionChannelType` are still loading, so the common WhatsApp case
+  never flashes "—" before settling (same bias as `composerCapabilities`'s `WHATSAPP_FALLBACK`).
+  `StatCard` gained optional `unavailable`/`unavailableHint` props: when `unavailable`, both the value and the `%`
+  badge render "—" (no `format.number`/percent math run), and the card gets a `title` tooltip. `FunnelChart`'s
+  `FunnelStep` gained optional `unavailable`: when set, the bar renders at the same minimum 5% width as a
+  legitimate 0 (so the funnel shape doesn't visually break) but the label inside becomes "—" instead of `0 (0%)`.
+  Only the Delivered/Read stat cards and funnel steps pass `unavailable` — Sent/Replied/Failed are untouched, and
+  the per-recipient table's `delivered`/`read` columns were ALREADY correct before this story (they render the
+  row's `delivered_at`/`read_at` TIMESTAMP, which is `null`/"-" for an unreachable metric, never a misleading `0`
+  — confirmed by reading the render code, not assumed; no change needed there, matching the AC's own scope which
+  only names the top-level report, not the per-recipient table).
+- `Broadcast` (src/types/index.ts) gained `connection_id: string` (was entirely missing from the TS type despite
+  being a real, NOT NULL DB column since migration 051/channel-abstraction) — needed to read `bc.connection_id`
+  off the `supabase.from('broadcasts').select('*')` result in the report page; a genuinely minimal, story-driven
+  addition (only the one field this story needs), not a broader type reconciliation.
+- Files changed: `src/app/(dashboard)/broadcasts/[id]/page.tsx`, `src/types/index.ts`, `messages/en.json`,
+  `messages/pt.json`, `messages/es.json`, `messages/ko.json` (`Broadcasts.detail.stats.unavailableHint` in all
+  four), `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `npx vitest run src/i18n` 3 files/19 tests passed, `TZ=UTC npm test` 161 files/1955 tests passed
+  (matches baseline exactly — no unit-test AC for this story, same precedent as US-010/US-011/US-012: UI-only,
+  read straight from a live capability + a DB join, nothing pure enough to unit-test in isolation without
+  duplicating what `broadcast-eligibility`/`composer-capabilities` already characterize elsewhere). No
+  `npm run build` run standalone (not an AC criterion; the containerized rebuild's Next build already compiled the
+  route/component, confirmed by the successful `docker compose ... up -d --build`).
+- Browser check (dev-browser, containerized app rebuilt with `up -d --build app --no-deps`): seeded a throwaway QA
+  account (`/auth/v1/signup`, auto-confirmed), logged in via the UI to trigger lazy account/profile creation, then
+  seeded one `stores` row, a `whatsapp_cloud` connection, a `telegram` connection, two contacts (one phoned, one
+  phoneless), and TWO broadcasts directly via SQL (bypassing the wizard, since this story is about the report
+  page's read side, not the send flow): (1) WhatsApp, `template_name` set, one recipient inserted directly at
+  `status='read'` with `sent_at`/`delivered_at`/`read_at` all set — the incremental aggregate trigger (migration
+  005) bumped `sent_count`/`delivered_count`/`read_count` to 1/1/1 automatically; (2) Telegram, `message_text` set
+  (free-message, matches what US-013's real wizard would persist for this channel), one recipient inserted at
+  `status='sent'` only (Telegram legitimately never reaches `delivered`/`read` — there's no receipt to advance it)
+  — `sent_count=1`, `delivered_count=0`, `read_count=0`. Visited both `/broadcasts/[id]` pages:
+    - WhatsApp: "Entregues" and "Lidas" stat cards both showed "1"/"100%" (unchanged from pre-story behavior); the
+      funnel showed "Entregue 1 (100%)"/"Lida 1 (100%)"; the recipient row showed real timestamps in the
+      Entregue/Lida columns. Confirms AC2 (sent/failed/replied — and, in this control case, delivered/read too —
+      are byte-identical to before for a channel that DOES report these).
+    - Telegram: "Entregues" and "Lidas" stat cards both showed "—"/"—" (no `0`, no `0%`); hovering (confirmed via
+      `document.querySelectorAll('div[title]')`) showed the new tooltip text "Este canal não reporta esta
+      métrica" on both cards; the funnel showed "Entregue —" / "Lida —" (no "(0%)"); "Enviadas" (1/100%) and
+      "Respondidas"/"Com falha" (0/0%, untouched — AC2) rendered normally; the recipient row's Entregue/Lida
+      columns showed "-" (unchanged, per-recipient behavior was already correct pre-story). Screenshot saved at
+      `/tmp/claude-1000/.../scratchpad/us014-telegram-report.png` (not in the repo). All seeded rows deleted
+      afterwards (`delete from accounts where id=...` cascades store/connections/contacts/broadcasts/
+      broadcast_recipients/profile; `delete from auth.users where id=...` separately) — verified 0 rows remain by
+      id/name pattern for accounts, broadcasts (`QA US-014%`) and connections (`qa-us014%`).
+- **Learnings for future iterations:**
+  - **`Broadcast` in `src/types/index.ts` was missing `connection_id` despite the column existing (NOT NULL) since
+    channel-abstraction's migration 051** — worth checking that type against the real `\d broadcasts` schema
+    before assuming any other DB column is already represented there; `template_name`/`template_language` are
+    still typed as required non-nullable strings even though migration 052/US-001 made them nullable in the DB
+    (not touched by this story, since nothing here needed to read them as possibly-null — flagging for whichever
+    future story next touches broadcast content display).
+  - Seeding a broadcast + recipients directly via SQL (not through the wizard) is a fast, valid way to
+    browser-verify a REPORT page in a specific counts state — the incremental aggregate trigger from migration 005
+    (`_bcast_cols_for_status`) recomputes `sent/delivered/read/replied/failed_count` automatically off whatever
+    `status` you insert the recipient at (e.g. `status='read'` bumps all three of sent/delivered/read by 1 in one
+    INSERT), so there's no need to also hand-set the `broadcasts.*_count` columns or walk a recipient through every
+    status transition.
+  - `useChannelProviders()` returning the FULL `Capabilities` object (confirmed again here, same finding as
+    US-011's note) means any future report/detail page that needs `deliveryStatus`/`readStatus`/any other raw
+    capability field should call the hook directly rather than routing through `composerCapabilities()`'s derived
+    subset, which does not expose these fields.
+---

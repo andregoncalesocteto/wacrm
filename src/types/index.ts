@@ -432,6 +432,8 @@ export interface Broadcast {
   id: string;
   user_id: string;
   name: string;
+  /** Which connection this broadcast sends through (migration 051, NOT NULL). */
+  connection_id: string;
   template_name: string;
   template_language: string;
   template_variables?: Record<string, unknown>;

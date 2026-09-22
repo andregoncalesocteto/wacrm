@@ -776,7 +776,8 @@
         "delivered": "Entregados",
         "read": "Leídos",
         "replied": "Respondidos",
-        "failed": "Fallidos"
+        "failed": "Fallidos",
+        "unavailableHint": "Este canal no reporta esta métrica"
       },
       "toastFailedDelete": "Error al eliminar: {error}",
       "toastDeleted": "Difusión eliminada",

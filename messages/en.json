@@ -776,7 +776,8 @@
         "delivered": "Delivered",
         "read": "Read",
         "replied": "Replied",
-        "failed": "Failed"
+        "failed": "Failed",
+        "unavailableHint": "This channel doesn't report this metric"
       },
       "toastFailedDelete": "Failed to delete: {error}",
       "toastDeleted": "Broadcast deleted",

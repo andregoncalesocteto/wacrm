@@ -776,7 +776,8 @@
         "delivered": "전달됨",
         "read": "읽음",
         "replied": "응답함",
-        "failed": "실패"
+        "failed": "실패",
+        "unavailableHint": "이 채널은 이 지표를 제공하지 않습니다"
       },
       "toastFailedDelete": "삭제하지 못했습니다: {error}",
       "toastDeleted": "브로드캐스트가 삭제되었습니다",

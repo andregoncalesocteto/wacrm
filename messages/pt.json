@@ -776,7 +776,8 @@
         "delivered": "Entregues",
         "read": "Lidas",
         "replied": "Respondidas",
-        "failed": "Com falha"
+        "failed": "Com falha",
+        "unavailableHint": "Este canal não reporta esta métrica"
       },
       "toastFailedDelete": "Falha ao excluir: {error}",
       "toastDeleted": "Broadcast excluído",
