@@ -111,8 +111,8 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Verified in browser only the capabilities.initiate === 'template' branch ('sem identidade neste canal') since /broadcasts/new (US-006's note, still true) hardcodes channelType: 'whatsapp_cloud'/initiate: 'template' until US-009's real connection picker lands — the initiate !== 'template' branch ('ainda não conversou com este canal') is implemented and reachable via the same ternary/connection.initiate check but has no UI path to browser-verify yet."
     },
     {
       "id": "US-008",

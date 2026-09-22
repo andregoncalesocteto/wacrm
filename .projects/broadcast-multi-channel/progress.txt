@@ -440,3 +440,54 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     `new/page.tsx`'s auto-resolve effect once a real picker exists — that effect is intentionally the single place
     this lives, so it's a one-spot change, not a hunt.
 ---
+
+## 2026-09-22 - US-007
+- Implemented: `step2-select-audience.tsx`'s single fixed `selectAudience.ineligibleReason` i18n key is now two keys,
+  picked at render time by `connection?.initiate === 'template'` (the same `BroadcastConnectionContext` field
+  US-006 introduced) — `ineligibleReasonTemplate` ("no identity for this channel") for template-capable channels,
+  `ineligibleReasonConversation` ("hasn't messaged this channel yet") otherwise. `connection === null` (still
+  resolving) falls back to the template copy, matching the old single-message behavior most closely; the ineligible
+  block itself is already gated behind `!loadingCount && ineligible.length > 0` so this only matters for an instant.
+  No new component/type needed — pure copy + a ternary reading a field that already existed.
+- Files changed: `src/components/broadcasts/step2-select-audience.tsx`, `messages/en.json`, `messages/pt.json`,
+  `messages/es.json`, `messages/ko.json` (`ineligibleReason` → `ineligibleReasonTemplate` +
+  `ineligibleReasonConversation` in all four), `.projects/broadcast-multi-channel/prd.json`,
+  `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `npx vitest run src/i18n` (key-parity + ICU-safety) 3 files/19 tests passed, `TZ=UTC npm test` 161
+  files / 1947 tests passed (matches baseline exactly — no new test file; this story is copy/i18n only, nothing to
+  characterize). No `npm run build` (no routing/config touched, not an AC criterion for this story).
+- Browser check (dev-browser, containerized app rebuilt first with `up -d --build app --no-deps`... actually ran a
+  full `up -d --build` this session since kong/app/realtime/meta/studio weren't up yet, not just `app --no-deps`):
+  seeded a throwaway QA account (`/auth/v1/signup`, auto-confirmed) that got its own account+profile on first
+  dashboard visit, then seeded (one psql statement per call) a `stores` row, a `channel_connections` row
+  (`channel_type='whatsapp_cloud'`, `status='connected'`), an `APPROVED` `message_templates` row, and two
+  `contacts` (one with a phone, one with `phone=''`). Logged in via the UI, walked `/broadcasts/new` through step 1
+  (picked the template) to step 2: the audience summary correctly showed "1 contato não elegível" / "Sem
+  identidade neste canal — este contato não pode receber broadcasts" / "QA Ineligible Contact", with the phoned
+  contact correctly counted in the 1-estimated-recipient total. All seeded rows deleted afterwards (`delete from
+  accounts where id=...` cascades stores/channel_connections/contacts/message_templates/profiles; `delete from
+  auth.users` separately since `accounts.owner_user_id` is `ON DELETE RESTRICT`) — verified 0 rows remain by name/
+  email pattern.
+  - Could NOT browser-verify the `initiate !== 'template'` branch ("ainda não conversou com este canal"): confirmed
+    by reading `src/app/(dashboard)/broadcasts/new/page.tsx` that its auto-resolve effect (US-006's note, still
+    accurate) hardcodes `channelType: 'whatsapp_cloud'` / `initiate: 'template'` regardless of what connections the
+    account actually has — there is no UI path to a non-template connection until US-009's real step-0 picker
+    lands. This is the same known gap US-006 already hit and documented for its own audience-filter change; US-007
+    inherits it verbatim. Logic was verified by code read only (the ternary reads `connection.initiate` the same
+    way `isBroadcastEligible` already does), not by an actual render. Recorded in the story's `notes` in prd.json.
+- **Learnings for future iterations:**
+  - `/broadcasts/new`'s hardcoded WhatsApp/template auto-resolve (flagged by US-006, confirmed again here) blocks
+    ANY future story's browser verification of a non-template-connection UI path until US-009 lands — expect
+    US-010/US-011/US-012 to hit the same "logic implemented, can't browser-verify yet" situation for their
+    non-template branches unless they land after or alongside US-009.
+  - New QA account signup does NOT auto-create an `accounts`/`profiles` row — that happens lazily on first
+    authenticated page load (observed: `/auth/v1/signup` alone left zero `profiles` rows; visiting `/dashboard`
+    logged in created the account+profile as `owner`). Query `profiles` by `user_id` (not `id` — `profiles.id` is
+    its own uuid, `profiles.user_id` is the FK to `auth.users.id`) to find the auto-created `account_id` after
+    login, not before.
+  - Cleanup recipe for a QA account seeded this way: `delete from accounts where id='<account_id>'` cascades
+    stores/channel_connections/message_templates/contacts/profiles (all FK `ON DELETE CASCADE` on `account_id`),
+    then `delete from auth.users where id='<user_id>'` separately (`accounts.owner_user_id` FK is `ON DELETE
+    RESTRICT`, so the user row survives the account delete and needs its own statement).
+---

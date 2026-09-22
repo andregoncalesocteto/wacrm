@@ -613,7 +613,13 @@ export function Step2SelectAudience({
                 count: ineligible.length,
               })}
             </p>
-            <p className="mt-0.5">{t('selectAudience.ineligibleReason')}</p>
+            <p className="mt-0.5">
+              {t(
+                connection?.initiate === 'template'
+                  ? 'selectAudience.ineligibleReasonTemplate'
+                  : 'selectAudience.ineligibleReasonConversation'
+              )}
+            </p>
             <ul className="mt-1.5 list-disc pl-4">
               {ineligible.slice(0, INELIGIBLE_LIST_MAX).map((c) => (
                 <li key={c.id}>
