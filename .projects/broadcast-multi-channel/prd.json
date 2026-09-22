@@ -175,8 +175,8 @@
         "Typecheck passes"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Text length is validated against captionMaxLength — the only per-provider text-length capability the channel contract exposes (lib/channels/types.ts); broadcast-core.ts (US-005) already treats this same text as the media caption when media is attached, so one provider-driven limit correctly governs both cases. Media type/size validated against mediaKinds and min(provider.maxMediaBytes, the chat-media bucket's own 16 MB file_size_limit) — never advertises a limit the upload itself can't honor. Browser-verified end-to-end with a throwaway QA account + a Telegram connection: step1-compose-message.tsx renders (not the template picker), 'Insert variable' inserts {{1}}, Avançar is disabled with empty content, typing text enables it, exceeding captionMaxLength (1024 for Telegram) shows the specific over-limit message and blocks Avançar, a valid image uploads to chat-media and previews, and a 17 MB file is rejected client-side with the exact 16 MB bucket-cap message (no wrong channel name). Also verified the WhatsApp/template regression path: picking a whatsapp_cloud connection at step 0 still renders step1-choose-template.tsx unchanged."
     },
     {
       "id": "US-012",

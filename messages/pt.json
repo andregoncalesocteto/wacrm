@@ -828,6 +828,23 @@
         "createFirst": "Crie um template em Configurações primeiro.",
         "errorLoad": "Falha ao carregar os templates"
       },
+      "composeMessage": {
+        "title": "Componha a mensagem",
+        "subtitle": "Esta conexão não tem templates aprovados — escreva a mensagem que será enviada.",
+        "textLabel": "Mensagem",
+        "textPlaceholder": "Digite a mensagem…",
+        "insertVariable": "Inserir variável",
+        "charCount": "{count}/{max} caracteres",
+        "textTooLong": "A mensagem excede o limite de {max} caracteres deste canal.",
+        "mediaLabel": "Anexo (opcional)",
+        "uploadButton": "Enviar arquivo",
+        "removeMedia": "Remover",
+        "mediaHint": "Opcional. O tipo e o tamanho do arquivo são limitados pelo canal escolhido.",
+        "mediaPreviewAlt": "Pré-visualização do anexo",
+        "unsupportedMedia": "Este canal não aceita este tipo de mídia",
+        "mediaTooLarge": "O arquivo tem {size} MB — o limite deste canal é {max} MB.",
+        "uploadFailed": "Falha no envio do arquivo."
+      },
       "selectAudience": {
         "title": "Selecionar público",
         "subtitle": "Escolha quem receberá este broadcast.",

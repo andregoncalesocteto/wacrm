@@ -828,6 +828,23 @@
         "createFirst": "먼저 설정에서 템플릿을 만드세요.",
         "errorLoad": "템플릿을 불러오지 못했습니다"
       },
+      "composeMessage": {
+        "title": "메시지 작성",
+        "subtitle": "이 연결에는 승인된 템플릿이 없습니다 — 보낼 메시지를 직접 작성하세요.",
+        "textLabel": "메시지",
+        "textPlaceholder": "메시지를 입력하세요…",
+        "insertVariable": "변수 삽입",
+        "charCount": "{count}/{max}자",
+        "textTooLong": "메시지가 이 채널의 제한인 {max}자를 초과했습니다.",
+        "mediaLabel": "첨부 파일 (선택 사항)",
+        "uploadButton": "파일 업로드",
+        "removeMedia": "제거",
+        "mediaHint": "선택 사항입니다. 파일 형식과 크기는 선택한 채널에 따라 제한됩니다.",
+        "mediaPreviewAlt": "첨부 파일 미리보기",
+        "unsupportedMedia": "이 채널은 이 종류의 미디어를 지원하지 않습니다",
+        "mediaTooLarge": "파일 크기가 {size}MB입니다 — 이 채널의 제한은 {max}MB입니다.",
+        "uploadFailed": "파일 업로드에 실패했습니다."
+      },
       "selectAudience": {
         "title": "대상 선택",
         "subtitle": "이 브로드캐스트를 받을 대상을 선택하세요.",

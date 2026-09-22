@@ -828,6 +828,23 @@
         "createFirst": "Primero crea una plantilla en Configuración.",
         "errorLoad": "Error al cargar las plantillas"
       },
+      "composeMessage": {
+        "title": "Redacta el mensaje",
+        "subtitle": "Esta conexión no tiene plantillas aprobadas — escribe el mensaje que se enviará.",
+        "textLabel": "Mensaje",
+        "textPlaceholder": "Escribe el mensaje…",
+        "insertVariable": "Insertar variable",
+        "charCount": "{count}/{max} caracteres",
+        "textTooLong": "El mensaje supera el límite de {max} caracteres de este canal.",
+        "mediaLabel": "Adjunto (opcional)",
+        "uploadButton": "Subir archivo",
+        "removeMedia": "Quitar",
+        "mediaHint": "Opcional. El tipo y tamaño del archivo están limitados por el canal elegido.",
+        "mediaPreviewAlt": "Vista previa del adjunto",
+        "unsupportedMedia": "Este canal no acepta este tipo de contenido multimedia",
+        "mediaTooLarge": "El archivo tiene {size} MB — el límite de este canal es {max} MB.",
+        "uploadFailed": "Error al subir el archivo."
+      },
       "selectAudience": {
         "title": "Seleccionar audiencia",
         "subtitle": "Elige quién recibirá esta difusión.",

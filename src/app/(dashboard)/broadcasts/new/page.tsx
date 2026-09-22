@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { MessageTemplate } from '@/types';
 import { Step0ChooseConnection } from '@/components/broadcasts/step0-choose-connection';
 import { Step1ChooseTemplate } from '@/components/broadcasts/step1-choose-template';
+import { Step1ComposeMessage } from '@/components/broadcasts/step1-compose-message';
 import { Step2SelectAudience } from '@/components/broadcasts/step2-select-audience';
 import { Step3Personalize } from '@/components/broadcasts/step3-personalize';
 import { Step4ScheduleSend } from '@/components/broadcasts/step4-schedule-send';
@@ -48,6 +49,11 @@ export default function NewBroadcastPage() {
   >({});
   const [headerMediaUrl, setHeaderMediaUrl] = useState('');
   const [name, setName] = useState('');
+
+  // Free-message content for a connection without templates (US-011).
+  // Mutually exclusive with `template` — only one is read at send time.
+  const [messageText, setMessageText] = useState('');
+  const [messageMediaUrl, setMessageMediaUrl] = useState('');
 
   // Chosen at step 0 (Step0ChooseConnection) — the user's own pick now,
   // no more auto-resolving "the" WhatsApp connection (US-010).
@@ -206,10 +212,21 @@ export default function NewBroadcastPage() {
               onBack={() => router.push('/broadcasts')}
             />
           )}
-          {currentStep === 1 && (
+          {currentStep === 1 && connection?.initiate === 'template' && (
             <Step1ChooseTemplate
               selectedTemplate={template}
               onSelect={setTemplate}
+              onNext={() => setCurrentStep(2)}
+              onBack={() => setCurrentStep(0)}
+            />
+          )}
+          {currentStep === 1 && connection && connection.initiate !== 'template' && (
+            <Step1ComposeMessage
+              connection={connection}
+              text={messageText}
+              onTextChange={setMessageText}
+              mediaUrl={messageMediaUrl}
+              onMediaUrlChange={setMessageMediaUrl}
               onNext={() => setCurrentStep(2)}
               onBack={() => setCurrentStep(0)}
             />

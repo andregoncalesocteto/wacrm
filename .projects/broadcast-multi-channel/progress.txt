@@ -711,3 +711,94 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     gains conditional content). US-011 is explicitly where `step1-compose-message.tsx` gets built and this
     branches; not attempted here to stay surgical (design.md: "step1-choose-template.tsx | Inalterado").
 ---
+
+## 2026-09-22 - US-011
+- Implemented: new `src/components/broadcasts/step1-compose-message.tsx`, the wizard's step 1 for a connection
+  whose `capabilities.initiate !== 'template'`. A textarea for the message body (a "Inserir variável" button
+  inserts the next free `{{n}}` token at the cursor — same `{{n}}` style templates already use, `renderTemplateBody`
+  (US-005) resolves it the same way at send time) + an optional media attachment, mirroring
+  `template-manager.tsx`'s header-media upload UX (hidden file input triggered by a button + preview image, no
+  separate manual-URL fallback — unlike the template header, a broadcast's free-message media has no "reuse the
+  approved sample" case to seed from). `new/page.tsx` now renders `Step1ComposeMessage` at `currentStep === 1` when
+  `connection.initiate !== 'template'`, and `Step1ChooseTemplate` (unchanged) when `=== 'template'` — the branch the
+  US-010 iteration explicitly left open. New page-level state: `messageText`/`messageMediaUrl` (parallel to
+  `template`/`headerMediaUrl`, not yet consumed elsewhere — wiring them into send is US-012 (step 3
+  generalization)/US-013 (step 4 + route), matching design.md's own phasing).
+- Limits are read from the CHOSEN connection's provider, never a fixed number (the AC's explicit requirement,
+  citing the Flows fix for the same class of bug): `captionMaxLength` (`lib/channels/types.ts`'s `Capabilities`,
+  fetched client-side via the existing `useChannelProviders()` hook / `GET /api/channels/providers`) is the ONLY
+  per-provider text-length capability that exists in the contract — there is no separate "body text max length"
+  field, and `broadcast-core.ts` (US-005) already treats this same field as the media caption when media is
+  attached, so reusing it for both the plain-text and the media-caption case is correct, not a workaround. Media
+  type is checked against `capabilities.mediaKinds` (MIME-sniffed from the picked `File.type`, prefix-matched
+  image/video/audio, default document — a small local `mediaKindFromFile`, same "local, not promoted" precedent as
+  `broadcast-core.ts`'s own `inferMediaKind` from US-005, since this one is client-only and can't share a module
+  with server code anyway). Media size is checked against
+  `Math.min(capabilities.maxMediaBytes, MEDIA_MAX_BYTES)` — `MEDIA_MAX_BYTES` (16 MB, `lib/storage/upload-media.ts`)
+  is the `chat-media` bucket's own real `file_size_limit` (migrations 016/020/023), a genuine infra ceiling below
+  some providers' own cap (Telegram advertises 50 MB) that `template-manager.tsx` already documented and worked
+  around the same way for template headers — advertising a provider's raw cap without this min would let a user
+  pick a file the channel allows but the bucket will still reject.
+- Exceeding either limit blocks "Avançar" (not just a toast): a live `{count}/{max} caracteres` counter turns red
+  and a specific inline message appears under the textarea once `text.length > captionMaxLength`; an
+  over-type/oversized media file is rejected before upload via a toast with the exact provider-derived MB numbers,
+  the existing valid attachment (if any) is left untouched. `hasContent` (text or media present) also gates
+  "Avançar" — mirrors `createBroadcast`'s own `content_required` check (US-004) so the wizard can't produce a state
+  the server would reject anyway.
+- Files changed: `src/components/broadcasts/step1-compose-message.tsx` (new),
+  `src/app/(dashboard)/broadcasts/new/page.tsx`, `messages/en.json`, `messages/pt.json`, `messages/es.json`,
+  `messages/ko.json` (`Broadcasts.wizard.composeMessage.*` in all four), `.projects/broadcast-multi-channel/
+  prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `npx vitest run src/i18n` 3 files/19 tests passed, `TZ=UTC npm test` 161 files/1950 tests passed
+  (matches baseline exactly — no unit-test AC for this story, it's UI/validation-in-the-browser only, same
+  precedent as US-010). No `npm run build` run standalone (not an AC criterion; the containerized rebuild's Next
+  build already compiles the route/component, confirmed by the successful `docker compose ... up -d --build`).
+- Browser check (dev-browser, containerized app rebuilt with `up -d --build app --no-deps`): seeded a throwaway QA
+  account (`/auth/v1/signup`, auto-confirmed), visited `/dashboard` once to trigger lazy account/profile creation,
+  seeded one `stores` row and a `telegram` `channel_connections` row (`status='connected'`). At `/broadcasts/new`:
+  step 0 auto-pre-selected the single Telegram connection; advancing to step 1 rendered "Componha a mensagem" (NOT
+  the template picker) with "0/1024 caracteres" (Telegram's real `captionMaxLength`), "Avançar" disabled with empty
+  text. Clicking "Inserir variável" inserted `{{1}}`; typing text enabled "Avançar"; filling 1050 chars turned the
+  counter red, showed "A mensagem excede o limite de 1024 caracteres deste canal." and re-disabled "Avançar".
+  Uploading a real (tiny, synthetic) PNG via the hidden file input (dispatched through `page.evaluate` + a
+  browser-native `File`/`DataTransfer`, since the dev-browser sandbox has no direct filesystem access for
+  `setInputFiles`) succeeded — object landed in `chat-media` at the correct account-scoped path, "Remover" appeared,
+  preview rendered. A synthetic 17 MB file (built via `crypto`-free zero-filled `Uint8Array` inside `page.evaluate`,
+  to avoid piping ~23 MB of base64 through the sandbox) was rejected with "O arquivo tem 17.0 MB — o limite deste
+  canal é 16 MB." (the bucket cap, not Telegram's raw 50 MB) and did NOT clear the already-valid attachment.
+  Regression check: seeded a second, `whatsapp_cloud` connection in the same account/store — with two eligible
+  connections, step 0 correctly listed both, unselected; picking WhatsApp and advancing rendered the unchanged
+  `Step1ChooseTemplate` ("Nenhum template disponível", same empty-state copy as before this story). No new browser
+  console errors (`[PresenceHeartbeat] touch_presence failed` is a pre-existing, unrelated tunnel/network log, seen
+  on a plain page load with no wizard interaction). All seeded rows deleted afterwards (`delete from accounts
+  where id=...` cascades store/connections/profile; `delete from auth.users where id=...` separately) — verified 0
+  rows remain by id.
+  Could NOT browser-verify: an actual send of a free-message broadcast (step 2 audience → step 4 send is still
+  gated on `template` in `new/page.tsx`, `{currentStep === 3 && template && (...)}` /
+  `{currentStep === 4 && template && (...)}` — unwired on purpose, US-012/US-013's job per design.md's own phasing;
+  confirmed by reading `new/page.tsx`, not assumed). Recorded in the story's `notes` only as scope, not as a defect.
+- **Learnings for future iterations:**
+  - `useChannelProviders()` (`hooks/use-channel-providers.ts`) returns the FULL `Capabilities` object per provider
+    type (not just the derived subset `composer-capabilities.ts`'s `composerCapabilities()` exposes) — reuse the
+    raw hook directly (as `step0-choose-connection.tsx` already does) whenever a caller needs a field
+    `composerCapabilities` doesn't surface, like `maxMediaBytes` here. Don't extend `composerCapabilities` just to
+    avoid a second `useChannelProviders()` call — the hook is already a shared, cached, one-fetch-per-page-load
+    promise, so calling it from two components is free.
+  - **`captionMaxLength` is the codebase's only per-provider text-length capability** — there is no separate
+    "plain body text max length" field, and none is needed: `broadcast-core.ts` already collapses "text" and
+    "media caption" into the same `messageText`/`renderTemplateBody` path. Any future free-text UI for a channel
+    (not just broadcasts) should read the same field rather than inventing a parallel limit.
+  - `Math.min(capabilities.maxMediaBytes, MEDIA_MAX_BYTES)` (the `chat-media`/`flow-media` bucket's real 16 MB
+    `file_size_limit`) is the correct "true" upload ceiling whenever a provider's own cap is being surfaced in a
+    NEW upload UI — a raw `capabilities.maxMediaBytes` (Telegram: 50 MB) would advertise a number the storage
+    layer itself can't honor. `message-composer.tsx`'s existing upload path does NOT do this (it caps by a fixed
+    `MEDIA_MAX_BYTES_BY_KIND` unrelated to `capabilities.maxMediaBytes` at all) — that's a pre-existing
+    inconsistency, left untouched (out of scope for this story; noted here in case a future story reconciles it).
+  - dev-browser's QuickJS sandbox has no `fs`, so `page.setInputFiles(<path>)` (which needs to read the file from
+    disk) throws `fs is not available`. Work around it by building the `File`/`DataTransfer` INSIDE
+    `page.evaluate(...)` (real browser JS, not the sandbox) — either `atob(base64)` a small fixture transferred as
+    a script argument, or (for a large file where you only care about triggering a size check, not real content) a
+    zero-filled `new Uint8Array(size)` constructed entirely in-page, which avoids piping megabytes of base64
+    through the sandbox pipe. Useful for any future story that needs to browser-test a file upload.
+---

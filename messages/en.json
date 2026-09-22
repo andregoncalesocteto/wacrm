@@ -828,6 +828,23 @@
         "createFirst": "Create a template in Settings first.",
         "errorLoad": "Failed to load templates"
       },
+      "composeMessage": {
+        "title": "Compose the message",
+        "subtitle": "This connection has no approved templates — write the message to send instead.",
+        "textLabel": "Message",
+        "textPlaceholder": "Type the message…",
+        "insertVariable": "Insert variable",
+        "charCount": "{count}/{max} characters",
+        "textTooLong": "Message exceeds this channel's limit of {max} characters.",
+        "mediaLabel": "Attachment (optional)",
+        "uploadButton": "Upload file",
+        "removeMedia": "Remove",
+        "mediaHint": "Optional. Accepted file types and size are limited by the chosen channel.",
+        "mediaPreviewAlt": "Attachment preview",
+        "unsupportedMedia": "This channel does not accept this kind of media",
+        "mediaTooLarge": "File is {size} MB — this channel's limit is {max} MB.",
+        "uploadFailed": "Upload failed."
+      },
       "selectAudience": {
         "title": "Select Audience",
         "subtitle": "Choose who will receive this broadcast.",
