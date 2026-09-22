@@ -304,3 +304,73 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     in application code as `hasTemplate === hasMessage -> reject` (rather than two separate "missing"/"both"
     checks) is the shortest correct implementation and is easy to eyeball against the SQL.
 ---
+
+## 2026-09-22 - US-005
+- Implemented: `deliverBroadcast` (src/lib/whatsapp/broadcast-core.ts) no longer rejects a broadcast up front when
+  `!provider.capabilities.templates`. It now decides per delivery pass with `isTemplatePath =
+  provider.capabilities.initiate === 'template'` (matches the AC's literal wording, not the content-presence check
+  `design.md`'s pseudocode used — see note below) and builds the `OutboundMessage` inside the per-recipient loop
+  (was built once outside; now has to be, since free-message variables are per-recipient):
+    - `isTemplatePath` -> the exact same `{type:'template', ...}` payload as before, byte-for-byte (same fields,
+      same `plan.templateRow`/`recipient.params`).
+    - otherwise, `plan.messageMediaUrl` set -> `{type:'media', kind: inferMediaKind(url), url, caption}`;
+      else -> `{type:'text', text}`. Both render `plan.messageText`'s `{{1}}` tokens through the EXISTING
+      `renderTemplateBody` (src/lib/whatsapp/template-body.ts, already used for template body persistence) with
+      `recipient.params` — reused instead of introducing a new substitution function. That is what the AC's
+      "reaproveita `resolveVariables`" pointed at conceptually; the actual `resolveVariables` (src/hooks/use-
+      broadcast-sending.ts) is a CLIENT hook that maps a `VariableMapping` to a contact field at compose time,
+      wrong layer/wrong signature for a server-side per-recipient render from already-frozen `params` — verified
+      by reading it before deciding not to import it.
+    - New local helper `inferMediaKind(url): MediaKind` (extension-based image/video/audio, default 'document') —
+      `message_media_url` has no separate kind column (migration 052), and no existing "infer from URL" helper
+      was found anywhere in the codebase (checked flows/send.ts, automations, media/filename.ts — all take an
+      explicit `kind`, none infer it).
+  `BroadcastPlan` gained `messageText?: string | null` / `messageMediaUrl?: string | null` (optional, so
+  `broadcast-resume.ts`'s own plan-builder — untouched, still WhatsApp/template-only, US-008's job — didn't need
+  editing). `createBroadcast` now populates them from its existing `hasMessage`/`messageText`/`messageMediaUrl`
+  locals (previously computed but only used for the RPC args). `send`/target construction, credentials read-once,
+  the try/catch error mapping, and the sent/failed row-stamping are all UNCHANGED — exactly what the AC asked for
+  ("mesma chamada de hoje, só o message monta diferente").
+- Design-doc vs. AC divergence, resolved in favor of the AC (JSON is authoritative per the scratchpad rule):
+  `design.md`'s pseudocode branches on `broadcast.template_name` (content presence): `broadcast.template_name ?
+  {type:'template'} : ...`. The AC instead says branch on `capabilities.initiate`. Implemented the AC's version.
+  They can only diverge on a content/channel MISMATCH (e.g. a template-content broadcast pointed at a
+  `after_inbound` connection, or vice versa) — nothing in the codebase validates that alignment yet; US-004's own
+  notes already flagged this and deferred the fix to US-012's route-level `connection_channel_mismatch` check.
+  This story does not make that gap worse (pre-US-005, deliverBroadcast ALWAYS took the template branch
+  regardless of content, so an unguarded mismatch was already possible) — just worth knowing before US-012 lands.
+- Files changed: `src/lib/whatsapp/broadcast-core.ts`, `src/lib/whatsapp/broadcast-core.provider.test.ts`
+  (rewritten — see below), `.projects/broadcast-multi-channel/prd.json`,
+  `.projects/broadcast-multi-channel/progress.txt`.
+- Test-file note (per the mid-task instruction from this iteration's caller, matching progress's own earlier
+  note): `broadcast-core.provider.test.ts` previously had ONE test, "fails typed unsupported before sending
+  anything" — it characterized the exact capability-reject branch this story replaces with a send branch, so it
+  could not survive unchanged. Replaced its content (not its file name) with 3 new tests against the REAL
+  telegram provider (`registerBuiltinProviders` unmocked; only `callBotApi` from
+  `@/lib/channels/providers/telegram/api` and `getConnectionCredentials` are stubbed — no `getProvider` mock, so
+  this also exercises the actual `capabilities.initiate` value read off the registry, not a hand-set flag):
+  (1) sends free text with `{{1}}` resolved per recipient and grabs `external_message_id` (`chat:message_id`,
+  the AC's literal "novo teste"), (2) media + rendered caption (`inferMediaKind` + caption-render coverage),
+  (3) one recipient fails without aborting the other (non-template path), asserting both the typed error message
+  and the surviving success. All existing WhatsApp characterization files (`broadcast-core.test.ts`,
+  `.credentials.test.ts`, `.disabled.test.ts`, `.connection-resolution.test.ts`,
+  `broadcast-deliver.characterization.test.ts`, `broadcast-resume.test.ts`) were left untouched and pass with
+  their asserts unmodified — confirmed by running them explicitly before the full suite.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `TZ=UTC npm test` 161 files / 1943 tests passed (baseline 161/1941 + net 2: provider.test.ts went
+  from 1 test to 3). No `npm run build` (story doesn't touch routing/config). No browser check (not an AC
+  criterion for this story — createBroadcast's route still only exposes `template_name`, per US-004's own note,
+  so there is no dashboard/API path yet that actually reaches the new free-message branch end-to-end; that wiring
+  is US-009 through US-012's job).
+- **Learnings for future iterations:**
+  - `renderTemplateBody` (src/lib/whatsapp/template-body.ts) is the codebase's one `{{n}}` positional-param
+    substitution function — reuse it for ANY future per-recipient text templating (not just broadcasts); it
+    leaves an unresolved placeholder as-is (`{{2}}`) rather than blanking it, which is what "variables already
+    resolved per recipient" needs to stay honest about under-supplied params.
+  - `inferMediaKind` is intentionally local/unexported to `broadcast-core.ts` (not a shared lib) — it's a thin
+    extension sniff for a schema that has no kind column, not a general-purpose MIME classifier. If a future story
+    needs the same inference elsewhere (e.g. US-010's compose UI), consider promoting it then rather than now.
+  - The `provider.capabilities.initiate === 'template'` vs. `broadcast.template_name` content-check divergence
+    (see above) is still open — US-012 (`connection_channel_mismatch` 400) is where it gets closed. Until then,
+    `deliverBroadcast` trusts that content and channel already agree.
+---

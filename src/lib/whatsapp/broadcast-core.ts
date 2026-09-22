@@ -29,10 +29,12 @@ import {
   ChannelError,
   CONNECTION_DISABLED_CODE,
   ConnectionDisabledError,
+  type MediaKind,
+  type OutboundMessage,
 } from '@/lib/channels/types';
 import { WA_PHONE_KIND } from '@/lib/channels/identity';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
-import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
+import { resolveTemplateRow, renderTemplateBody } from '@/lib/whatsapp/template-body';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
 
@@ -95,6 +97,13 @@ export interface BroadcastPlan {
   phoneNumberId: string;
   accessToken: string;
   templateRow: MessageTemplate | null;
+  /**
+   * Free-message content (US-005) — absent/null on the template path.
+   * The body still carries unresolved `{{1}}` tokens; `deliverBroadcast`
+   * renders them per recipient with that recipient's frozen `params`.
+   */
+  messageText?: string | null;
+  messageMediaUrl?: string | null;
   planned: PlannedRecipient[];
   /** Phones rejected up front (invalid E.164) — counted as failed. */
   rejected: number;
@@ -297,17 +306,37 @@ export async function createBroadcast(
 
   return {
     broadcastId,
-    // '' on the free-message path — deliverBroadcast (US-005) still assumes
-    // a template send; nothing reads this field for a message-only plan yet.
+    // '' on the free-message path — deliverBroadcast reads messageText/
+    // messageMediaUrl instead for that path (US-005).
     templateName: hasTemplate ? templateName! : '',
     templateLanguage,
     connection: conn,
     phoneNumberId: conn.external_id,
     accessToken,
     templateRow,
+    messageText: hasMessage ? (messageText ?? null) : null,
+    messageMediaUrl: hasMessage ? (messageMediaUrl ?? null) : null,
     planned,
     rejected,
   };
+}
+
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
+const VIDEO_EXTENSIONS = new Set(['mp4', '3gp', 'mov']);
+const AUDIO_EXTENSIONS = new Set(['mp3', 'ogg', 'opus', 'm4a', 'aac', 'amr']);
+
+/**
+ * Guess a free-message attachment's `MediaKind` from its URL extension —
+ * `broadcasts.message_media_url` (migration 052) has no separate kind
+ * column. Falls back to 'document' (the broadest accepted kind) for an
+ * unknown or missing extension.
+ */
+function inferMediaKind(url: string): MediaKind {
+  const ext = /\.([a-zA-Z0-9]+)(?:[?#]|$)/.exec(url)?.[1]?.toLowerCase() ?? '';
+  if (IMAGE_EXTENSIONS.has(ext)) return 'image';
+  if (VIDEO_EXTENSIONS.has(ext)) return 'video';
+  if (AUDIO_EXTENSIONS.has(ext)) return 'audio';
+  return 'document';
 }
 
 /**
@@ -327,8 +356,7 @@ export async function deliverBroadcast(
   db: SupabaseClient,
   plan: BroadcastPlan
 ): Promise<void> {
-  // Resolve the provider ONCE and require `templates` before touching any
-  // recipient: a channel without templates fails the whole broadcast up front.
+  // Resolve the provider ONCE, before touching any recipient.
   // US-078: a disabled connection sends nothing (the broadcast is bound to it).
   if (plan.connection.disabled_at) {
     await db
@@ -340,16 +368,11 @@ export async function deliverBroadcast(
 
   registerBuiltinProviders();
   const provider = getProvider(plan.connection.channel_type);
-  if (!provider.capabilities.templates) {
-    await db
-      .from('broadcasts')
-      .update({ status: 'failed', updated_at: new Date().toISOString() })
-      .eq('id', plan.broadcastId);
-    throw new ChannelError(
-      'unsupported',
-      'This channel does not support template messages'
-    );
-  }
+  // Only a `template`-capability channel (WhatsApp) sends the template
+  // payload; anything else (`after_inbound`/`free`, e.g. Telegram) sends
+  // the free message composed at plan time (US-005) — no more up-front
+  // rejection here.
+  const isTemplatePath = provider.capabilities.initiate === 'template';
 
   // Credentials are read (and decrypted) ONCE for the whole delivery and
   // handed to every send. `{}` when the connection has none: the provider then
@@ -361,13 +384,8 @@ export async function deliverBroadcast(
     let sentMessageId: string | null = null;
     let lastError: string | null = null;
 
-    // The provider owns the phone-variant retry (only "recipient not allowed"
-    // moves on to the next variant) and throws the last error.
-    try {
-      const result = await provider.send(
-        plan.connection,
-        { kind: WA_PHONE_KIND, address: recipient.phone },
-        {
+    const message: OutboundMessage = isTemplatePath
+      ? {
           type: 'template',
           template: {
             name: plan.templateName,
@@ -377,7 +395,28 @@ export async function deliverBroadcast(
               params: recipient.params,
             },
           },
-        },
+        }
+      : plan.messageMediaUrl
+        ? {
+            type: 'media',
+            kind: inferMediaKind(plan.messageMediaUrl),
+            url: plan.messageMediaUrl,
+            caption: plan.messageText
+              ? renderTemplateBody(plan.messageText, recipient.params)
+              : undefined,
+          }
+        : {
+            type: 'text',
+            text: renderTemplateBody(plan.messageText ?? '', recipient.params),
+          };
+
+    // The provider owns the phone-variant retry (only "recipient not allowed"
+    // moves on to the next variant) and throws the last error.
+    try {
+      const result = await provider.send(
+        plan.connection,
+        { kind: WA_PHONE_KIND, address: recipient.phone },
+        message,
         { credentials }
       );
       sentMessageId = result.externalId;
