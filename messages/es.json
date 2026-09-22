@@ -136,7 +136,7 @@
   },
   "Inbox": {
     "page": {
-      "whatsappNotConnected": "WhatsApp® no está conectado. Ve a Configuración para conectar tu cuenta.",
+      "noChannelConnected": "Ningún canal está conectado. Ve a Configuración para conectar uno.",
       "connectionDisconnected": "Conexión de la tienda “{store}” desconectada — es posible que los mensajes de esta tienda no estén llegando.",
       "connectionNeedsAction": "La tienda {store} necesita atención en su conexión — es posible que los mensajes de esta tienda no estén llegando.",
       "connectionWarningLink": "Ver canales"

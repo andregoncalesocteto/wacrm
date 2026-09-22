@@ -60,11 +60,9 @@ function InboxPageInner() {
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
-    null
-  );
   // All of the account's connections (any status), to decide whether the
-  // store/channel badges and filters are worth showing (more than one).
+  // store/channel badges and filters are worth showing (more than one),
+  // and to drive the "no channel" / "channel is down" banners below.
   const [connections, setConnections] = useState<ConnectionRow[] | null>(null);
   const showScopeUi = shouldShowScopeUi(connections);
   const down = downConnections(connections);
@@ -246,8 +244,8 @@ function InboxPageInner() {
 
       // The connection is per-account, so filtering by user_id would
       // miss it for any teammate who didn't personally save the config —
-      // the "WhatsApp not connected" banner would show in the
-      // shared inbox even though the admin had it configured.
+      // the "no channel connected" banner would show in the shared inbox
+      // even though the admin had it configured.
       // Resolve account_id via the profile and query by that.
       const { data: profile } = await supabase
         .from("profiles")
@@ -255,10 +253,7 @@ function InboxPageInner() {
         .eq("user_id", user.id)
         .maybeSingle();
       const accountId = profile?.account_id as string | undefined;
-      if (!accountId) {
-        setWhatsappConnected(false);
-        return;
-      }
+      if (!accountId) return;
       accountIdRef.current = accountId;
     }
 
@@ -274,14 +269,6 @@ function InboxPageInner() {
       return { ...row, store: (store as ConnectionRow["store"]) ?? null };
     });
     setConnections(rows);
-    setWhatsappConnected(
-      rows.some(
-        (c) =>
-          c.channel_type === "whatsapp_cloud" &&
-          c.status === "connected" &&
-          !c.disabled_at
-      )
-    );
   }, []);
 
   useEffect(() => {
@@ -671,21 +658,19 @@ function InboxPageInner() {
 
   return (
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
-      {/* WhatsApp connection banner — in the flex column, not absolute,
-          so it pushes the panels down instead of overlapping them. */}
-      {whatsappConnected === false && !(showScopeUi && down.length > 0) && (
+      {/* Channel connection banners — in the flex column, not absolute, so
+          they push the panels down instead of overlapping them. */}
+      {connections !== null && connections.length === 0 && (
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
           <WifiOff className="h-4 w-4 text-amber-400" />
-          <p className="text-xs text-amber-400">
-            {t("whatsappNotConnected")}
-          </p>
+          <p className="text-xs text-amber-400">{t("noChannelConnected")}</p>
         </div>
       )}
 
-      {/* With several connections: name every store that is not receiving
-          (disconnected / needs action, not disabled). With one connection the
-          banner above keeps its historical behaviour. */}
-      {showScopeUi && down.length > 0 && (
+      {/* Names every connection that is down (disconnected / needs action,
+          not disabled) — whatever the channel and however many the account
+          has, including a single one. */}
+      {down.length > 0 && (
         <div
           role="alert"
           data-testid="down-connections-banner"
