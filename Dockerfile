@@ -26,10 +26,16 @@ ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_SITE_URL
 ARG NEXT_PUBLIC_APP_LOCALE=en
+# Not a NEXT_PUBLIC_* var (never reaches the browser bundle), but
+# `next.config.ts`'s `rewrites()` reads it to build the same-origin
+# Supabase proxy, and that function is evaluated at build time — its
+# result is frozen into routes-manifest.json, not re-read at runtime.
+ARG SUPABASE_PUBLIC_URL
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
     NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
     NEXT_PUBLIC_APP_LOCALE=$NEXT_PUBLIC_APP_LOCALE \
+    SUPABASE_PUBLIC_URL=$SUPABASE_PUBLIC_URL \
     NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build

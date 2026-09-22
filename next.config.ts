@@ -134,6 +134,38 @@ const nextConfig: NextConfig = {
    * they apply to every response regardless of which cache rule
    * matched.
    */
+  /**
+   * Same-origin Supabase proxy (optional).
+   *
+   * `NEXT_PUBLIC_SUPABASE_URL` is what the browser talks to, and it's
+   * baked in at build time. When the app is served from its own public
+   * HTTPS host (e.g. behind a tunnel) but Supabase itself isn't also
+   * exposed there, pointing `NEXT_PUBLIC_SUPABASE_URL` at the app's own
+   * origin and proxying these paths server-side to `SUPABASE_PUBLIC_URL`
+   * (already reachable from inside this container — see docs/docker.md)
+   * avoids mixed-content and CORS without a second public hostname.
+   *
+   * A no-op when `NEXT_PUBLIC_SUPABASE_URL` still points directly at
+   * Supabase (the default): the browser never requests these paths from
+   * the app's own origin, so the rewrite is never matched.
+   */
+  async rewrites() {
+    const target = process.env.SUPABASE_PUBLIC_URL;
+    if (!target) return [];
+    return [
+      { source: "/auth/v1/:path*", destination: `${target}/auth/v1/:path*` },
+      { source: "/rest/v1/:path*", destination: `${target}/rest/v1/:path*` },
+      {
+        source: "/storage/v1/:path*",
+        destination: `${target}/storage/v1/:path*`,
+      },
+      {
+        source: "/realtime/v1/:path*",
+        destination: `${target}/realtime/v1/:path*`,
+      },
+    ];
+  },
+
   async headers() {
     return [
       {

@@ -43,6 +43,8 @@ services:
       # Keeps Realtime's polling queries out of the logs.
       - -c
       - log_min_messages=fatal
+    networks:
+      - wacrm-net
 
   auth:
     image: supabase/gotrue:v2.196.0
@@ -85,6 +87,8 @@ services:
       GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
       GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
       GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
+    networks:
+      - wacrm-net
 
   rest:
     image: postgrest/postgrest:v14.17
@@ -109,6 +113,8 @@ services:
       PGRST_DB_USE_LEGACY_GUCS: 'false'
       PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXPIRY:-3600}
     command: ['postgrest']
+    networks:
+      - wacrm-net
 
   realtime:
     # The name looks odd but is required: Realtime derives its tenant id
@@ -148,6 +154,8 @@ services:
       SEED_SELF_HOST: 'true'
       RUN_JANITOR: 'true'
       DISABLE_HEALTHCHECK_LOGGING: 'true'
+    networks:
+      - wacrm-net
 
   storage:
     image: supabase/storage-api:v1.74.0
@@ -184,6 +192,8 @@ services:
       IMGPROXY_URL: http://imgproxy:5001
     volumes:
       - storage-data:/var/lib/storage
+    networks:
+      - wacrm-net
 
   imgproxy:
     image: darthsim/imgproxy:v3.31.4
@@ -201,6 +211,8 @@ services:
       IMGPROXY_USE_ETAG: 'true'
       IMGPROXY_AUTO_WEBP: 'true'
       IMGPROXY_MAX_SRC_RESOLUTION: 16.8
+    networks:
+      - wacrm-net
 
   # Studio + postgres-meta: the dashboard behind Kong's basic auth at the
   # root URL (DASHBOARD_USERNAME / DASHBOARD_PASSWORD). Kong routes to these
@@ -219,6 +231,8 @@ services:
       PG_META_DB_USER: postgres
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
       CRYPTO_KEY: ${PG_META_CRYPTO_KEY}
+    networks:
+      - wacrm-net
 
   studio:
     image: supabase/studio:2026.09.07-sha-7996410
@@ -259,6 +273,8 @@ services:
       SNIPPETS_MANAGEMENT_FOLDER: /app/snippets
     volumes:
       - studio-snippets:/app/snippets
+    networks:
+      - wacrm-net
 
   # Gateway: routes /auth/v1, /rest/v1, /realtime/v1, /storage/v1 and checks
   # the apikey header. It is the only Supabase service published to the host.
@@ -268,7 +284,7 @@ services:
     ports:
       - '${SUPABASE_HTTP_PORT:-8000}:8000'
     networks:
-      default:
+      wacrm-net:
         # NEXT_PUBLIC_SUPABASE_URL is one value used by both the browser
         # and the Next.js server. Inside the app container that hostname
         # has to reach Kong, not the container's own loopback — this alias
@@ -336,6 +352,8 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: postgres
     entrypoint: ['bash', '/migrate.sh']
+    networks:
+      - wacrm-net
 
   app:
     depends_on:
@@ -349,3 +367,7 @@ volumes:
   db-config:
   storage-data:
   studio-snippets:
+
+networks:
+  wacrm-net:
+    name: wacrm-net

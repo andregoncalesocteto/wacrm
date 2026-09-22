@@ -12,6 +12,9 @@ services:
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
         NEXT_PUBLIC_APP_LOCALE: ${NEXT_PUBLIC_APP_LOCALE:-en}
+        # Server-only — read by next.config.ts's rewrites() at build
+        # time to wire the optional same-origin Supabase proxy.
+        SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL:-}
     # Runtime (server-only) secrets come from .env.local; they are
     # never baked into the image.
     env_file:
@@ -26,6 +29,9 @@ services:
     ports:
       - '${HOST_PORT:-3000}:3000'
     restart: unless-stopped
+    networks:
+      - wacrm-net
+      - cloudflare-tunnel-net
     healthcheck:
       test:
         [
@@ -38,3 +44,16 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+networks:
+  # Explicit, named network shared by this file and
+  # docker-compose.supabase.yml — every service in both is attached to
+  # it by name (not the implicit default network).
+  wacrm-net:
+    name: wacrm-net
+  # Joins the independent cloudflared service's own network instead of
+  # creating a new one scoped to this project — otherwise the tunnel
+  # container can never reach `app`. That service must already be up.
+  cloudflare-tunnel-net:
+    name: cloudflare-tunnel_cloudflare-tunnel-net
+    external: true
