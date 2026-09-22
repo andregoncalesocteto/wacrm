@@ -374,3 +374,69 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     (see above) is still open — US-012 (`connection_channel_mismatch` 400) is where it gets closed. Until then,
     `deliverBroadcast` trusts that content and channel already agree.
 ---
+
+## 2026-09-22 - US-006
+- Implemented: `src/lib/contacts/broadcast-eligibility.ts` is now connection-aware instead of assuming WhatsApp.
+  New exported type `BroadcastConnectionContext = { connectionId, channelType, initiate }`. `isBroadcastEligible`/
+  `partitionBroadcastAudience`/`fetchIneligibleContacts` all take it as a required second parameter:
+    - `initiate === 'template'`: identity-based, generalized by `channelType` (`whatsapp_cloud` keeps calling
+      `isWhatsAppReachable` byte-for-byte — same phone-column fallback as before; any other channel type checks
+      `identityChannelType(kind) === channelType` over the contact's identities). Existing WhatsApp tests updated
+      only in SETUP (pass a `waConnection` context) — asserts/results unchanged, matching the US-003/US-004
+      precedent.
+    - `initiate !== 'template'`: eligible = `row.hasConversationWithConnection` (a new optional field on
+      `EligibilityRow`), computed by `fetchIneligibleContacts` via a `conversations` query filtered by
+      `.eq('connection_id', connection.connectionId)` — so `isBroadcastEligible`/`partitionBroadcastAudience` stay
+      pure/sync (no DB access inside the predicate); only the fetcher is async and does the query. For this branch
+      `fetchIneligibleContacts` can't use the old "only phoneless contacts" shortcut (phone is irrelevant to a
+      non-template channel) — it fetches all contacts, then a `conversations` lookup paginated by 500 ids
+      (`fetchConversationContactIds`, same `.in()`-cap pattern as `fetchCustomValueIndex` in use-broadcast-sending.ts).
+  Threaded the new required `connection` parameter through every caller (typecheck forces this, not scope creep):
+  `step2-select-audience.tsx` (new `connection: BroadcastConnectionContext | null` prop; `null` while resolving
+  keeps showing "calculating" instead of a stale/wrong estimate), `step4-schedule-send.tsx` (same pattern),
+  `use-broadcast-sending.ts` (`BroadcastPayload.connection` required; `resolveAudience` takes it and passes it to
+  `fetchIneligibleContacts`; ALSO replaced the hook's own inline `channel_connections` query for `connection_id`
+  with `payload.connection.connectionId` — one less redundant query, and eligibility + the persisted `connection_id`
+  can no longer disagree). `new/page.tsx` resolves `connection` once (a `useEffect` keyed on `accountId`, same
+  query `use-broadcast-sending.ts` used to run inline: the account's WhatsApp connection, `disabled_at` ascending
+  nulls-first) and passes it down to both steps and into `createAndSendBroadcast`'s payload.
+- Scope note on step0/US-009 (spec tension, resolved not deferred): the AC says step2 "consults/filters by the
+  connection chosen at step 0 (US-009)", but step 0 doesn't exist yet — `/broadcasts/new` today only has the
+  WhatsApp-template flow (`Step1ChooseTemplate` is still `currentStep === 0`). Read this as "make step2
+  connection-aware now; the REAL picker is explicitly US-009's job" (the AC names US-009 itself as where selection
+  happens) rather than a spec bug to stop on. Filled the gap with the SAME auto-resolution
+  `use-broadcast-sending.ts` already did today (single account WhatsApp connection, `channelType: 'whatsapp_cloud'`,
+  `initiate: 'template'` hardcoded since that's the only path this page supports pre-US-009) — zero behavior change
+  for the existing WhatsApp flow, and the prop/plumbing is now exactly where US-009 needs to swap in a real
+  dropdown + selection state instead of the auto-resolve effect in `new/page.tsx`.
+- Files changed: `src/lib/contacts/broadcast-eligibility.ts`, `src/lib/contacts/broadcast-eligibility.test.ts`
+  (rewritten: existing tests' setup updated to pass a connection context, same asserts; new describe blocks for the
+  non-template branch — pure `hasConversationWithConnection` cases, and a `fetchIneligibleContacts` + fake-db test
+  with TWO Telegram connections, the AC's literal "contact only talked to Bot A is not eligible for Bot B" case,
+  which also exercises the real `.eq('connection_id', …)` filter since the fake filters on whatever value was
+  actually passed, not canned per-table data), `src/components/broadcasts/step2-select-audience.tsx`,
+  `src/components/broadcasts/step4-schedule-send.tsx`, `src/hooks/use-broadcast-sending.ts`,
+  `src/app/(dashboard)/broadcasts/new/page.tsx`, `.projects/broadcast-multi-channel/prd.json`,
+  `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `TZ=UTC npm test` 161 files / 1947 tests passed (baseline 161/1943 + 4 new tests in
+  `broadcast-eligibility.test.ts`: 2 new non-template `isBroadcastEligible` cases + 2 new `fetchIneligibleContacts`
+  two-bots cases). No `npm run build` (no new route/config — `new/page.tsx` already existed). No browser check (not
+  an AC criterion for this story; also nothing to browser-verify yet since step0's real picker doesn't exist).
+- **Learnings for future iterations:**
+  - `BroadcastConnectionContext { connectionId, channelType, initiate }` (src/lib/contacts/broadcast-eligibility.ts)
+    is now the shape components/hooks use to describe "which connection a broadcast targets" — US-009 should reuse
+    this exact type for the real step-0 dropdown's selection state rather than inventing a parallel one.
+  - Keeping `isBroadcastEligible`/`partitionBroadcastAudience` synchronous (by pushing the async `conversations`
+    lookup into `fetchIneligibleContacts` alone, via a `hasConversationWithConnection` field on the row) kept the
+    core predicate trivially unit-testable without a supabase fake — only `fetchIneligibleContacts` itself needs
+    one. Worth reusing this split (sync predicate + row pre-hydrated by the async fetcher) for any future
+    per-connection eligibility rule.
+  - `use-broadcast-sending.ts` had its OWN independent WhatsApp-connection resolution (inline query in
+    `createAndSendBroadcast`, separate from anything step2/step4 did) — this story collapsed that into the single
+    `connection` resolved once in `new/page.tsx` and threaded through `BroadcastPayload`. US-009/US-012 should keep
+    this "resolve once at the wizard level, pass down" shape rather than reintroducing a second independent lookup.
+  - US-009 will also need to change the HARDCODED `channelType: 'whatsapp_cloud'` / `initiate: 'template'` in
+    `new/page.tsx`'s auto-resolve effect once a real picker exists — that effect is intentionally the single place
+    this lives, so it's a one-spot change, not a hunt.
+---

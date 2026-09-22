@@ -96,8 +96,8 @@
         "Typecheck e testes passam"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "step2/step4/use-broadcast-sending pass a connection resolved by an auto-lookup of the account's WhatsApp connection (mirroring what use-broadcast-sending already did at send time) since step0 (US-009) doesn't exist yet — real user selection is US-009's job, this story only made the eligibility path connection-aware and wired it end to end."
     },
     {
       "id": "US-007",

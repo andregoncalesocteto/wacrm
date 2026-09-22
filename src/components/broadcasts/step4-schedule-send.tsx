@@ -16,7 +16,10 @@ import {
 } from '@/components/ui/dialog';
 import { ArrowLeft, Send, Loader2, Users, Save } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { fetchIneligibleContacts } from '@/lib/contacts/broadcast-eligibility';
+import {
+  fetchIneligibleContacts,
+  type BroadcastConnectionContext,
+} from '@/lib/contacts/broadcast-eligibility';
 
 interface AudienceConfig {
   type: string;
@@ -34,6 +37,8 @@ interface Step4Props {
   onBack: () => void;
   isProcessing: boolean;
   progress: number;
+  /** The connection this broadcast will send from (see Step2SelectAudience). */
+  connection: BroadcastConnectionContext | null;
 }
 
 export function Step4ScheduleSend({
@@ -46,6 +51,7 @@ export function Step4ScheduleSend({
   onBack,
   isProcessing,
   progress,
+  connection,
 }: Step4Props) {
   const t = useTranslations('Broadcasts.wizard');
   const format = useFormatter();
@@ -55,12 +61,16 @@ export function Step4ScheduleSend({
 
   useEffect(() => {
     async function calculateReach() {
+      if (!connection) {
+        setLoadingReach(true);
+        return;
+      }
       setLoadingReach(true);
       try {
         const supabase = createClient();
-        // Contacts without a WhatsApp identity are not broadcast recipients.
+        // Contacts not reachable on `connection` are not broadcast recipients.
         const ineligibleIn = async (scope?: Set<string>) =>
-          (await fetchIneligibleContacts(supabase)).filter(
+          (await fetchIneligibleContacts(supabase, connection)).filter(
             (c) => !scope || scope.has(c.id)
           );
 
@@ -98,7 +108,7 @@ export function Step4ScheduleSend({
     }
 
     calculateReach();
-  }, [audience]);
+  }, [audience, connection]);
 
   const audienceLabel =
     audience.type === 'all'

@@ -5,7 +5,10 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { BATCH_SEND_ATTEMPTS, batchRetryDelayMs } from '@/lib/broadcast-retry';
 import { normalizeKey } from '@/lib/contacts/dedupe';
-import { fetchIneligibleContacts } from '@/lib/contacts/broadcast-eligibility';
+import {
+  fetchIneligibleContacts,
+  type BroadcastConnectionContext,
+} from '@/lib/contacts/broadcast-eligibility';
 import { Contact, MessageTemplate } from '@/types';
 
 export type CustomFieldOperator = 'is' | 'is_not' | 'contains';
@@ -49,6 +52,12 @@ interface BroadcastPayload {
    * falls back to the template's stored URL only when this is empty.
    */
   headerMediaUrl?: string;
+  /**
+   * The connection this broadcast sends from — resolved once by the wizard
+   * (see Step2SelectAudience) and reused here so eligibility and the
+   * persisted `connection_id` never disagree.
+   */
+  connection: BroadcastConnectionContext;
 }
 
 interface UseBroadcastSendingReturn {
@@ -173,7 +182,10 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  async function resolveAudience(audience: AudienceConfig): Promise<Contact[]> {
+  async function resolveAudience(
+    audience: AudienceConfig,
+    connection: BroadcastConnectionContext
+  ): Promise<Contact[]> {
     const supabase = createClient();
 
     let contacts: Contact[] = [];
@@ -227,11 +239,12 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       contacts = contacts.filter((c) => !excludedIds.has(c.id));
     }
 
-    // Broadcasts are WhatsApp templates: contacts with no WhatsApp identity
-    // (e.g. Telegram-only) are not eligible and never become recipients
-    // (US-053). The wizard tells the operator who was left out and why.
+    // Contacts not reachable on `connection` (no identity of that channel for
+    // a template connection, or no conversation with THIS connection for a
+    // non-template one, US-006) are not eligible and never become recipients.
+    // The wizard tells the operator who was left out and why.
     const ineligibleIds = new Set(
-      (await fetchIneligibleContacts(supabase)).map((c) => c.id)
+      (await fetchIneligibleContacts(supabase, connection)).map((c) => c.id)
     );
     if (ineligibleIds.size > 0) {
       contacts = contacts.filter((c) => !ineligibleIds.has(c.id));
@@ -397,7 +410,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
       // ── Step 1: Resolve audience contacts ─────────────────────────
       setProgress(5);
-      const contacts = await resolveAudience(payload.audience);
+      const contacts = await resolveAudience(payload.audience, payload.connection);
 
       if (contacts.length === 0) {
         throw new Error('No contacts found for this audience.');
@@ -405,21 +418,11 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
       // ── Step 2: Create broadcast row ──────────────────────────────
       setProgress(10);
-      // The WhatsApp connection that sends this broadcast (enabled one
-      // first). Best-effort: NULL keeps the server-side account fallback.
-      const { data: sendConnection } = await supabase
-        .from('channel_connections')
-        .select('id')
-        .eq('account_id', accountId)
-        .eq('channel_type', 'whatsapp_cloud')
-        .order('disabled_at', { ascending: true, nullsFirst: true })
-        .limit(1)
-        .maybeSingle();
       const { data: broadcast, error: broadcastError } = await supabase
         .from('broadcasts')
         .insert({
           user_id: user.id,
-          connection_id: sendConnection?.id ?? null,
+          connection_id: payload.connection.connectionId || null,
           account_id: accountId,
           name: payload.name,
           template_name: payload.template.name,
