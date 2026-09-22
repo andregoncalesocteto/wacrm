@@ -369,5 +369,7 @@ volumes:
   studio-snippets:
 
 networks:
+  # Kept in sync with docker-compose.yml's declaration — see the comment
+  # there for why this is parametrized instead of a fixed literal name.
   wacrm-net:
-    name: wacrm-net
+    name: ${WACRM_NETWORK_NAME:-wacrm-net}

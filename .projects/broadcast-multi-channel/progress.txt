@@ -40,10 +40,20 @@ No test-scenarios.json (acceptanceCriteria are the bar).
   story/PRD drops it — never remove it in this PRD.
 - Apply to the dev DB: `$FULL run --rm -T migrate`. FULL="docker compose -f docker-compose.yml -f
   docker-compose.supabase.yml --env-file .env.local". Replay isolated (never touches dev data):
+    export WACRM_NETWORK_NAME=wacrm-replay-net
     R="docker compose -p wacrm-replay -f docker-compose.yml -f docker-compose.supabase.yml --env-file .env.local"
     $R up -d --wait db auth storage && $R run --rm -T migrate && \
     $R exec -T db psql -U postgres -v ON_ERROR_STOP=1 < supabase/ci/verify-schema.sql ; $R down -v
+    unset WACRM_NETWORK_NAME
   ALWAYS `-p wacrm-replay` for replay; `down -v` ONLY on that project, NEVER on the default (dev) one.
+  **`WACRM_NETWORK_NAME=wacrm-replay-net` is REQUIRED whenever the dev stack is also up** (docker-compose.yml /
+  docker-compose.supabase.yml's `wacrm-net` network is now parametrized — `${WACRM_NETWORK_NAME:-wacrm-net}` —
+  specifically so replay gets its own isolated network instead of literally sharing `wacrm-net` with the dev
+  stack). This SUPERSEDES the old PGHOST/DATABASE_URL override workaround documented below (US-001/US-004 hit
+  the underlying Docker-DNS-alias-collision bug and worked around it per-service; the fix here is the actual root
+  cause and makes those overrides unnecessary — verified end-to-end after fixing: 54/54 migrations + verify-schema
+  green with zero PGHOST/DATABASE_URL overrides). The old collision-symptom notes further down stay for context
+  only, not as a recipe to reuse.
 - i18n rules (CLAUDE.md): text via useTranslations (no literals), keys in ALL FOUR catalogues
   (messages/{en,pt,es,ko}.json; `npx vitest run src/i18n` for parity), never toLocale*String / new Intl.*Format.
   Prefer exact string replace (python str.replace on the raw file text) over json.dump/reload for existing files —
