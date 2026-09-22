@@ -30,7 +30,9 @@ interface AudienceConfig {
 interface Step4Props {
   name: string;
   onNameChange: (name: string) => void;
-  template: MessageTemplate;
+  /** Exactly one of `template` or `messageText` is set (US-013). */
+  template: MessageTemplate | null;
+  messageText?: string;
   audience: AudienceConfig;
   onSend: () => void;
   onSaveDraft?: () => void;
@@ -45,6 +47,7 @@ export function Step4ScheduleSend({
   name,
   onNameChange,
   template,
+  messageText,
   audience,
   onSend,
   onSaveDraft,
@@ -151,9 +154,11 @@ export function Step4ScheduleSend({
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <p className="text-muted-foreground text-xs">
-              {t('scheduleSend.template')}
+              {template ? t('scheduleSend.template') : t('scheduleSend.message')}
             </p>
-            <p className="text-foreground">{template.name}</p>
+            <p className="text-foreground truncate">
+              {template ? template.name : (messageText ?? '')}
+            </p>
           </div>
           <div>
             <p className="text-muted-foreground text-xs">
@@ -182,7 +187,9 @@ export function Step4ScheduleSend({
             <p className="text-muted-foreground text-xs">
               {t('scheduleSend.language')}
             </p>
-            <p className="text-foreground">{template.language ?? 'en_US'}</p>
+            <p className="text-foreground">
+              {template ? (template.language ?? 'en_US') : '—'}
+            </p>
           </div>
         </div>
       </div>
@@ -250,15 +257,24 @@ export function Step4ScheduleSend({
                   {t('scheduleSend.confirmTitle')}
                 </DialogTitle>
                 <DialogDescription className="text-muted-foreground">
-                  {t.rich('scheduleSend.confirmDesc', {
-                    count: estimatedReach,
-                    template: template.name,
-                    b: (chunks) => (
-                      <span className="text-popover-foreground font-medium">
-                        {chunks}
-                      </span>
-                    ),
-                  })}
+                  {template
+                    ? t.rich('scheduleSend.confirmDesc', {
+                        count: estimatedReach,
+                        template: template.name,
+                        b: (chunks) => (
+                          <span className="text-popover-foreground font-medium">
+                            {chunks}
+                          </span>
+                        ),
+                      })
+                    : t.rich('scheduleSend.confirmDescMessage', {
+                        count: estimatedReach,
+                        b: (chunks) => (
+                          <span className="text-popover-foreground font-medium">
+                            {chunks}
+                          </span>
+                        ),
+                      })}
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>

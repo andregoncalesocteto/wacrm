@@ -932,6 +932,7 @@
         "broadcastNamePlaceholder": "p. ej. Promo de verano",
         "summary": "Resumen",
         "template": "Plantilla:",
+        "message": "Mensaje:",
         "audience": "Audiencia:",
         "audienceAll": "Todos los contactos",
         "audienceTags": "Filtrada por etiquetas",
@@ -948,7 +949,8 @@
         "estimatedReach": "Alcance estimado",
         "language": "Idioma",
         "confirmTitle": "Confirmar difusión",
-        "confirmDesc": "Estás a punto de enviar esta difusión a <b>{count, number}</b> {count, plural, =1 {contacto} other {contactos}} con la plantilla <b>{template}</b>. Esta acción no se puede deshacer."
+        "confirmDesc": "Estás a punto de enviar esta difusión a <b>{count, number}</b> {count, plural, =1 {contacto} other {contactos}} con la plantilla <b>{template}</b>. Esta acción no se puede deshacer.",
+        "confirmDescMessage": "Estás a punto de enviar esta difusión a <b>{count, number}</b> {count, plural, =1 {contacto} other {contactos}}. Esta acción no se puede deshacer."
       }
     }
   },

@@ -932,6 +932,7 @@
         "broadcastNamePlaceholder": "예: 여름 프로모션",
         "summary": "요약",
         "template": "템플릿:",
+        "message": "메시지:",
         "audience": "대상:",
         "audienceAll": "전체 연락처",
         "audienceTags": "태그로 필터링됨",
@@ -948,7 +949,8 @@
         "estimatedReach": "예상 도달 수",
         "language": "언어",
         "confirmTitle": "브로드캐스트 확인",
-        "confirmDesc": "<b>{template}</b> 템플릿으로 연락처 <b>{count, number}</b>명에게 이 브로드캐스트를 보내려고 합니다. 이 작업은 되돌릴 수 없습니다."
+        "confirmDesc": "<b>{template}</b> 템플릿으로 연락처 <b>{count, number}</b>명에게 이 브로드캐스트를 보내려고 합니다. 이 작업은 되돌릴 수 없습니다.",
+        "confirmDescMessage": "연락처 <b>{count, number}</b>명에게 이 브로드캐스트를 보내려고 합니다. 이 작업은 되돌릴 수 없습니다."
       }
     }
   },

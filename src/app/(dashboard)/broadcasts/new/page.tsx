@@ -62,12 +62,14 @@ export default function NewBroadcastPage() {
   );
 
   async function handleSend() {
-    if (!template || !connection) return;
+    if ((!template && !messageText) || !connection) return;
 
     try {
       const broadcastId = await createAndSendBroadcast({
         name,
         template,
+        messageText: messageText || undefined,
+        messageMediaUrl: messageMediaUrl || undefined,
         audience: {
           type: audience.type,
           tagIds: audience.tagIds,
@@ -99,7 +101,7 @@ export default function NewBroadcastPage() {
    * A full resume-draft UX is a future polish.
    */
   async function handleSaveDraft() {
-    if (!template || !name.trim()) {
+    if ((!template && !messageText) || !name.trim()) {
       toast.error(t('toastGiveName'));
       return;
     }
@@ -121,9 +123,11 @@ export default function NewBroadcastPage() {
       user_id: user.id,
       account_id: accountId,
       name: name.trim(),
-      template_name: template.name,
-      template_language: template.language ?? 'en_US',
+      template_name: template ? template.name : null,
+      template_language: template ? (template.language ?? 'en_US') : null,
       template_variables: variables,
+      message_text: template ? null : messageText || null,
+      message_media_url: template ? null : messageMediaUrl || null,
       audience_filter: {
         type: audience.type,
         tagIds: audience.tagIds,
@@ -253,11 +257,12 @@ export default function NewBroadcastPage() {
               onBack={() => setCurrentStep(2)}
             />
           )}
-          {currentStep === 4 && template && (
+          {currentStep === 4 && (template || messageText) && (
             <Step4ScheduleSend
               name={name}
               onNameChange={setName}
               template={template}
+              messageText={messageText}
               audience={audience}
               onSend={handleSend}
               onSaveDraft={handleSaveDraft}

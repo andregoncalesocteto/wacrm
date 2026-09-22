@@ -335,7 +335,7 @@ const AUDIO_EXTENSIONS = new Set(['mp3', 'ogg', 'opus', 'm4a', 'aac', 'amr']);
  * column. Falls back to 'document' (the broadest accepted kind) for an
  * unknown or missing extension.
  */
-function inferMediaKind(url: string): MediaKind {
+export function inferMediaKind(url: string): MediaKind {
   const ext = /\.([a-zA-Z0-9]+)(?:[?#]|$)/.exec(url)?.[1]?.toLowerCase() ?? '';
   if (IMAGE_EXTENSIONS.has(ext)) return 'image';
   if (VIDEO_EXTENSIONS.has(ext)) return 'video';
@@ -350,7 +350,7 @@ function inferMediaKind(url: string): MediaKind {
  * non-template path (`capabilities.initiate !== 'template'`), and no
  * built-in provider with that capability resolves a target off `contacts.phone`.
  */
-async function loadRecipientIdentities(
+export async function loadRecipientIdentities(
   db: SupabaseClient,
   contactId: string
 ): Promise<ContactIdentity[]> {

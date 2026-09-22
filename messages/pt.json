@@ -932,6 +932,7 @@
         "broadcastNamePlaceholder": "ex.: Promoção de verão",
         "summary": "Resumo",
         "template": "Template:",
+        "message": "Mensagem:",
         "audience": "Público:",
         "audienceAll": "Todos os contatos",
         "audienceTags": "Filtrado por tags",
@@ -948,7 +949,8 @@
         "estimatedReach": "Alcance estimado",
         "language": "Idioma",
         "confirmTitle": "Confirmar broadcast",
-        "confirmDesc": "Você está prestes a enviar este broadcast para <b>{count, number}</b> {count, plural, =1 {contato} other {contatos}} usando o template <b>{template}</b>. Esta ação não pode ser desfeita."
+        "confirmDesc": "Você está prestes a enviar este broadcast para <b>{count, number}</b> {count, plural, =1 {contato} other {contatos}} usando o template <b>{template}</b>. Esta ação não pode ser desfeita.",
+        "confirmDescMessage": "Você está prestes a enviar este broadcast para <b>{count, number}</b> {count, plural, =1 {contato} other {contatos}}. Esta ação não pode ser desfeita."
       }
     }
   },
