@@ -29,8 +29,10 @@ import {
   ChannelError,
   CONNECTION_DISABLED_CODE,
   ConnectionDisabledError,
+  type ContactIdentity,
   type MediaKind,
   type OutboundMessage,
+  type Target,
 } from '@/lib/channels/types';
 import { WA_PHONE_KIND } from '@/lib/channels/identity';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
@@ -83,6 +85,7 @@ export interface CreateBroadcastParams {
 
 interface PlannedRecipient {
   recipientRowId: string;
+  contactId: string;
   phone: string;
   params: string[];
 }
@@ -298,6 +301,7 @@ export async function createBroadcast(
       const r = byContact.get(row.contact_id)!;
       return {
         recipientRowId: row.recipient_id,
+        contactId: row.contact_id,
         phone: r.phone,
         params: r.params,
       };
@@ -337,6 +341,26 @@ function inferMediaKind(url: string): MediaKind {
   if (VIDEO_EXTENSIONS.has(ext)) return 'video';
   if (AUDIO_EXTENSIONS.has(ext)) return 'audio';
   return 'document';
+}
+
+/**
+ * Load a contact's `contact_identities` rows for `provider.resolveTarget`
+ * (US-009). Unlike `loadIdentities` in `lib/channels/send.ts`, this has no
+ * whatsapp_cloud/`contacts.phone` fallback — it is only ever used on the
+ * non-template path (`capabilities.initiate !== 'template'`), and no
+ * built-in provider with that capability resolves a target off `contacts.phone`.
+ */
+async function loadRecipientIdentities(
+  db: SupabaseClient,
+  contactId: string
+): Promise<ContactIdentity[]> {
+  const { data } = await db
+    .from('contact_identities')
+    .select('kind, external_id, handle')
+    .eq('contact_id', contactId);
+  return (
+    (data as { kind: string; external_id: string; handle: string | null }[] | null) ?? []
+  ).map((r) => ({ kind: r.kind, externalId: r.external_id, handle: r.handle }));
 }
 
 /**
@@ -410,26 +434,39 @@ export async function deliverBroadcast(
             text: renderTemplateBody(plan.messageText ?? '', recipient.params),
           };
 
+    // Target resolution: the template (WhatsApp) path keeps resolving by
+    // phone exactly as before (RNF-01, zero behavior change). A non-template
+    // channel (Telegram, ...) has no reliable `contacts.phone` — its target
+    // is resolved from the contact's `contact_identities` via the provider's
+    // own `resolveTarget`, the same method `lib/channels/send.ts` uses for a
+    // regular conversation send (US-009).
+    const target: Target | null = isTemplatePath
+      ? { kind: WA_PHONE_KIND, address: recipient.phone }
+      : provider.resolveTarget(
+          await loadRecipientIdentities(db, recipient.contactId)
+        );
+
     // The provider owns the phone-variant retry (only "recipient not allowed"
     // moves on to the next variant) and throws the last error.
-    try {
-      const result = await provider.send(
-        plan.connection,
-        { kind: WA_PHONE_KIND, address: recipient.phone },
-        message,
-        { credentials }
-      );
-      sentMessageId = result.externalId;
-    } catch (error) {
-      // A non-Error rejection was wrapped by the provider; keep the old text.
-      const wrappedNonError =
-        error instanceof ChannelError &&
-        error.cause !== undefined &&
-        !(error.cause instanceof Error);
-      lastError =
-        error instanceof Error && !wrappedNonError
-          ? error.message
-          : 'Unknown error';
+    if (!target) {
+      lastError = 'No reachable address on this channel';
+    } else {
+      try {
+        const result = await provider.send(plan.connection, target, message, {
+          credentials,
+        });
+        sentMessageId = result.externalId;
+      } catch (error) {
+        // A non-Error rejection was wrapped by the provider; keep the old text.
+        const wrappedNonError =
+          error instanceof ChannelError &&
+          error.cause !== undefined &&
+          !(error.cause instanceof Error);
+        lastError =
+          error instanceof Error && !wrappedNonError
+            ? error.message
+            : 'Unknown error';
+      }
     }
 
     if (sentMessageId) {

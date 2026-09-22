@@ -564,3 +564,78 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     build a fake Telegram (or any) connection row too — just spread it and override `channel_type`/`id`, same
     trick `broadcast-core.connection-resolution.test.ts` used for its telegram case.
 ---
+
+## 2026-09-22 - US-009
+- Implemented: `deliverBroadcast` (src/lib/whatsapp/broadcast-core.ts) no longer builds every recipient's send
+  target as `{kind: WA_PHONE_KIND, address: recipient.phone}`. That literal target is now used ONLY on the
+  template path (`isTemplatePath`, i.e. WhatsApp) — byte-for-byte the same as before (RNF-01, zero behavior
+  change). For `capabilities.initiate !== 'template'`, the target is resolved via `provider.resolveTarget(identities)`
+  — the exact method `lib/channels/send.ts`'s `sendOutbound` already uses for a regular conversation send —
+  where `identities` comes from a new local helper `loadRecipientIdentities(db, contactId)` that reads
+  `contact_identities` filtered by `contact_id` (no whatsapp_cloud/`contacts.phone` fallback: unnecessary, since
+  no built-in provider with `capabilities.initiate !== 'template'` resolves off `contacts.phone`). If
+  `resolveTarget` returns null (contact has no identity for this channel), the recipient is stamped `failed` with
+  `error_message: 'No reachable address on this channel'` — same best-effort-per-recipient shape as any other send
+  failure, never aborting the rest of the loop.
+  This required threading `contactId` through the shared recipient shape both plan-builders produce: added
+  `contactId: string` to `PlannedRecipient` (broadcast-core.ts), populated from the RPC's `contact_id` column in
+  `createBroadcast`, and from `broadcast_recipients.contact_id` (added to the `select`) in
+  `planBroadcastResume` (broadcast-resume.ts) — confirming the AC's "broadcast-resume.ts herda a mesma resolução"
+  literally, not by assumption: both plan-builders now feed the exact same `deliverBroadcast` target-resolution
+  code path.
+- `broadcast-resume.ts`'s own phone-based "unsendable" pre-filter (previously applied unconditionally to every
+  channel, marking any row without a valid E.164 `contacts.phone` as `failed` up front) was the actual live
+  instance of the AC's "eligible contact with phone='' silently dropped" bug for a resumed campaign — a phone-less
+  Telegram contact hitting a resume pass would have been marked failed with "No valid phone number on contact"
+  before ever reaching `deliverBroadcast`. Fixed by resolving the connection (and `provider.capabilities.initiate`)
+  BEFORE building the sendable/unsendable split, and only running the phone pre-filter when `isTemplatePath` is
+  true; for a non-template channel every in-scope row is now `sendable` and `deliverBroadcast` resolves (or fails)
+  each one individually via `contact_identities`, exactly like a fresh send. This moved the connection-resolution
+  block earlier in the function (was after the recipient load/filter, now before it) — a structural reorder, not a
+  behavior change for the template path (same lookups, same error codes, same order of `not_found`/
+  `connection_disabled` checks relative to the broadcast-existence check).
+  Scope confirmed NOT touched (checked, not assumed): the public API's `POST /api/v1/broadcasts` `recipients`
+  contract (`{to: phone, params}`) stays phone-based — `createBroadcast`'s own recipient-input validation
+  (`sanitizePhoneForMeta`/`isValidE164` on `to`) is unchanged. That contract is documented in `docs/public-api.md`
+  as phone-shaped and untouched by this story; the AC's "não descartado por phone=''" scenario is about a
+  `broadcast_recipients` row that ALREADY exists (created via `createBroadcast` OR — once US-013 lands — the
+  dashboard wizard) reaching delivery/resume, not about widening the API's input shape.
+- Files changed: `src/lib/whatsapp/broadcast-core.ts`, `src/lib/whatsapp/broadcast-resume.ts`,
+  `src/lib/whatsapp/broadcast-core.test.ts`, `src/lib/whatsapp/broadcast-core.disabled.test.ts`,
+  `src/lib/whatsapp/broadcast-deliver.characterization.test.ts`, `src/lib/whatsapp/broadcast-core.provider.test.ts`
+  (2 new tests: phone-empty Telegram recipient resolves + sends via identity; a recipient with no identity fails
+  without aborting others), `src/lib/whatsapp/broadcast-resume.test.ts` (recipient fixture now carries `contact_id`;
+  the existing US-008 Telegram-resume test's `r2` now has `phone: ''` and asserts its `chat_id` came from
+  `contact_identities`, not from phone — the AC's "confirmar com um teste, não assumir" for resume inheriting
+  deliverBroadcast's resolution), `.projects/broadcast-multi-channel/prd.json`,
+  `.projects/broadcast-multi-channel/progress.txt`. `broadcast-core.credentials.test.ts` and
+  `broadcast-core.connection-resolution.test.ts` were audited and left untouched — the former casts its plan
+  fixture `as unknown as BroadcastPlan` (no type pressure to add `contactId`) and only exercises the
+  always-template WhatsApp path; the latter never calls `deliverBroadcast`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `TZ=UTC npm test` 161 files / 1950 tests passed (baseline 161/1948 + 2 new tests in
+  `broadcast-core.provider.test.ts`; all pre-existing WhatsApp-path characterization tests — US-003/US-005/US-008 —
+  pass with their asserts unmodified, only `contactId`/`contact_id` added to fixtures where the type or a `toEqual`
+  literal required it). No `npm run build` (story doesn't touch routing/config, not an AC criterion). No browser
+  check (not an AC criterion for this story — it's server-side delivery logic; also same UI-not-reachable-yet gap
+  US-006/US-007/US-008 already documented: `/broadcasts/new` still hardcodes the WhatsApp/template path until
+  US-010 lands, so there's no dashboard path to a non-template send to browser-verify).
+- **Learnings for future iterations:**
+  - `loadRecipientIdentities(db, contactId)` (broadcast-core.ts, local/unexported) is now the broadcast-specific
+    counterpart of `lib/channels/send.ts`'s private `loadIdentities` — narrower on purpose (no `contacts.phone`
+    fallback, since it's only ever called on the non-template path). If a future story needs the SAME
+    identity-based resolution outside `deliverBroadcast`, consider promoting one shared helper instead of a third
+    copy.
+  - `PlannedRecipient.contactId` is now load-bearing for both plan-builders — any future third builder of a
+    `BroadcastPlan` (there are only two today: `createBroadcast` and `planBroadcastResume`) MUST populate it, or
+    every non-template recipient it plans will fail with "No reachable address on this channel".
+  - The connection-resolve-before-recipient-filter reorder in `planBroadcastResume` is a good pattern for "this
+    decision depends on the channel" logic in general — resolve the connection/provider first, branch the
+    recipient-shaping logic on `provider.capabilities` second. US-013's route-level validation (`connection_id`
+    required, content exclusivity, `connection_channel_mismatch`) will likely want the same ordering.
+  - Confirmed by reading (not assuming): no built-in provider (`whatsapp-cloud`, `telegram`) with
+    `capabilities.initiate !== 'template'` ever resolves a target from `contacts.phone` — so
+    `loadRecipientIdentities` correctly has zero phone fallback. If a future non-template provider DID want a
+    phone fallback, it would need to be added there explicitly (or via a whatsapp-cloud-style identities
+    fallback), not assumed to already work.
+---

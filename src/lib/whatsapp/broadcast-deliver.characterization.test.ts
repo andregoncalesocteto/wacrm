@@ -101,6 +101,7 @@ function plan(ids: string[], phones?: string[]): BroadcastPlan {
     templateRow: null,
     planned: ids.map((id, i) => ({
       recipientRowId: id,
+      contactId: `c${i}`,
       phone: phones?.[i] ?? `+1555000000${i}`,
       params: [`p${i}`],
     })),

@@ -200,6 +200,7 @@ function recipient(
 ) {
   return {
     id,
+    contact_id: `c-${id}`,
     template_params: params,
     contact: phone ? { phone } : null,
   };
@@ -231,11 +232,13 @@ describe('planBroadcastResume', () => {
     expect(plan.planned).toEqual([
       {
         recipientRowId: 'r1',
+        contactId: 'c-r1',
         phone: '15551234567',
         params: ['A123', 'Friday'],
       },
       {
         recipientRowId: 'r2',
+        contactId: 'c-r2',
         phone: '15559876543',
         params: ['B456', 'Monday'],
       },
@@ -391,6 +394,8 @@ describe('planBroadcastResume', () => {
 interface TelegramResumeFixture {
   broadcast: Record<string, unknown>;
   recipients: Record<string, unknown>[];
+  /** contact_id -> contact_identities rows (US-009: deliverBroadcast's non-template target resolution). */
+  identities?: Record<string, { kind: string; external_id: string }[]>;
 }
 
 function telegramResumeDb(fx: TelegramResumeFixture) {
@@ -440,6 +445,21 @@ function telegramResumeDb(fx: TelegramResumeFixture) {
         };
         return b;
       }
+      // deliverBroadcast's non-template target resolution (US-009): each
+      // recipient's contact_identities, looked up by contact_id.
+      if (table === 'contact_identities') {
+        let contactId: string | undefined;
+        const b: Record<string, unknown> = {
+          select: () => b,
+          eq: (col: string, val: unknown) => {
+            if (col === 'contact_id') contactId = val as string;
+            return b;
+          },
+          then: (resolve: (v: unknown) => void) =>
+            resolve({ data: fx.identities?.[contactId ?? ''] ?? [] }),
+        };
+        return b;
+      }
       throw new Error(`unexpected table: ${table}`);
     },
   } as unknown as SupabaseClient;
@@ -474,14 +494,22 @@ describe('planBroadcastResume + deliverBroadcast — Telegram resume (US-008)', 
       message_text: 'Hi {{1}}, welcome!',
       message_media_url: null,
     };
+    // r2 is an eligible Telegram contact with phone='' — the AC's literal
+    // case: it must NOT be dropped as "unsendable" (that phone check is
+    // WhatsApp/template-only now) and its target must resolve from
+    // contact_identities, not from `contacts.phone` (US-009).
     const recipients = [
       recipient('r1', '+15550001111', ['Maria']),
-      recipient('r2', '+15550002222', ['João']),
+      { id: 'r2', contact_id: 'c-r2', template_params: ['João'], contact: { phone: '' } },
     ];
 
     const { db, recipientUpdates, finalBroadcastUpdate } = telegramResumeDb({
       broadcast,
       recipients,
+      identities: {
+        'c-r1': [{ kind: 'telegram:chat_id', external_id: '555' }],
+        'c-r2': [{ kind: 'telegram:chat_id', external_id: '556' }],
+      },
     });
 
     const { plan } = await planBroadcastResume(db, 'acct-1', 'bc-tg', 'pending');
@@ -497,6 +525,14 @@ describe('planBroadcastResume + deliverBroadcast — Telegram resume (US-008)', 
     await deliverBroadcast(db, plan);
 
     expect(tg.callBotApi).toHaveBeenCalledTimes(2);
+    // r2's chat_id came from contact_identities (its resolved target), not
+    // from `contacts.phone` — which was '' and would otherwise fail to
+    // resolve anything (US-009).
+    expect(tg.callBotApi).toHaveBeenCalledWith(
+      'tg-tok',
+      'sendMessage',
+      expect.objectContaining({ chat_id: '556' })
+    );
     expect(recipientUpdates).toContainEqual({
       id: 'r1',
       patch: expect.objectContaining({

@@ -27,6 +27,8 @@ import {
   ConnectionDisabledError,
 } from '@/lib/channels/types';
 import { getConnectionById, getConnectionCredentials } from '@/lib/channels/connections';
+import { getProvider } from '@/lib/channels/registry';
+import { registerBuiltinProviders } from '@/lib/channels/providers';
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import type { MessageTemplate } from '@/types';
@@ -125,6 +127,7 @@ export interface ResumePlan {
 
 interface RecipientRow {
   id: string;
+  contact_id: string;
   template_params: unknown;
   contact: { phone?: string | null } | { phone?: string | null }[] | null;
 }
@@ -165,10 +168,35 @@ export async function planBroadcastResume(
     throw new BroadcastError('not_found', 'Broadcast not found', 404);
   }
 
+  // Connection: resolved generically by the id already recorded on the
+  // broadcast (US-004's idiom) — any channel_type, no WhatsApp-only
+  // inference. Same lookup + ownership check as createBroadcast. Resolved
+  // BEFORE the recipient filter below (US-009) — whether a recipient with
+  // no phone is "unsendable" depends on the connection's channel.
+  const conn = await getConnectionById(broadcast.connection_id, db);
+  if (!conn || conn.account_id !== accountId) {
+    throw new BroadcastError('not_found', 'Connection not found', 404);
+  }
+  if (conn.disabled_at) {
+    throw new BroadcastError(
+      CONNECTION_DISABLED_CODE,
+      new ConnectionDisabledError().message,
+      409
+    );
+  }
+  const credentials = await getConnectionCredentials(conn.id);
+  const accessToken =
+    typeof credentials?.access_token === 'string'
+      ? credentials.access_token
+      : '';
+  registerBuiltinProviders();
+  const isTemplatePath =
+    getProvider(conn.channel_type).capabilities.initiate === 'template';
+
   const statuses = scopeStatuses(scope);
   const { data: rawRows, error: recError } = await db
     .from('broadcast_recipients')
-    .select('id, template_params, contact:contacts(phone)')
+    .select('id, contact_id, template_params, contact:contacts(phone)')
     .eq('broadcast_id', broadcastId)
     .in('status', statuses)
     // Oldest first, so repeated capped passes chew through the backlog
@@ -185,15 +213,24 @@ export async function planBroadcastResume(
 
   const rows = (rawRows ?? []) as RecipientRow[];
 
-  // A recipient whose contact has no usable phone can never send. Stamp
-  // it failed now: leaving it 'pending' would keep the broadcast in
-  // 'sending' forever, which is the very symptom being fixed.
+  // A recipient with no usable phone can never send ON THE TEMPLATE PATH
+  // (WhatsApp) — stamp it failed now, so it stops blocking the broadcast's
+  // terminal status. A non-template channel (Telegram, ...) doesn't resolve
+  // its target from `contacts.phone` at all (US-009: `deliverBroadcast`
+  // resolves it from `contact_identities` instead), so a phone-less contact
+  // eligible for that channel (US-006: has a conversation with this
+  // connection) is NOT dropped here — deliverBroadcast fails it individually
+  // if its identity ever fails to resolve, same as any other send error.
   const sendable: RecipientRow[] = [];
   const unsendable: string[] = [];
-  for (const row of rows) {
-    const sanitized = sanitizePhoneForMeta(contactPhone(row) ?? '');
-    if (isValidE164(sanitized)) sendable.push(row);
-    else unsendable.push(row.id);
+  if (isTemplatePath) {
+    for (const row of rows) {
+      const sanitized = sanitizePhoneForMeta(contactPhone(row) ?? '');
+      if (isValidE164(sanitized)) sendable.push(row);
+      else unsendable.push(row.id);
+    }
+  } else {
+    sendable.push(...rows);
   }
   if (unsendable.length > 0) {
     await db
@@ -217,26 +254,6 @@ export async function planBroadcastResume(
       400
     );
   }
-
-  // Connection: resolved generically by the id already recorded on the
-  // broadcast (US-004's idiom) — any channel_type, no WhatsApp-only
-  // inference. Same lookup + ownership check as createBroadcast.
-  const conn = await getConnectionById(broadcast.connection_id, db);
-  if (!conn || conn.account_id !== accountId) {
-    throw new BroadcastError('not_found', 'Connection not found', 404);
-  }
-  if (conn.disabled_at) {
-    throw new BroadcastError(
-      CONNECTION_DISABLED_CODE,
-      new ConnectionDisabledError().message,
-      409
-    );
-  }
-  const credentials = await getConnectionCredentials(conn.id);
-  const accessToken =
-    typeof credentials?.access_token === 'string'
-      ? credentials.access_token
-      : '';
 
   // Only a template broadcast has an approved template row to resolve —
   // a free-message broadcast (US-005) has no template_name at all.
@@ -273,6 +290,7 @@ export async function planBroadcastResume(
     messageMediaUrl: broadcast.message_media_url ?? null,
     planned: slice.map((row) => ({
       recipientRowId: row.id,
+      contactId: row.contact_id,
       phone: sanitizePhoneForMeta(contactPhone(row) ?? ''),
       params: Array.isArray(row.template_params)
         ? row.template_params.filter((p): p is string => typeof p === 'string')

@@ -87,7 +87,9 @@ describe('broadcast with a disabled connection', () => {
       phoneNumberId: 'pn-1',
       accessToken: 'tok',
       templateRow: null,
-      planned: [{ recipientRowId: 'r1', phone: '+15550000000', params: [] }],
+      planned: [
+        { recipientRowId: 'r1', contactId: 'c1', phone: '+15550000000', params: [] },
+      ],
       rejected: 0,
     };
     await expect(deliverBroadcast(db, plan)).rejects.toBeInstanceOf(

@@ -143,8 +143,8 @@
         "Typecheck e testes passam"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": "Adicionada pelo orquestrador após a US-008: a US-005 (mensagem livre) e a US-006 (elegibilidade) ficaram funcionalmente completas, mas nenhuma delas corrigiu que deliverBroadcast hardcoda {kind: WA_PHONE_KIND, address: recipient.phone} pra QUALQUER canal — um gap real de planejamento (o design.md assumiu 'resolveTarget(recipient, connection) — já existe por provider' sem verificar que deliverBroadcast nunca chamava esse método). Sem esta história, um broadcast Telegram de verdade falha ou manda pro alvo errado mesmo com toda a UI funcionando."
+      "passes": true,
+      "notes": "Adicionada pelo orquestrador após a US-008: a US-005 (mensagem livre) e a US-006 (elegibilidade) ficaram funcionalmente completas, mas nenhuma delas corrigiu que deliverBroadcast hardcoda {kind: WA_PHONE_KIND, address: recipient.phone} pra QUALQUER canal — um gap real de planejamento (o design.md assumiu 'resolveTarget(recipient, connection) — já existe por provider' sem verificar que deliverBroadcast nunca chamava esse método). Sem esta história, um broadcast Telegram de verdade falha ou manda pro alvo errado mesmo com toda a UI funcionando. Escopo confirmado: o contrato de recipients da API pública (POST /api/v1/broadcasts, 'to': phone) NÃO mudou nesta história — continua fora de escopo, documentado como tal em docs/public-api.md. O que mudou é a resolução do ALVO de envio dentro de deliverBroadcast/broadcast-resume.ts, que agora não depende mais de recipient.phone para canais sem template."
     },
     {
       "id": "US-010",
