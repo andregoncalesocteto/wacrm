@@ -1,6 +1,12 @@
 # Ralph Progress Log — ralph/broadcast-multi-channel
 Started: 2026-09-22
-PRD: .projects/broadcast-multi-channel/prd.json (14 stories, priority order = id order, no gaps).
+PRD: .projects/broadcast-multi-channel/prd.json (15 stories, priority order = id order, no gaps).
+US-009 ("Endereçamento do destinatário do broadcast resolve por canal") was inserted by the orchestrator after
+US-008, pushing the original US-009..US-014 (wizard/report/verification) to US-010..US-015. Reason: deliverBroadcast
+hardcodes `{kind: WA_PHONE_KIND, address: recipient.phone}` for EVERY channel — a real gap neither US-005 (free
+message content) nor US-006 (eligibility) closed. A Telegram-eligible contact with `phone=''` either gets dropped
+or gets the wrong send target. Fix it before building more UI on top (US-010 onward) that would look correct but
+send to the wrong place for non-template channels.
 Base docs: SOLUTION.md, design.md, adr/ADR-001-resolver-de-conexao-do-broadcast.md,
 adr/ADR-002-modelo-de-dados-do-broadcast-multicanal.md, prd-broadcast-multi-channel.md.
 No test-scenarios.json (acceptanceCriteria are the bar).
