@@ -237,8 +237,8 @@
         "Nenhum teste de caracterização das US-003/US-005/US-008 quebrou"
       ],
       "priority": 15,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser-verified both flows end-to-end (dashboard wizard, real seeded QA connections): Telegram free-message broadcast sent (connection_id + message_text persisted, template_name null), report showed —/— for Entregues/Lidas (funnel + stat cards), recipient failed cleanly at 'Telegram connection has no bot token' (credentials boundary, not an addressing/identity bug). WhatsApp template broadcast regression: unchanged Step1ChooseTemplate, confirm dialog and report page (Template:/name, real language, 0/0% not dashes), recipient failed cleanly at 'WhatsApp connection has no access token'. Could NOT verify an actual message arriving at a real Telegram bot or a real WhatsApp delivery — no real Meta credentials exist in this dev environment (true since before this PRD), and the account's one real, working Telegram bot is explicitly off-limits per this PRD's own Codebase Patterns; creating a fresh throwaway bot requires a human to talk to @BotFather, which this environment cannot do. This is the same documented carve-out every prior story's browser check hit (US-006 through US-014) — recorded here rather than faked, per the scratchpad's own instruction not to fake an unreachable real round-trip. docs/public-api.md's POST /api/v1/broadcasts section corrected: it previously implied a free-message body could be submitted through the public API (added by US-004's own doc update), but the route never actually exposes message_text/message_media_url (confirmed by reading route.ts — it only extracts template_name); fixed the content_required error description and added an explicit note that free-message/non-template broadcasts are dashboard-only for now. CLAUDE.md checked, no WhatsApp-only broadcast claim found needing correction."
     }
   ]
 }

@@ -301,13 +301,17 @@ counted as `rejected`. Response (202):
 }
 ```
 
+This endpoint is currently **template-only** — `template_name` is
+required. Non-template channels (e.g. Telegram) and free-message
+broadcasts are supported by the dashboard's broadcast wizard, but not
+yet exposed here.
+
 Domain error codes beyond the table above: `connection_required` (400
 — more than one active connection, `connection_id` needed),
 `whatsapp_not_configured` (400 — no connection at all), `not_found`
 (404 — `connection_id` doesn't exist or belongs to another account),
-`connection_disabled` (409), `content_required` (400 — neither
-`template_name` nor a free-message body given), `template_malformed`
-(500).
+`connection_disabled` (409), `content_required` (400 — `template_name`
+missing), `template_malformed` (500).
 
 ### `GET /api/v1/broadcasts/{id}`
 

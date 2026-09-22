@@ -1067,3 +1067,92 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     capability field should call the hook directly rather than routing through `composerCapabilities()`'s derived
     subset, which does not expose these fields.
 ---
+
+## 2026-09-22 - US-015 (final story, 15/15)
+- Implemented: no app code changes — this story is verification + docs. Ran the full quality gate from a clean
+  `.next/`: `npm run typecheck` clean, `npm run lint` 0 errors/41 warnings (matches baseline exactly), `TZ=UTC npm
+  test` 161 files/1955 tests passed (matches the US-014 baseline exactly — no new tests added by this story), and
+  separately re-ran the six US-003/US-005/US-008-lineage characterization files
+  (`broadcast-core.connection-resolution.test.ts`, `broadcast-core.provider.test.ts`,
+  `broadcast-core.credentials.test.ts`, `broadcast-core.disabled.test.ts`,
+  `broadcast-deliver.characterization.test.ts`, `broadcast-resume.test.ts`, `broadcast-core.test.ts` — 7 files/55
+  tests) explicitly to confirm none broke (AC6). `npm run build` succeeded (AC2), all routes including
+  `/api/v1/broadcasts` and `/broadcasts/[id]` compiled.
+- Docs (AC5): read `docs/public-api.md` and `CLAUDE.md` end to end looking for "WhatsApp-only" broadcast claims to
+  correct. Found the opposite kind of inaccuracy instead: US-004's own doc update had added `content_required (400
+  — neither template_name nor a free-message body given)` to the `POST /api/v1/broadcasts` section, but
+  `src/app/api/v1/broadcasts/route.ts` was (and still is) confirmed by reading it to only ever extract
+  `template_name` from the request body — there is no `message_text`/`message_media_url` field accepted by this
+  endpoint at all (free-message broadcasts only exist through the dashboard wizard's `/api/whatsapp/broadcast`
+  route, wired up in US-011-US-013). The doc implied a capability the public API doesn't have. Fixed: added an
+  explicit "this endpoint is currently template-only ... not yet exposed here" note right before the error-code
+  list, and reworded the `content_required` entry to "`template_name` missing" instead of the misleading
+  "neither ... nor a free-message body given". `CLAUDE.md` was read too — no broadcast-as-WhatsApp-only claim
+  found there (the one broadcast-core.ts/broadcast-resume.ts mention is channel-neutral); left unchanged.
+- Browser verification (dev-browser, containerized app — no rebuild needed, no app source changed this story):
+  seeded a throwaway QA account (`/auth/v1/signup`, auto-confirmed, logged in via the UI to trigger lazy
+  account/profile creation), one store, a `whatsapp_cloud` connection + an `APPROVED` template (`qa_promo_015`,
+  body `Hi {{1}}, your order is ready!`), a `telegram` connection (fake `external_id`, distinct from the account's
+  real bot — same UNIQUE-constraint safety net US-013 relied on), a phoned WhatsApp-eligible contact, and a
+  phoneless contact with a `telegram:chat_id` identity + a `conversations` row for the Telegram connection
+  (US-006-eligible). Deliberately did NOT seed `channel_connection_credentials` for either connection (same
+  established pattern as US-013 — the missing-credentials error is itself the clean, typed proof that addressing
+  resolved correctly before failing). Walked BOTH flows all the way through clicking "Enviar broadcast":
+  - Telegram/free-message (AC3): step 0 listed both connections with correct labels; step 1 rendered
+    `Step1ComposeMessage` (not the template picker) with the real `1024 caracteres` Telegram cap; step 2 showed 1
+    eligible (the Telegram contact) / the WhatsApp contact flagged "Ainda não conversou com este canal"; step 3
+    (`Personalizar`) rendered the free-message `{{1}}` token with a live preview; step 4 showed "Mensagem:"/the
+    text and "Idioma: —"; the confirm dialog used the template-free copy. After sending, the broadcast row
+    persisted `connection_id` (the Telegram one) + `message_text`, `template_name` null; the recipient failed with
+    `error_message = "Telegram connection has no bot token"` (confirmed via `select ... from broadcast_recipients`)
+    — NOT an addressing/identity error, confirming `loadRecipientIdentities`/`resolveTarget` found and used the
+    contact's Telegram identity correctly before hitting the (expected, in this environment) credentials wall. The
+    report page (`/broadcasts/[id]`) showed "—"/"—" for the Entregues/Lidas stat cards and funnel rows (no `0`, no
+    `0%`) — Enviadas/Respondidas/Com falha rendered normally (0/0%/100%) — exactly the US-014 behavior, now
+    confirmed on a broadcast that went through a REAL send attempt end to end, not just SQL-seeded rows.
+  - WhatsApp/template regression (AC4): step 1 rendered the unchanged `Step1ChooseTemplate` (picked
+    `qa_promo_015`); step 2 correctly inverted eligibility (WhatsApp contact eligible, Telegram contact flagged
+    "Sem identidade neste canal"); step 4 showed the original "Template:"/name + real language (`en_US`); the
+    confirm dialog used the original template-mentioning copy, byte-identical to pre-PRD wording. After sending,
+    the broadcast persisted `connection_id` (the WhatsApp one) + `template_name`, `message_text` empty; the
+    recipient failed with `error_message = "WhatsApp connection has no access token"` — the same class of clean
+    credentials failure as every prior story in this PRD. The report page showed real `0`/`0%` values (no dashes)
+    for every stat card and funnel row, confirming AC4's "continua funcionando exatamente como antes" literally,
+    not just by code review.
+  - Could NOT verify (recorded here, not faked, per this iteration's own carried-over instruction and every prior
+    story's identical carve-out): an actual message arriving at a real Telegram bot, or an actual delivery to a
+    real WhatsApp number. No real Meta/WhatsApp Business credentials have existed in this dev environment at any
+    point in this PRD; the account's one real, working Telegram bot is explicitly off-limits (this file's own
+    Codebase Patterns, reiterated by this iteration's own instructions); and creating a fresh throwaway Telegram
+    bot requires a human to message @BotFather, which this sandboxed session cannot do. AC3's literal "a conexão
+    real já configurada nesta sessão" phrasing was read as aspirational, not actionable here, given that hard
+    constraint — resolved in favor of the constraint (don't touch/impersonate the real account), consistent with
+    every prior story (US-006 onward) that hit the exact same wall.
+  - Incidental, not a defect of this feature (confirmed by reading `step3-personalize.tsx`): the step-3 preview
+    picks the single most-recently-created contact account-wide (`order('created_at', desc).limit(1)`), not one
+    filtered by the current audience/eligibility — pre-existing behavior, untouched by US-012's generalization (it
+    only changed which FIELDS the preview reads, template vs. free message, not which contact it picks). Noticed
+    because the Telegram contact (seeded second) showed in the preview during the WhatsApp flow too. Not
+    introduced by this PRD; not fixed here (out of scope for a verification-only story).
+  All seeded rows deleted afterwards (`delete from accounts where id=...` cascades store/connections/template/
+  contacts/identities/conversations/broadcasts/profile; `delete from auth.users where id=...` separately) —
+  verified 0 rows remain (accounts, auth.users, broadcasts by name, channel_connections by external_id).
+- Gap found and flagged, NOT fixed (real but out of this story's scope — a correctness question about a route
+  none of this PRD's stories asked to touch beyond US-004's original connection_id work, not a doc or test-suite
+  regression): `POST /api/v1/broadcasts` (the public API route) has no `connection_channel_mismatch` guard, unlike
+  the dashboard's `/api/whatsapp/broadcast` route which US-013 gave one. Since the public route only ever sends
+  `template_name` (never `message_text`), pointing it at a non-template connection (e.g. Telegram) would pass
+  `createBroadcast`'s content-exclusivity check (template_name present, hasMessage false) but then hit
+  `deliverBroadcast`'s non-template branch with an EMPTY `messageText` — silently attempting to send a blank
+  message instead of a clear typed rejection. Not exercised by this story's own AC (which verifies the dashboard
+  wizard, not the public API, for both channels) and not something any story in this PRD's scope named explicitly
+  for the public route. Left as a known gap for a future story/PRD, not patched here to stay surgical.
+- Files changed: `docs/public-api.md`, `.projects/broadcast-multi-channel/prd.json`,
+  `.projects/broadcast-multi-channel/progress.txt`.
+- **Learnings for future iterations (none — this is the last story of this PRD):**
+  - If this PRD is ever reopened (e.g. a follow-up "broadcast multi-channel v2"), the two open items worth
+    starting from are: (1) the `Broadcast` TS type's `template_name`/`template_language` still typed
+    required/non-nullable despite the DB allowing null since migration 052 (flagged by US-014, still open), and
+    (2) the `POST /api/v1/broadcasts` `connection_channel_mismatch` gap noted above (never flagged before this
+    story, since no earlier story browser/route-tested the public API against a non-template connection).
+---
