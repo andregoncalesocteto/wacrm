@@ -76,6 +76,22 @@ Quick tunnel URLs change every time the tunnel restarts. When it does, update
 the new webhook URL. Port note: Telegram delivers to ports 443, 80, 88 or 8443
 only, which tunnels satisfy by serving on 443.
 
+If a WAF, CDN or firewall sits in front of the tunnel (Cloudflare, a load
+balancer, ...), make sure it doesn't block Telegram's own servers —
+**especially a geo-block rule**: Telegram's webhook servers don't geolocate to
+your country, so a "block everything outside `<country>`" rule blocks them by
+default. Telegram delivers only from `149.154.160.0/20` and `91.108.4.0/22`
+([current list](https://core.telegram.org/bots/webhooks) — they warn it can
+change); add an explicit allow/skip rule for those two ranges, scoped to the
+webhook path, ordered **before** any geo-block rule (Cloudflare evaluates
+custom rules top to bottom — a "skip" rule only skips the ones listed after
+it). The connection detail's **Test connection** action
+(`getWebhookInfo` under the hood) reports the symptom precisely: `Recent
+delivery error: Wrong response from the webhook: 403 Forbidden` — the app
+itself never returns 403 for this route (a bad secret is the only 4xx it
+emits, and that's `401`), so a 403 here always means something in front of
+the app rejected the request before it arrived.
+
 ## 4. Test without Telegram: fixtures and `curl`
 
 Sample `Update` payloads live in
