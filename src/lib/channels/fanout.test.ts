@@ -28,6 +28,7 @@ vi.mock('@/lib/webhooks/deliver', () => ({
     return webhook(...a);
   },
 }));
+const identityRows = vi.fn();
 const flagQuery = vi.fn();
 const flagUpdate = vi.fn();
 vi.mock('./admin-client', () => ({
@@ -37,6 +38,9 @@ vi.mock('./admin-client', () => ({
       const q: Record<string, unknown> = {};
       for (const m of ['select', 'eq', 'in', 'order']) q[m] = () => q;
       q.limit = () => flagQuery();
+      q.maybeSingle = () => Promise.resolve({ data: { phone: '' } });
+      q.then = (res: (v: unknown) => unknown) =>
+        Promise.resolve({ data: identityRows() }).then(res);
       q.update = (patch: unknown) => ({
         eq: (_c: string, id: string) => flagUpdate(patch, id),
       });
@@ -57,7 +61,12 @@ import { ingestInbound, type IngestedMessage } from './ingest';
 
 function stored(over: Partial<IngestedMessage> = {}): IngestedMessage {
   return {
-    connection: { id: 'conn', account_id: 'acc' },
+    connection: {
+      id: 'conn',
+      account_id: 'acc',
+      store_id: 'st',
+      channel_type: 'telegram',
+    },
     contact: { id: 'ct' },
     conversation: { id: 'cv' },
     contactCreated: false,
@@ -244,6 +253,9 @@ describe('US-074 fan-out additions', () => {
     automations.mockReset().mockResolvedValue(undefined);
     ai.mockReset().mockResolvedValue(undefined);
     webhook.mockReset().mockResolvedValue(undefined);
+    identityRows.mockReset().mockReturnValue([
+      { kind: 'telegram:user', external_id: '42', handle: 'ada' },
+    ]);
     flagQuery.mockReset().mockResolvedValue({ data: [], error: null });
     flagUpdate.mockReset().mockResolvedValue({ error: null });
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -273,7 +285,7 @@ describe('US-074 fan-out additions', () => {
     expect(flagUpdate).not.toHaveBeenCalled();
   });
 
-  it("dispatches message.received with today's exact payload", async () => {
+  it('dispatches message.received with today\'s fields plus connection, store, channel and contact', async () => {
     await fanOutInbound(stored({ contentType: 'image', contentText: 'cap' }), {
       configOwnerUserId: 'owner',
     });
@@ -284,8 +296,17 @@ describe('US-074 fan-out additions', () => {
       conversation_id: 'cv',
       contact_id: 'ct',
       whatsapp_message_id: 'wamid.1',
+      external_message_id: 'wamid.1',
       content_type: 'image',
       text: 'cap',
+      connection_id: 'conn',
+      store_id: 'st',
+      channel: 'telegram',
+      contact: {
+        id: 'ct',
+        phone: null,
+        identities: [{ kind: 'telegram:user', external_id: '42', handle: 'ada' }],
+      },
     });
   });
 
@@ -312,7 +333,12 @@ describe('US-074 fan-out additions', () => {
 
   it('conversationCreatedHook emits conversation.created once with the route payload', async () => {
     await conversationCreatedHook({
-      connection: { id: 'conn', account_id: 'acc' },
+      connection: {
+        id: 'conn',
+        account_id: 'acc',
+        store_id: 'st',
+        channel_type: 'telegram',
+      },
       contact: { id: 'ct' },
       conversation: { id: 'cv' },
       contactCreated: true,
@@ -322,7 +348,20 @@ describe('US-074 fan-out additions', () => {
     expect(webhook.mock.calls[0].slice(1)).toEqual([
       'acc',
       'conversation.created',
-      { conversation_id: 'cv', contact_id: 'ct' },
+      {
+        conversation_id: 'cv',
+        contact_id: 'ct',
+        connection_id: 'conn',
+        store_id: 'st',
+        channel: 'telegram',
+        contact: {
+          id: 'ct',
+          phone: null,
+          identities: [
+            { kind: 'telegram:user', external_id: '42', handle: 'ada' },
+          ],
+        },
+      },
     ]);
   });
 

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { buildWebhookOrigin } from '@/lib/webhooks/origin';
 import { resolveOrCreateContact, type ContactRow } from './identity';
 import { isValidStatusTransition } from './status-ladder';
 import type { Connection, InboundContent, InboundEvent } from './types';
@@ -485,6 +486,7 @@ async function ingestMessage(
  */
 async function ingestStatus(
   db: SupabaseClient,
+  connection: Connection,
   event: StatusEvent
 ): Promise<IngestOutcome> {
   const failure = event.status === 'failed' ? event.error : undefined;
@@ -544,21 +546,27 @@ async function ingestStatus(
   let webhookDispatched = false;
   const { data: msgRow } = await db
     .from('messages')
-    .select('conversation_id, conversations(account_id)')
+    .select('conversation_id, conversations(account_id, contact_id)')
     .eq('message_id', event.externalId)
     .limit(1)
     .maybeSingle();
   if (msgRow) {
     const row = msgRow as unknown as {
       conversation_id: string;
-      conversations: { account_id: string } | null;
+      conversations: { account_id: string; contact_id: string | null } | null;
     };
     const accountId = row.conversations?.account_id;
     if (accountId) {
       await dispatchWebhookEvent(db, accountId, 'message.status_updated', {
         whatsapp_message_id: event.externalId,
+        external_message_id: event.externalId,
         conversation_id: row.conversation_id,
         status: event.status,
+        ...(await buildWebhookOrigin(
+          db,
+          connection,
+          row.conversations?.contact_id
+        )),
       });
       webhookDispatched = true;
     }
@@ -671,7 +679,7 @@ export async function ingestInbound(
           out.push(await ingestMessage(db, connection, event, opts));
           break;
         case 'status':
-          out.push(await ingestStatus(db, event));
+          out.push(await ingestStatus(db, connection, event));
           break;
         case 'reaction':
           out.push(await ingestReaction(db, connection, event, opts));

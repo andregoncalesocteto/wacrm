@@ -772,3 +772,10 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 155 files/1899 tests. No build, no browser (API only).
 - **Learnings:** phone in responses is the stored digits (no '+'), as before. PATCH /contacts/{id} does not accept identities (not asked). ?search= still matches only name/phone (not identity handles). MCP (US-064) must expose identities on contacts. Do not run prettier on whole dirs: it reformats untouched files.
 ---
+
+## 2026-09-21 - US-063
+- Outbound webhooks (message.received, conversation.created, message.status_updated) now merge connection_id, store_id, channel and contact {id, phone|null, identities[]} into `data`. New src/lib/webhooks/origin.ts (buildWebhookOrigin: two small queries, contacts.phone + contact_identities, reuses serializeIdentities/ApiIdentity; a failed lookup degrades to an empty contact block, never drops the event). Wired in fanout.ts (message.received, conversationCreatedHook) and ingest.ts (ingestStatus now takes `connection`; select adds conversations.contact_id). Also added external_message_id next to the kept whatsapp_message_id. Envelope and signature unchanged.
+- Tests: origin.test.ts (4), deliver.test.ts (payload + recomputed HMAC), fanout.test.ts and ingest.events.test.ts expectations updated (contract change required by this story). docs/public-api.md updated.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 156 files/1904 tests. No build, no browser (API only).
+- **Learnings:** the status path gets its connection from the ingest call, not from the message row; the fanout test's admin mock needed maybeSingle/then for the origin lookup. MCP (US-064) may want the new webhook fields documented.
+---

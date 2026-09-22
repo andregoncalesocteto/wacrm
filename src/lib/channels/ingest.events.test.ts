@@ -20,6 +20,7 @@ const CONN = {
   account_id: 'acct-1',
   external_id: 'pn-1',
   channel_type: 'whatsapp_cloud',
+  store_id: 'store-1',
   config: {},
 } as unknown as Connection;
 const OPTS = { auditUserId: 'owner-1' };
@@ -83,7 +84,18 @@ beforeEach(() => {
 
 describe('ingestInbound: status events', () => {
   beforeEach(() => {
-    state.tables.conversations = [{ id: 'conv-x', account_id: 'acct-1' }];
+    state.tables.conversations = [
+      { id: 'conv-x', account_id: 'acct-1', contact_id: 'ct-1' },
+    ];
+    state.tables.contacts = [{ id: 'ct-1', phone: '15551230000' }];
+    state.tables.contact_identities = [
+      {
+        contact_id: 'ct-1',
+        kind: 'whatsapp:phone',
+        external_id: '15551230000',
+        handle: null,
+      },
+    ];
     state.tables.messages = [
       {
         id: 'm-1',
@@ -145,8 +157,19 @@ describe('ingestInbound: status events', () => {
       'message.status_updated',
       {
         whatsapp_message_id: 'wamid.OUT1',
+        external_message_id: 'wamid.OUT1',
         conversation_id: 'conv-x',
         status: 'delivered',
+        connection_id: 'conn-1',
+        store_id: 'store-1',
+        channel: 'whatsapp_cloud',
+        contact: {
+          id: 'ct-1',
+          phone: '15551230000',
+          identities: [
+            { kind: 'whatsapp:phone', external_id: '15551230000', handle: null },
+          ],
+        },
       }
     );
     expect(r).toMatchObject({ webhookDispatched: true });

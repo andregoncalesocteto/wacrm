@@ -2,6 +2,7 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { buildWebhookOrigin } from '@/lib/webhooks/origin';
 import { supabaseAdmin } from './admin-client';
 import type { IngestContext, IngestedMessage } from './ingest';
 
@@ -133,16 +134,19 @@ export async function fanOutInbound(
   }
 
   // 4. Outbound `message.received` webhook (public API). Awaited; the payload
-  // is identical to today's (connection_id/store_id/channel come with US-063).
-  await isolated('message.received webhook', () =>
-    dispatchWebhookEvent(supabaseAdmin(), accountId, 'message.received', {
+  // keeps today's fields and adds the origin (connection, store, channel, contact).
+  await isolated('message.received webhook', async () => {
+    const admin = supabaseAdmin();
+    await dispatchWebhookEvent(admin, accountId, 'message.received', {
       conversation_id: conversationId,
       contact_id: contactId,
       whatsapp_message_id: externalId,
+      external_message_id: externalId,
       content_type: stored.contentType,
       text: text,
-    })
-  );
+      ...(await buildWebhookOrigin(admin, stored.connection, contactId)),
+    });
+  });
 }
 
 /**
@@ -187,11 +191,16 @@ export async function conversationCreatedHook(
   ctx: IngestContext
 ): Promise<void> {
   try {
+    const admin = supabaseAdmin();
     await dispatchWebhookEvent(
-      supabaseAdmin(),
+      admin,
       ctx.connection.account_id,
       'conversation.created',
-      { conversation_id: ctx.conversation.id, contact_id: ctx.contact.id }
+      {
+        conversation_id: ctx.conversation.id,
+        contact_id: ctx.contact.id,
+        ...(await buildWebhookOrigin(admin, ctx.connection, ctx.contact.id)),
+      }
     );
   } catch (err) {
     console.error('[channel:fanout] conversation.created webhook failed:', err);

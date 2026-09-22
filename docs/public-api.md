@@ -366,12 +366,17 @@ delivery uuid you can dedupe on, and `data` varies by `event`:
 
 ```jsonc
 // message.received
-{ "conversation_id": "…", "contact_id": "…", "whatsapp_message_id": "wamid.…", "content_type": "text", "text": "Hi 👋" }
+{ "conversation_id": "…", "contact_id": "…", "whatsapp_message_id": "wamid.…", "external_message_id": "wamid.…", "content_type": "text", "text": "Hi 👋",
+  "connection_id": "…", "store_id": "…", "channel": "whatsapp_cloud",
+  "contact": { "id": "…", "phone": "15551234567", "identities": [{ "kind": "whatsapp:phone", "external_id": "15551234567", "handle": null }] } }
 // conversation.created
-{ "conversation_id": "…", "contact_id": "…" }
+{ "conversation_id": "…", "contact_id": "…", "connection_id": "…", "store_id": "…", "channel": "telegram", "contact": { /* as above */ } }
 // message.status_updated
-{ "whatsapp_message_id": "wamid.…", "conversation_id": "…", "status": "delivered" }
+{ "whatsapp_message_id": "wamid.…", "external_message_id": "wamid.…", "conversation_id": "…", "status": "delivered",
+  "connection_id": "…", "store_id": "…", "channel": "whatsapp_cloud", "contact": { /* as above */ } }
 ```
+
+Every event carries `connection_id`, `store_id`, `channel` and `contact` (`contact.phone` is `null` when the contact has none, e.g. a Telegram contact; `contact.identities` lists the handles per channel). `whatsapp_message_id` is kept for compatibility; prefer `external_message_id`, which holds the provider's message id on any channel.
 
 Headers: `X-Wacrm-Event`, `X-Wacrm-Webhook-Id`, and `X-Wacrm-Signature`.
 
