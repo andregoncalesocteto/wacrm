@@ -2154,6 +2154,7 @@
         "contacts:read": "Listar y leer contactos",
         "contacts:write": "Crear y actualizar contactos",
         "conversations:read": "Listar y leer conversaciones",
+        "connections:read": "Listar tiendas y conexiones de canal",
         "broadcasts:send": "Lanzar campañas de difusión",
         "webhooks:manage": "Registrar y administrar webhooks de eventos salientes"
       },

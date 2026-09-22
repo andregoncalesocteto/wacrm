@@ -1178,7 +1178,7 @@
         "Verify in browser using dev-browser skill (o escopo `connections:read` disponível ao criar uma chave de API)"
       ],
       "priority": 69,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

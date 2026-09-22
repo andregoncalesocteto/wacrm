@@ -48,6 +48,7 @@ it. Grant the minimum.
 | `contacts:read`      | List and read contacts                   |
 | `contacts:write`     | Create and update contacts               |
 | `conversations:read` | List and read conversations              |
+| `connections:read`   | List stores and channel connections      |
 | `broadcasts:send`    | Launch broadcast campaigns               |
 | `webhooks:manage`    | Register and manage outbound webhooks    |
 
@@ -231,6 +232,16 @@ Paginated. Each message includes its `direction` (`inbound` /
 `outbound`), `status` (delivery state), `whatsapp_message_id`, and
 `content_*`. The conversation is verified to belong to your account
 first (`404` otherwise).
+
+### `GET /api/v1/stores` and `GET /api/v1/connections`
+
+Read-only discovery of the ids you pass to `POST /api/v1/messages`
+(`connection_id`). Scope `connections:read`. Credentials and connection
+`config` are never returned. Both return the whole list (`next_cursor` is
+always `null`).
+
+- `stores[]`: `id`, `name`, `address`, `phone`, `manager_name`, `created_at`.
+- `connections[]`: `id`, `store_id`, `channel` (e.g. `whatsapp_cloud`, `telegram`), `display_name`, `external_id`, `status`, `enabled` (`false` when the connection was disabled), `last_inbound_at`, `last_outbound_at`, `connected_at`, `created_at`. Optional filter: `?store_id=`.
 
 ### `POST /api/v1/broadcasts`
 

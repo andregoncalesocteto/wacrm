@@ -756,3 +756,11 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
   - Meta 131047 -> window_closed and 131026 -> recipient_unreachable now surface as 409/422 on the v1 endpoint (were 502 meta_error). Other Meta failures stay 502.
   - docs/public-api.md was already not prettier-clean; left as is. Lint baseline is 43 warnings now (not 41), unchanged by this story. Not run: npm run build (no routing/config change), browser (API only). MCP send tool passes the body through; its README/docs (US-06x) may need the new fields.
 ---
+
+## 2026-09-21 - US-061
+- New scope `connections:read` (scopes.ts + description in the 4 catalogues, docs/public-api.md table). New routes GET /api/v1/stores (id, name, address, phone, manager_name, created_at) and GET /api/v1/connections (explicit columns; channel_type exposed as `channel`, `enabled` = disabled_at is null; optional ?store_id=). `config` (holds verify_token) and credentials are never selected. Whole list, next_cursor null.
+- Tests: src/app/api/v1/stores/route.test.ts (7; real requireApiKey with a mocked key store: 403 without scope, 401, account isolation, no secrets, store_id filter). Also covers /connections.
+- Browser (pt :3100, QA): the create-key dialog lists connections:read with its description.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 153 files/1886 tests. No build.
+- **Learnings:** MCP docs/tool (US-064) still need the new send fields (external_message_id, connection_id, channel) and these two endpoints; only noted here.
+---
