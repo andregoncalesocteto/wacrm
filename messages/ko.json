@@ -925,7 +925,7 @@
     "list": {
       "loadError": "자동화를 불러오지 못했습니다",
       "title": "자동화",
-      "subtitle": "WhatsApp® 이벤트에 자동으로 반응하는 워크플로를 만드세요.",
+      "subtitle": "이벤트에 자동으로 반응하는 워크플로를 만드세요.",
       "create": "자동화 만들기",
       "retry": "다시 시도",
       "templatesTitle": "빠른 시작 템플릿",
@@ -1178,7 +1178,7 @@
     "list": {
       "title": "플로우",
       "beta": "베타",
-      "description": "분기하는 버튼 기반 WhatsApp 대화를 만드세요. 메뉴, FAQ, 사람이 개입하기 전 1차 응대에 유용합니다.",
+      "description": "분기하는 버튼 기반 대화를 만드세요. 메뉴, FAQ, 사람이 개입하기 전 1차 응대에 유용합니다.",
       "newFlow": "새 플로우",
       "statusDraft": "초안",
       "statusActive": "활성",
@@ -1216,7 +1216,7 @@
     "logs": {
       "title": "실행 기록",
       "description": "이 플로우가 실행된 가장 최근 50건입니다. 행을 펼치면 엔진의 단계별 로그를 볼 수 있습니다.",
-      "emptyState": "아직 실행 기록이 없습니다. 개인 WhatsApp 번호로 플로우를 실행시켜 여기서 확인해보세요.",
+      "emptyState": "아직 실행 기록이 없습니다. 연결된 채널로 메시지를 보내 여기서 확인해보세요.",
       "loadError": "실행 기록을 불러올 수 없습니다.",
       "unknownContact": "알 수 없는 연락처",
       "atNode": "{node}에서",
@@ -1250,7 +1250,7 @@
       "showAdvanced": "고급 설정 표시",
       "hideAdvanced": "고급 설정 숨기기",
       "nodeKeyLabel": "노드 키 (내부 식별자 — 분석을 위해 값을 고정하세요)",
-      "replyIdsHint": "각 옵션의 응답 ID는 위에 인라인으로 표시됩니다. 고객이 탭했을 때 WhatsApp이 반환하는 값이며, 보통 직접 수정할 필요는 없습니다.",
+      "replyIdsHint": "각 옵션의 응답 ID는 위에 인라인으로 표시됩니다. 고객이 탭했을 때 채널이 반환하는 값이며, 보통 직접 수정할 필요는 없습니다.",
       "badgeEntry": "시작",
       "noNodesYet": "아직 노드가 없습니다.",
       "deleteNode": "노드 삭제",
@@ -1335,7 +1335,7 @@
         },
         "send_message": {
           "label": "메시지 보내기",
-          "blurb": "WhatsApp 텍스트 메시지를 보냅니다"
+          "blurb": "텍스트 메시지를 보냅니다"
         },
         "send_buttons": {
           "label": "버튼 보내기",
@@ -1391,16 +1391,16 @@
         "sendMessageNextMissing": "메시지 보내기 노드가 존재하지 않는 노드 \"{key}\"을(를) 가리킵니다.",
         "sendMediaType": "미디어 보내기 노드에는 미디어 유형(이미지, 동영상 또는 문서)이 필요합니다.",
         "sendMediaFile": "미디어 보내기 노드에는 파일이 필요합니다(활성화하기 전에 업로드하세요).",
-        "captionTooLong": "캡션이 {max}자를 초과합니다(WhatsApp 제한).",
+        "captionTooLong": "캡션이 {max}자를 초과합니다.",
         "sendMediaNextRequired": "미디어 보내기 노드는 다음 노드를 가리켜야 합니다.",
         "sendMediaNextMissing": "미디어 보내기 노드가 존재하지 않는 노드 \"{key}\"을(를) 가리킵니다.",
         "sendButtonsText": "버튼 보내기 노드에는 본문 텍스트가 필요합니다.",
         "buttonsMin": "버튼 보내기 노드에는 버튼이 하나 이상 필요합니다.",
-        "buttonsMax": "WhatsApp은 메시지당 최대 {max}개의 버튼을 허용합니다.",
+        "buttonsMax": "메시지 하나에는 최대 {max}개의 버튼만 담을 수 있습니다.",
         "buttonReplyIdRequired": "버튼 {n}에 응답 ID가 필요합니다.",
         "buttonReplyIdDuplicate": "중복된 버튼 응답 ID \"{id}\".",
         "buttonTitleRequired": "버튼 {n}에 제목이 필요합니다.",
-        "buttonTitleTooLong": "버튼 {n}의 제목이 {max}자를 초과합니다(WhatsApp 제한).",
+        "buttonTitleTooLong": "버튼 {n}의 제목이 {max}자를 초과합니다.",
         "buttonNextRequired": "버튼 {n}에 다음 노드가 필요합니다.",
         "buttonNextMissing": "버튼 {n}이(가) 존재하지 않는 노드 \"{key}\"을(를) 가리킵니다.",
         "sendListText": "목록 보내기 노드에는 본문 텍스트가 필요합니다.",
@@ -2161,7 +2161,7 @@
       "description": "키는 공개 REST API(<apiCode>/api/v1</apiCode>)를 인증해 직접 자동화를 구축할 수 있게 해줍니다. <headerCode>Authorization: Bearer '<'key'>'</headerCode> 형식으로 전송하세요.",
       "newApiKey": "새 API 키",
       "scopeDescriptions": {
-        "messages:send": "WhatsApp 메시지 보내기",
+        "messages:send": "메시지 보내기",
         "messages:read": "메시지와 전송 상태 읽기",
         "contacts:read": "연락처 목록 조회 및 읽기",
         "contacts:write": "연락처 생성 및 수정",

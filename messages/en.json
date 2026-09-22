@@ -925,7 +925,7 @@
     "list": {
       "loadError": "Failed to load automations",
       "title": "Automations",
-      "subtitle": "Build workflows that react to WhatsApp® events automatically.",
+      "subtitle": "Build workflows that react to events automatically.",
       "create": "Create Automation",
       "retry": "Retry",
       "templatesTitle": "Quick-start templates",
@@ -1178,7 +1178,7 @@
     "list": {
       "title": "Flows",
       "beta": "Beta",
-      "description": "Build branching, button-driven WhatsApp conversations. Useful for menus, FAQs, and triage before a human steps in.",
+      "description": "Build branching, button-driven conversations. Useful for menus, FAQs, and triage before a human steps in.",
       "newFlow": "New flow",
       "statusDraft": "Draft",
       "statusActive": "Active",
@@ -1216,7 +1216,7 @@
     "logs": {
       "title": "Runs",
       "description": "The 50 most recent times this flow ran. Expand a row to see the engine's per-step log.",
-      "emptyState": "No runs yet. Trigger the flow from a personal WhatsApp number to see it appear here.",
+      "emptyState": "No runs yet. Message a connected channel to see it appear here.",
       "loadError": "Couldn't load runs.",
       "unknownContact": "Unknown contact",
       "atNode": "at {node}",
@@ -1250,7 +1250,7 @@
       "showAdvanced": "Show advanced",
       "hideAdvanced": "Hide advanced",
       "nodeKeyLabel": "Node key (internal identifier — keep stable for analytics)",
-      "replyIdsHint": "Reply IDs for each option are shown inline above. They're returned by WhatsApp when a customer taps; you usually don't need to touch them.",
+      "replyIdsHint": "Reply IDs for each option are shown inline above. The channel returns them when a customer taps; you usually don't need to touch them.",
       "badgeEntry": "Entry",
       "noNodesYet": "No nodes yet.",
       "deleteNode": "Delete node",
@@ -1335,7 +1335,7 @@
         },
         "send_message": {
           "label": "Send message",
-          "blurb": "Sends a WhatsApp text message"
+          "blurb": "Sends a text message"
         },
         "send_buttons": {
           "label": "Send buttons",
@@ -1391,16 +1391,16 @@
         "sendMessageNextMissing": "Send-message points to non-existent node \"{key}\".",
         "sendMediaType": "Send-media node needs a media type (image, video, or document).",
         "sendMediaFile": "Send-media node needs a file (upload one before activating).",
-        "captionTooLong": "Caption exceeds {max} chars (WhatsApp limit).",
+        "captionTooLong": "Caption exceeds {max} chars.",
         "sendMediaNextRequired": "Send-media node must point to a next node.",
         "sendMediaNextMissing": "Send-media points to non-existent node \"{key}\".",
         "sendButtonsText": "Send-buttons node needs a text body.",
         "buttonsMin": "Send-buttons needs at least one button.",
-        "buttonsMax": "WhatsApp allows at most {max} buttons per message.",
+        "buttonsMax": "A message can have at most {max} buttons.",
         "buttonReplyIdRequired": "Button {n} needs a reply id.",
         "buttonReplyIdDuplicate": "Duplicate button reply id \"{id}\".",
         "buttonTitleRequired": "Button {n} needs a title.",
-        "buttonTitleTooLong": "Button {n} title is over {max} chars (WhatsApp limit).",
+        "buttonTitleTooLong": "Button {n} title is over {max} chars.",
         "buttonNextRequired": "Button {n} needs a next node.",
         "buttonNextMissing": "Button {n} points to non-existent node \"{key}\".",
         "sendListText": "Send-list node needs a text body.",
@@ -2161,7 +2161,7 @@
       "description": "Keys authenticate the public REST API (<apiCode>/api/v1</apiCode>) so you can build your own automations. Send them as <headerCode>Authorization: Bearer '<'key'>'</headerCode>.",
       "newApiKey": "New API key",
       "scopeDescriptions": {
-        "messages:send": "Send WhatsApp messages",
+        "messages:send": "Send messages",
         "messages:read": "Read messages and their delivery status",
         "contacts:read": "List and read contacts",
         "contacts:write": "Create and update contacts",

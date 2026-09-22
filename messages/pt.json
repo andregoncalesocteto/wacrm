@@ -925,7 +925,7 @@
     "list": {
       "loadError": "Falha ao carregar automações",
       "title": "Automações",
-      "subtitle": "Crie fluxos de trabalho que reagem automaticamente a eventos do WhatsApp®.",
+      "subtitle": "Crie fluxos de trabalho que reagem automaticamente a eventos.",
       "create": "Criar automação",
       "retry": "Tentar novamente",
       "templatesTitle": "Templates para começar rápido",
@@ -1178,7 +1178,7 @@
     "list": {
       "title": "Fluxos",
       "beta": "Beta",
-      "description": "Crie conversas de WhatsApp com ramificações e botões. Útil para menus, FAQs e triagem antes de um humano entrar.",
+      "description": "Crie conversas com ramificações e botões. Útil para menus, FAQs e triagem antes de um humano entrar.",
       "newFlow": "Novo fluxo",
       "statusDraft": "Rascunho",
       "statusActive": "Ativo",
@@ -1216,7 +1216,7 @@
     "logs": {
       "title": "Execuções",
       "description": "As 50 execuções mais recentes deste fluxo. Expanda uma linha para ver o log do motor etapa por etapa.",
-      "emptyState": "Nenhuma execução ainda. Acione o fluxo a partir de um número pessoal de WhatsApp para vê-lo aparecer aqui.",
+      "emptyState": "Nenhuma execução ainda. Mande uma mensagem para um canal conectado para vê-lo aparecer aqui.",
       "loadError": "Não foi possível carregar as execuções.",
       "unknownContact": "Contato desconhecido",
       "atNode": "em {node}",
@@ -1250,7 +1250,7 @@
       "showAdvanced": "Mostrar avançado",
       "hideAdvanced": "Ocultar avançado",
       "nodeKeyLabel": "Chave do nó (identificador interno — mantenha estável para as análises)",
-      "replyIdsHint": "Os IDs de resposta de cada opção aparecem acima. O WhatsApp os devolve quando um cliente toca; normalmente você não precisa mexer neles.",
+      "replyIdsHint": "Os IDs de resposta de cada opção aparecem acima. O canal os devolve quando um cliente toca; normalmente você não precisa mexer neles.",
       "badgeEntry": "Entrada",
       "noNodesYet": "Nenhum nó ainda.",
       "deleteNode": "Excluir nó",
@@ -1335,7 +1335,7 @@
         },
         "send_message": {
           "label": "Enviar mensagem",
-          "blurb": "Envia uma mensagem de texto no WhatsApp"
+          "blurb": "Envia uma mensagem de texto"
         },
         "send_buttons": {
           "label": "Enviar botões",
@@ -1391,16 +1391,16 @@
         "sendMessageNextMissing": "O nó de enviar mensagem aponta para um nó inexistente \"{key}\".",
         "sendMediaType": "O nó de enviar mídia precisa de um tipo de mídia (imagem, vídeo ou documento).",
         "sendMediaFile": "O nó de enviar mídia precisa de um arquivo (envie um antes de ativar).",
-        "captionTooLong": "A legenda excede {max} caracteres (limite do WhatsApp).",
+        "captionTooLong": "A legenda excede {max} caracteres.",
         "sendMediaNextRequired": "O nó de enviar mídia precisa apontar para um próximo nó.",
         "sendMediaNextMissing": "O nó de enviar mídia aponta para um nó inexistente \"{key}\".",
         "sendButtonsText": "O nó de enviar botões precisa de um texto.",
         "buttonsMin": "O nó de enviar botões precisa de pelo menos um botão.",
-        "buttonsMax": "O WhatsApp permite no máximo {max} botões por mensagem.",
+        "buttonsMax": "Uma mensagem pode ter no máximo {max} botões.",
         "buttonReplyIdRequired": "O botão {n} precisa de um id de resposta.",
         "buttonReplyIdDuplicate": "Id de resposta de botão duplicado \"{id}\".",
         "buttonTitleRequired": "O botão {n} precisa de um título.",
-        "buttonTitleTooLong": "O título do botão {n} passa de {max} caracteres (limite do WhatsApp).",
+        "buttonTitleTooLong": "O título do botão {n} passa de {max} caracteres.",
         "buttonNextRequired": "O botão {n} precisa de um próximo nó.",
         "buttonNextMissing": "O botão {n} aponta para um nó inexistente \"{key}\".",
         "sendListText": "O nó de enviar lista precisa de um texto.",
@@ -2149,7 +2149,7 @@
       "description": "As chaves autenticam a API REST pública (<apiCode>/api/v1</apiCode>) para que você crie suas próprias automações. Envie-as como <headerCode>Authorization: Bearer '<'key'>'</headerCode>.",
       "newApiKey": "Nova chave de API",
       "scopeDescriptions": {
-        "messages:send": "Enviar mensagens do WhatsApp",
+        "messages:send": "Enviar mensagens",
         "messages:read": "Ler mensagens e o status de entrega",
         "contacts:read": "Listar e ler contatos",
         "contacts:write": "Criar e atualizar contatos",

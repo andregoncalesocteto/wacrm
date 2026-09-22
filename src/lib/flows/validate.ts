@@ -306,7 +306,7 @@ function validateNode(
           field: "caption",
           code: "captionTooLong",
           params: { max: String(INTERACTIVE_LIMITS.bodyMaxLength) },
-          message: `Caption exceeds ${INTERACTIVE_LIMITS.bodyMaxLength} chars (WhatsApp limit).`,
+          message: `Caption exceeds ${INTERACTIVE_LIMITS.bodyMaxLength} chars.`,
         });
       }
       if (!cfg.next_node_key) {
@@ -370,7 +370,7 @@ function validateNode(
           field: "buttons",
           code: "buttonsMax",
           params: { max: String(INTERACTIVE_LIMITS.maxButtons) },
-          message: `WhatsApp allows at most ${INTERACTIVE_LIMITS.maxButtons} buttons per message.`,
+          message: `A message can have at most ${INTERACTIVE_LIMITS.maxButtons} buttons.`,
         });
       }
       const seenIds = new Set<string>();
@@ -417,7 +417,7 @@ function validateNode(
             field: `${field}.title`,
             code: "buttonTitleTooLong",
             params: { n: i + 1, max: String(INTERACTIVE_LIMITS.buttonTitleMaxLength) },
-            message: `Button ${i + 1} title is over ${INTERACTIVE_LIMITS.buttonTitleMaxLength} chars (WhatsApp limit).`,
+            message: `Button ${i + 1} title is over ${INTERACTIVE_LIMITS.buttonTitleMaxLength} chars.`,
           });
         }
 

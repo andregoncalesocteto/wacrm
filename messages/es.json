@@ -925,7 +925,7 @@
     "list": {
       "loadError": "Error al cargar las automatizaciones",
       "title": "Automatizaciones",
-      "subtitle": "Crea flujos de trabajo que reaccionan automáticamente a eventos de WhatsApp®.",
+      "subtitle": "Crea flujos de trabajo que reaccionan automáticamente a eventos.",
       "create": "Crear automatización",
       "retry": "Reintentar",
       "templatesTitle": "Plantillas de inicio rápido",
@@ -1178,7 +1178,7 @@
     "list": {
       "title": "Flujos",
       "beta": "Beta",
-      "description": "Crea conversaciones de WhatsApp con ramificaciones y botones. Útil para menús, preguntas frecuentes y triaje antes de que intervenga una persona.",
+      "description": "Crea conversaciones con ramificaciones y botones. Útil para menús, preguntas frecuentes y triaje antes de que intervenga una persona.",
       "newFlow": "Nuevo flujo",
       "statusDraft": "Borrador",
       "statusActive": "Activo",
@@ -1216,7 +1216,7 @@
     "logs": {
       "title": "Ejecuciones",
       "description": "Las 50 ejecuciones más recientes de este flujo. Expande una fila para ver el registro paso a paso del motor.",
-      "emptyState": "Aún no hay ejecuciones. Activa el flujo desde un número personal de WhatsApp para verlo aparecer aquí.",
+      "emptyState": "Aún no hay ejecuciones. Envía un mensaje a un canal conectado para verlo aparecer aquí.",
       "loadError": "No se pudieron cargar las ejecuciones.",
       "unknownContact": "Contacto desconocido",
       "atNode": "en {node}",
@@ -1250,7 +1250,7 @@
       "showAdvanced": "Mostrar avanzado",
       "hideAdvanced": "Ocultar avanzado",
       "nodeKeyLabel": "Clave del nodo (identificador interno; mantenla estable para las analíticas)",
-      "replyIdsHint": "Los IDs de respuesta de cada opción se muestran arriba. WhatsApp los devuelve cuando un cliente toca; normalmente no necesitas tocarlos.",
+      "replyIdsHint": "Los IDs de respuesta de cada opción se muestran arriba. El canal los devuelve cuando un cliente toca; normalmente no necesitas tocarlos.",
       "badgeEntry": "Entrada",
       "noNodesYet": "Aún no hay nodos.",
       "deleteNode": "Eliminar nodo",
@@ -1335,7 +1335,7 @@
         },
         "send_message": {
           "label": "Enviar mensaje",
-          "blurb": "Envía un mensaje de texto de WhatsApp"
+          "blurb": "Envía un mensaje de texto"
         },
         "send_buttons": {
           "label": "Enviar botones",
@@ -1391,16 +1391,16 @@
         "sendMessageNextMissing": "El nodo de enviar mensaje apunta a un nodo inexistente \"{key}\".",
         "sendMediaType": "El nodo de enviar multimedia necesita un tipo de archivo (imagen, video o documento).",
         "sendMediaFile": "El nodo de enviar multimedia necesita un archivo (sube uno antes de activar).",
-        "captionTooLong": "El pie de foto supera {max} caracteres (límite de WhatsApp).",
+        "captionTooLong": "El pie de foto supera {max} caracteres.",
         "sendMediaNextRequired": "El nodo de enviar multimedia debe apuntar a un nodo siguiente.",
         "sendMediaNextMissing": "El nodo de enviar multimedia apunta a un nodo inexistente \"{key}\".",
         "sendButtonsText": "El nodo de enviar botones necesita un texto.",
         "buttonsMin": "El nodo de enviar botones necesita al menos un botón.",
-        "buttonsMax": "WhatsApp permite como máximo {max} botones por mensaje.",
+        "buttonsMax": "Un mensaje puede tener como máximo {max} botones.",
         "buttonReplyIdRequired": "El botón {n} necesita un id de respuesta.",
         "buttonReplyIdDuplicate": "Id de respuesta de botón duplicado \"{id}\".",
         "buttonTitleRequired": "El botón {n} necesita un título.",
-        "buttonTitleTooLong": "El título del botón {n} supera {max} caracteres (límite de WhatsApp).",
+        "buttonTitleTooLong": "El título del botón {n} supera {max} caracteres.",
         "buttonNextRequired": "El botón {n} necesita un nodo siguiente.",
         "buttonNextMissing": "El botón {n} apunta a un nodo inexistente \"{key}\".",
         "sendListText": "El nodo de enviar lista necesita un texto.",
@@ -2149,7 +2149,7 @@
       "description": "Las claves autentican la API REST pública (<apiCode>/api/v1</apiCode>) para que construyas tus propias automatizaciones. Envíalas como <headerCode>Authorization: Bearer '<'key'>'</headerCode>.",
       "newApiKey": "Nueva clave de API",
       "scopeDescriptions": {
-        "messages:send": "Enviar mensajes de WhatsApp",
+        "messages:send": "Enviar mensajes",
         "messages:read": "Leer mensajes y su estado de entrega",
         "contacts:read": "Listar y leer contactos",
         "contacts:write": "Crear y actualizar contactos",
