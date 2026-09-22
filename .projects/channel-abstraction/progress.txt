@@ -764,3 +764,11 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 153 files/1886 tests. No build.
 - **Learnings:** MCP docs/tool (US-064) still need the new send fields (external_message_id, connection_id, channel) and these two endpoints; only noted here.
 ---
+
+## 2026-09-21 - US-062
+- Contacts: CONTACT_SELECT embeds contact_identities; serializeContact now returns `identities` [{kind, external_id, handle}] and `phone: null` when the DB has ''. POST /api/v1/contacts takes `phone` (WhatsApp shortcut) and/or `identities` (at least one, else 400); kinds are validated against registered providers' identityKinds (400 lists the accepted ones), whatsapp:phone must be E.164. With identities, find-or-create goes through resolveOrCreateContact (found by ANY identity, phone included); an existing contact is returned 200 without renaming it; name/email/company are applied only to a newly created contact. Phone-only bodies keep the original path (broadcast-core also uses findOrCreateContact, unchanged).
+- Conversations: serializeConversation adds connection_id, store_id, channel (from the embedded connection+store already in CONVERSATION_SELECT) and contact.identities; contact.phone null when empty.
+- Tests: src/app/api/v1/contacts/route.test.ts (10), src/app/api/v1/conversations/route.test.ts (3), over crm-world.fake (extended with contact_identities and connection:channel_connections embeds and a no-op `or`). Existing contacts.test.ts serializeContact toEqual got `identities: []` (contract change required by this story). docs/public-api.md updated.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 155 files/1899 tests. No build, no browser (API only).
+- **Learnings:** phone in responses is the stored digits (no '+'), as before. PATCH /contacts/{id} does not accept identities (not asked). ?search= still matches only name/phone (not identity handles). MCP (US-064) must expose identities on contacts. Do not run prettier on whole dirs: it reformats untouched files.
+---

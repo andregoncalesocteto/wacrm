@@ -14,16 +14,30 @@ import {
   findDuplicateContact,
   isUniqueViolation,
 } from '@/lib/contacts/dedupe';
+import { registerBuiltinProviders } from '@/lib/channels/providers';
+import { listProviders } from '@/lib/channels/registry';
+import { resolveOrCreateContact, WA_PHONE_KIND } from '@/lib/channels/identity';
+import type { IdentityCandidate } from '@/lib/channels/types';
 import { resolveImportTagIds } from '@/lib/contacts/resolve-import-tags';
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 
 /** Row select that embeds the contact's tags for serialization. */
-export const CONTACT_SELECT = '*, contact_tags(tags(*))';
+export const CONTACT_SELECT =
+  '*, contact_tags(tags(*)), contact_identities(kind, external_id, handle)';
+
+/** A contact identity on the public wire (snake_case). */
+export interface ApiIdentity {
+  kind: string;
+  external_id: string;
+  handle: string | null;
+}
 
 export interface ApiContact {
   id: string;
-  phone: string;
+  /** `null` when the contact has no phone (e.g. a Telegram-only contact). */
+  phone: string | null;
+  identities: ApiIdentity[];
   name: string | null;
   email: string | null;
   company: string | null;
@@ -43,6 +57,22 @@ export class ContactError extends Error {
   }
 }
 
+type RawIdentity = {
+  kind: string;
+  external_id: string;
+  handle?: string | null;
+};
+
+/** Public projection of embedded `contact_identities` rows. */
+export function serializeIdentities(raw: unknown): ApiIdentity[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as RawIdentity[]).map((i) => ({
+    kind: i.kind,
+    external_id: i.external_id,
+    handle: i.handle ?? null,
+  }));
+}
+
 type RawTagJoin = { tags: { id: string; name: string; color: string } | null };
 
 /** Flatten a `CONTACT_SELECT` row into the public contact shape. */
@@ -50,7 +80,9 @@ export function serializeContact(row: Record<string, unknown>): ApiContact {
   const joins = (row.contact_tags as RawTagJoin[] | undefined) ?? [];
   return {
     id: row.id as string,
-    phone: row.phone as string,
+    // The DB keeps '' for "no phone"; the API says null.
+    phone: (row.phone as string | null) || null,
+    identities: serializeIdentities(row.contact_identities),
     name: (row.name as string | null) ?? null,
     email: (row.email as string | null) ?? null,
     company: (row.company as string | null) ?? null,
@@ -89,10 +121,57 @@ export async function resolveAuditUserId(
 }
 
 export interface ContactInput {
-  phone: string;
+  /** WhatsApp shortcut: same as a `whatsapp:phone` identity. */
+  phone?: string;
+  identities?: IdentityCandidate[];
   name?: string | null;
   email?: string | null;
   company?: string | null;
+}
+
+/**
+ * Validate the `identities` of a request body into candidates. Kinds must be
+ * produced by a registered provider; `whatsapp:phone` values must be phones.
+ */
+export function parseIdentities(raw: unknown): IdentityCandidate[] {
+  if (!Array.isArray(raw)) {
+    throw new ContactError("'identities' must be an array", 400);
+  }
+  registerBuiltinProviders();
+  const known = new Set(listProviders().flatMap((p) => p.identityKinds));
+  const out: IdentityCandidate[] = [];
+  for (const item of raw) {
+    const o = (item ?? {}) as Record<string, unknown>;
+    const kind = typeof o.kind === 'string' ? o.kind.trim() : '';
+    let externalId =
+      typeof o.external_id === 'string' ? o.external_id.trim() : '';
+    if (!kind || !externalId) {
+      throw new ContactError(
+        "Each identity needs a string 'kind' and 'external_id'",
+        400
+      );
+    }
+    if (!known.has(kind)) {
+      throw new ContactError(
+        `Unknown identity kind '${kind}'. Accepted: ${[...known].sort().join(', ')}`,
+        400
+      );
+    }
+    if (o.handle != null && typeof o.handle !== 'string') {
+      throw new ContactError("'handle' must be a string or null", 400);
+    }
+    if (kind === WA_PHONE_KIND) {
+      externalId = sanitizePhoneForMeta(externalId);
+      if (!isValidE164(externalId)) {
+        throw new ContactError(
+          `'${kind}' must be a valid phone number in E.164 format`,
+          400
+        );
+      }
+    }
+    out.push({ kind, externalId, handle: (o.handle as string | null) ?? null });
+  }
+  return out;
 }
 
 /**
@@ -101,6 +180,9 @@ export interface ContactInput {
  * Returns the contact id and whether it was created. Reuses the shared
  * `findExistingContact` dedupe + unique-violation race backstop so an
  * API-created contact is indistinguishable from a webhook-created one.
+ *
+ * With `identities`, the contact is found by ANY identity (phone included)
+ * and created carrying all of them; without, only `phone` is used.
  */
 export async function findOrCreateContact(
   db: SupabaseClient,
@@ -108,7 +190,11 @@ export async function findOrCreateContact(
   auditUserId: string,
   input: ContactInput
 ): Promise<{ id: string; created: boolean }> {
-  const sanitized = sanitizePhoneForMeta(input.phone);
+  if (input.identities && input.identities.length > 0) {
+    return findOrCreateByIdentities(db, accountId, auditUserId, input);
+  }
+
+  const sanitized = sanitizePhoneForMeta(input.phone ?? '');
   if (!isValidE164(sanitized)) {
     throw new ContactError(
       "'phone' must be a valid phone number in E.164 format (e.g. +14155550123)",
@@ -145,6 +231,55 @@ export async function findOrCreateContact(
 
   await ensurePhoneIdentity(db, accountId, created.id, sanitized);
   return { id: created.id, created: true };
+}
+
+async function findOrCreateByIdentities(
+  db: SupabaseClient,
+  accountId: string,
+  auditUserId: string,
+  input: ContactInput
+): Promise<{ id: string; created: boolean }> {
+  const candidates = [...(input.identities ?? [])];
+  if (input.phone) {
+    const sanitized = sanitizePhoneForMeta(input.phone);
+    if (!isValidE164(sanitized)) {
+      throw new ContactError(
+        "'phone' must be a valid phone number in E.164 format (e.g. +14155550123)",
+        400
+      );
+    }
+    candidates.push({ kind: WA_PHONE_KIND, externalId: sanitized });
+  }
+
+  // No senderName: an API caller must not rename an existing contact.
+  const outcome = await resolveOrCreateContact(db, {
+    accountId,
+    auditUserId,
+    candidates,
+  });
+  if (!outcome) {
+    throw new ContactError('Failed to create contact', 500);
+  }
+
+  const { contact, wasCreated } = outcome;
+  if (wasCreated) {
+    const patch: Record<string, unknown> = {};
+    if (input.name) patch.name = input.name;
+    if (input.email) patch.email = input.email;
+    if (input.company) patch.company = input.company;
+    if (Object.keys(patch).length > 0) {
+      const { error } = await db
+        .from('contacts')
+        .update(patch)
+        .eq('id', contact.id)
+        .eq('account_id', accountId);
+      if (error) {
+        console.error('[api/v1/contacts] create patch error:', error);
+        throw new ContactError('Failed to create contact', 500);
+      }
+    }
+  }
+  return { id: contact.id, created: wasCreated };
 }
 
 /**

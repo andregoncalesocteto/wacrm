@@ -188,7 +188,10 @@ or phone) and `?tag=<tagId>`.
 {
   "data": [
     {
-      "id": "…", "phone": "+14155550123", "name": "Jane Doe",
+      "id": "…", "phone": "14155550123", "name": "Jane Doe",
+      "identities": [
+        { "kind": "whatsapp:phone", "external_id": "14155550123", "handle": null }
+      ],
       "email": null, "company": "Acme", "avatar_url": null,
       "tags": [{ "id": "…", "name": "vip", "color": "#3b82f6" }],
       "created_at": "…", "updated_at": "…"
@@ -200,11 +203,16 @@ or phone) and `?tag=<tagId>`.
 
 ### `POST /api/v1/contacts`
 
-Create a contact. Scope: `contacts:write`. `phone` (E.164) is required;
+Create a contact. Scope: `contacts:write`. Send `phone` (E.164, a shortcut
+for a `whatsapp:phone` identity) and/or `identities`
+(`[{ "kind": "telegram:chat_id", "external_id": "123", "handle": "@maria" }]`;
+kinds come from the channels, e.g. `whatsapp:phone`, `whatsapp:bsuid`,
+`telegram:chat_id`, `telegram:username`); at least one is required.
 `name`, `email`, `company`, and `tags` (an array of tag names, created
-if missing) are optional. **Find-or-create by phone:** an existing
-match returns `200` with the existing contact; a new contact returns
-`201`. The response body is the serialized contact (same shape as the
+if missing) are optional. `phone` is `null` in responses when the contact
+has none. **Find-or-create by any identity:** an existing
+match returns `200` with the existing contact (its data is not
+overwritten); a new contact returns `201`. The response body is the serialized contact (same shape as the
 list rows above).
 
 ### `GET` / `PATCH /api/v1/contacts/{id}`
@@ -218,7 +226,9 @@ contact in another account returns `404`.
 
 List conversations, newest first. Scope: `conversations:read`.
 Paginated. Optional filters: `?status=` (`open` / `pending` / `closed`)
-and `?contact_id=`. Each conversation embeds its contact + tags.
+and `?contact_id=`. Each conversation carries `connection_id`, `store_id`
+and `channel` (e.g. `whatsapp_cloud`, `telegram`), and embeds its contact
+(with `identities`; `phone` is `null` when absent) + tags.
 
 ### `GET /api/v1/conversations/{id}`
 

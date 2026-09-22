@@ -39,6 +39,7 @@ describe('serializeContact', () => {
     expect(serializeContact(row)).toEqual({
       id: 'c1',
       phone: '+14155550123',
+      identities: [],
       name: 'Jane',
       email: null,
       company: 'Acme',

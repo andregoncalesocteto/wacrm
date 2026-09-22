@@ -40,6 +40,8 @@ class Query {
   private head = false;
   private embedContact = false;
   private embedConversation = false;
+  private embedIdentities = false;
+  private embedConnection = false;
   private sort: { col: string; asc: boolean } | null = null;
   private max: number | null = null;
   private ignoreDup = false;
@@ -54,6 +56,10 @@ class Query {
     if (typeof cols === 'string') {
       if (cols.includes('contact:contacts')) this.embedContact = true;
       if (cols.includes('conversations(')) this.embedConversation = true;
+      if (cols.includes('contact_identities(')) this.embedIdentities = true;
+      if (cols.includes('connection:channel_connections(')) {
+        this.embedConnection = true;
+      }
     }
     return this;
   }
@@ -111,6 +117,10 @@ class Query {
     return this;
   }
   filter() {
+    return this;
+  }
+  /** Keyset / search `or` filters are not modelled (routes tests use no cursor). */
+  or() {
     return this;
   }
   order(col: string, opts?: { ascending?: boolean }) {
@@ -188,6 +198,43 @@ class Query {
             (world.tables.contacts ?? []).find((c) => c.id === r.contact_id) ??
             null,
         }));
+      }
+      if (this.embedIdentities) {
+        const withIdentities = (contactId: unknown) =>
+          (world.tables.contact_identities ?? []).filter(
+            (i) => i.contact_id === contactId
+          );
+        out = out.map((r) => {
+          if (this.table === 'contacts') {
+            return { ...r, contact_identities: withIdentities(r.id) };
+          }
+          const c = r.contact as Row | null | undefined;
+          return c
+            ? {
+                ...r,
+                contact: { ...c, contact_identities: withIdentities(c.id) },
+              }
+            : r;
+        });
+      }
+      if (this.embedConnection) {
+        out = out.map((r) => {
+          const conn = (world.tables.channel_connections ?? []).find(
+            (c) => c.id === r.connection_id
+          );
+          return {
+            ...r,
+            connection: conn
+              ? {
+                  ...conn,
+                  store:
+                    (world.tables.stores ?? []).find(
+                      (s) => s.id === conn.store_id
+                    ) ?? null,
+                }
+              : null,
+          };
+        });
       }
       if (this.embedConversation) {
         out = out.map((r) => ({

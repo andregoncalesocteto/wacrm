@@ -4,7 +4,8 @@
 //
 // List is keyset-paginated (see src/lib/api/v1/pagination.ts) and
 // supports `?search=` (name/phone) and `?tag=<tagId>` filters. Create
-// is find-or-create by phone: an existing match returns 200 with
+// takes `phone` (WhatsApp shortcut) and/or `identities`, and is
+// find-or-create by any of them: an existing match returns 200 with
 // `created: false`; a new row returns 201 with `created: true`.
 // ============================================================
 
@@ -22,6 +23,7 @@ import {
   setContactTags,
   getContactById,
   resolveAuditUserId,
+  parseIdentities,
   ContactError,
 } from '@/lib/api/v1/contacts';
 
@@ -106,8 +108,14 @@ export async function POST(request: Request) {
     }
 
     const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
-    if (!phone) {
-      return fail('bad_request', "'phone' is required", 400);
+    const identities =
+      body.identities === undefined ? [] : parseIdentities(body.identities);
+    if (!phone && identities.length === 0) {
+      return fail(
+        'bad_request',
+        "'phone' or at least one entry in 'identities' is required",
+        400
+      );
     }
 
     const auditUserId = await resolveAuditUserId(ctx.supabase, ctx.accountId);
@@ -117,7 +125,8 @@ export async function POST(request: Request) {
       ctx.accountId,
       auditUserId,
       {
-        phone,
+        phone: phone || undefined,
+        identities,
         name: typeof body.name === 'string' ? body.name : undefined,
         email: typeof body.email === 'string' ? body.email : undefined,
         company: typeof body.company === 'string' ? body.company : undefined,

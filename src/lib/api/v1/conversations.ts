@@ -9,10 +9,15 @@
 // ============================================================
 
 import type { Conversation, Message } from '@/types';
+import { serializeIdentities, type ApiIdentity } from './contacts';
 
 export interface ApiConversation {
   id: string;
   contact_id: string;
+  connection_id: string | null;
+  store_id: string | null;
+  /** Channel type of the connection (e.g. `whatsapp_cloud`, `telegram`). */
+  channel: string | null;
   status: string;
   assigned_agent_id: string | null;
   last_message_text: string | null;
@@ -22,7 +27,8 @@ export interface ApiConversation {
   updated_at: string;
   contact: {
     id: string;
-    phone: string;
+    phone: string | null;
+    identities: ApiIdentity[];
     name: string | null;
     email: string | null;
     company: string | null;
@@ -55,6 +61,9 @@ export function serializeConversation(conv: Conversation): ApiConversation {
   return {
     id: conv.id,
     contact_id: conv.contact_id,
+    connection_id: conv.connection_id ?? conv.connection?.id ?? null,
+    store_id: conv.connection?.store_id ?? null,
+    channel: conv.connection?.channel_type ?? null,
     status: conv.status,
     assigned_agent_id: conv.assigned_agent_id ?? null,
     last_message_text: conv.last_message_text ?? null,
@@ -65,7 +74,14 @@ export function serializeConversation(conv: Conversation): ApiConversation {
     contact: c
       ? {
           id: c.id,
-          phone: c.phone,
+          phone: c.phone || null,
+          identities: serializeIdentities(
+            (c.identities ?? []).map((i) => ({
+              kind: i.kind,
+              external_id: i.externalId,
+              handle: i.handle,
+            }))
+          ),
           name: c.name ?? null,
           email: c.email ?? null,
           company: c.company ?? null,
