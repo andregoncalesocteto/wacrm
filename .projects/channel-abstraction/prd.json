@@ -1363,8 +1363,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 80,
-      "passes": false,
-      "notes": "Verificação final do orquestrador: `react/jsx-no-literals` voltou a ter 1 aviso (a meta do projeto é zero) e o total de avisos do lint passou de 40 para 43 durante a feature; antes de fechar, zerar `react/jsx-no-literals` e trazer o total de avisos de volta a no máximo o da base (41), corrigindo só o que esta feature introduziu."
+      "passes": true,
+      "notes": "Verificado com a stack Docker completa (up --build --wait + migrations do zero, replay isolado 51/51). Cenário das duas lojas + Telegram simulado via webhooks assinados/autenticados, checado no banco e via dev-browser em localhost:3000: mesmo cliente = um contato, duas conversas; desativar mantém a conversa legível e desabilita o compositor; apagar só é possível sem conversas. Resultado completo em verification.md. Lint: corrigido o único aviso react/jsx-no-literals que a feature havia introduzido (connection-detail.tsx); total de avisos de volta à base (41). Métrica 4 (loja conectada em <10min) não é verificável neste ambiente (sem Meta/Telegram reais) e fica registrada como verificação manual pendente."
     }
   ]
 }

@@ -262,7 +262,9 @@ export function ConnectionDetail({
           >
             <p className="text-foreground font-medium">{td('lastError')}</p>
             <p className="text-muted-foreground text-xs">
-              {td('errorCode')}: <code>{lastError.code ?? '–'}</code>
+              {td('errorCode')}
+              {': '}
+              <code>{lastError.code ?? '–'}</code>
             </p>
             <p className="text-foreground">
               {reasonText(lastError.reason, lastError.message)}
