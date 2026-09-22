@@ -21,7 +21,7 @@ import {
 interface BroadcastResult {
   phone: string
   status: 'sent' | 'failed'
-  whatsapp_message_id?: string
+  external_message_id?: string
   error?: string
 }
 
@@ -237,7 +237,7 @@ export async function POST(request: Request) {
         results.push({
           phone: recipient.phone,
           status: 'sent',
-          whatsapp_message_id: sentMessageId,
+          external_message_id: sentMessageId,
         })
         sentCount++
       } else {

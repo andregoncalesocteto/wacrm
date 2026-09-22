@@ -136,12 +136,12 @@ describe('POST /api/whatsapp/broadcast', () => {
         {
           phone: '+5511999990000',
           status: 'sent',
-          whatsapp_message_id: 'wamid.A',
+          external_message_id: 'wamid.A',
         },
         {
           phone: '5511888880000',
           status: 'sent',
-          whatsapp_message_id: 'wamid.B',
+          external_message_id: 'wamid.B',
         },
       ],
     });
@@ -230,7 +230,7 @@ describe('POST /api/whatsapp/broadcast', () => {
     expect(json.results[0]).toEqual({
       phone: '+5511999990000',
       status: 'sent',
-      whatsapp_message_id: 'wamid.V2',
+      external_message_id: 'wamid.V2',
     });
     const tos = h.sendTemplateMessage.mock.calls.map((c) => c[0].to);
     expect(tos).toHaveLength(2);

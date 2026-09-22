@@ -820,7 +820,7 @@ describe('status webhooks: broadcast recipient ladder only moves forward', () =>
   const recipient = (st: string) =>
     table('broadcast_recipients').push({
       id: 'r-1',
-      whatsapp_message_id: 'wamid.BC1',
+      external_message_id: 'wamid.BC1',
       status: st,
     });
   const current = () => table('broadcast_recipients')[0];

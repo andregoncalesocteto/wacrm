@@ -267,6 +267,23 @@ BEGIN
     RAISE EXCEPTION 'broadcasts_content_exclusive_check is missing (migration 052)';
   END IF;
 
+  -- 053: broadcast_recipients.whatsapp_message_id renamed (expand-only) to
+  -- external_message_id, with a matching unique correlation index.
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'broadcast_recipients'
+      AND column_name = 'external_message_id'
+  ) THEN
+    RAISE EXCEPTION 'broadcast_recipients.external_message_id is missing (migration 053)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND tablename = 'broadcast_recipients'
+      AND indexname = 'idx_broadcast_recipients_external_message_id'
+  ) THEN
+    RAISE EXCEPTION 'idx_broadcast_recipients_external_message_id is missing (migration 053)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

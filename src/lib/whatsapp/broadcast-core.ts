@@ -11,7 +11,7 @@
 //                        connection's provider (phone-variant retry), stamp each recipient
 //                        row + the aggregate counts, finalize status.
 //
-// Recipient rows carry `whatsapp_message_id`, so the inbound webhook's
+// Recipient rows carry `external_message_id`, so the inbound webhook's
 // status handler (which matches on that column) updates delivered/read
 // for API broadcasts exactly as it does for dashboard ones.
 // ============================================================
@@ -354,7 +354,7 @@ export async function deliverBroadcast(
         .update({
           status: 'sent',
           sent_at: new Date().toISOString(),
-          whatsapp_message_id: sentMessageId,
+          external_message_id: sentMessageId,
           error_message: null,
         })
         .eq('id', recipient.recipientRowId);

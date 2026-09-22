@@ -110,3 +110,54 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     assuming it is) — had to `up -d --wait db auth storage` first. Its `wacrm_db-data` volume did already have
     migrations 001-051 applied (persisted from a prior session), so only 052 was new there.
 ---
+
+## 2026-09-22 - US-002
+- Implemented: new migration `053_broadcast_recipient_external_message_id.sql` — adds
+  `broadcast_recipients.external_message_id text`, backfills it from `whatsapp_message_id`, and replicates the
+  unique conditional index (`idx_broadcast_recipients_external_message_id`, expand-only — `whatsapp_message_id` and
+  its old index stay). Extended `supabase/ci/verify-schema.sql` with checks for the new column and index.
+  Renamed the write/read side to the new column in the 5 files the PRD named: `broadcast-core.ts` (write on send +
+  doc comment), the broadcast route (`app/api/whatsapp/broadcast/route.ts`, JSON response field), the client hook
+  (`use-broadcast-sending.ts`, request-field read + DB write), and the client type (`types/index.ts`,
+  `BroadcastRecipient.external_message_id`). `broadcast-resume.ts` itself doesn't touch the column (no change
+  needed there, confirmed by reading it).
+- Scope note beyond the PRD's file list (needed to avoid a real regression, not a spec deviation): the inbound
+  webhook's status-update matcher — `src/lib/channels/ingest.ts`'s `ingestStatus`, which is what
+  `app/api/whatsapp/webhook/route.ts` actually delegates to for ALL channels including WhatsApp — queried
+  `broadcast_recipients` by `.eq('whatsapp_message_id', event.externalId)`. Since `broadcast-core.ts` now writes
+  only `external_message_id` on send, leaving that query unchanged would have silently broken delivered/read
+  status mirroring for every broadcast sent after this story (a real RNF-01 regression, not a hypothetical one).
+  Updated that one `.eq(...)` (plus its doc comment) to match on `external_message_id`. Did NOT touch the
+  `whatsapp_message_id`/`external_message_id` dual-key fields inside outbound webhook PAYLOADS in `ingest.ts`
+  (line ~612) and `fanout.ts` (line ~144) — those are the public API's `message.status_updated`/`message.received`
+  JSON contract (backward-compat dual-key from channel-abstraction), unrelated to the `broadcast_recipients` DB
+  column; left exactly as-is.
+- Files changed: `supabase/migrations/053_broadcast_recipient_external_message_id.sql` (new),
+  `supabase/ci/verify-schema.sql`, `src/lib/whatsapp/broadcast-core.ts`, `src/lib/channels/ingest.ts`,
+  `src/app/api/whatsapp/broadcast/route.ts`, `src/hooks/use-broadcast-sending.ts`, `src/types/index.ts`,
+  `src/lib/whatsapp/broadcast-deliver.characterization.test.ts`, `src/app/api/whatsapp/broadcast/route.test.ts`,
+  `src/lib/channels/ingest.events.test.ts`, `src/app/api/whatsapp/webhook/route.characterization.test.ts`,
+  `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Test renames were surgical, not blanket string-replace across the repo: `whatsapp_message_id` also appears as an
+  unrelated local variable/return-shape name in `flows/`, `automations/`, `api/v1/messages`, `api/whatsapp/send` —
+  none of those touch `broadcast_recipients` and were left untouched. Within `ingest.events.test.ts` and
+  `webhook/route.characterization.test.ts`, only the `broadcast_recipients` mock-row fixture fields were renamed;
+  the webhook-payload dual-key assertions in the same files were left alone.
+- Applied to dev DB (`$FULL run --rm -T migrate` — 1 migration applied) and to the isolated replay (full 53-migration
+  replay + `verify-schema.sql`, both passed); replay torn down with `-p wacrm-replay down -v` only, dev DB verified
+  unchanged afterwards (`wacrm_migrations` count 53/53 distinct, `\d broadcast_recipients` shows both columns + both
+  indexes coexisting as expected for an expand-only rename).
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `TZ=UTC npm test` 160 files / 1935 tests passed (matches baseline exactly). No build/browser check
+  needed (story is migration + non-UI code only).
+- **Learnings for future iterations:**
+  - The `-e PGHOST=wacrm-replay-db-1` override for the replay `migrate` service (documented in Codebase Patterns
+    above) worked cleanly again this iteration with the dev stack up the whole time — no DNS collision, no partial
+    state. Keep using it for any future migration story while the dev stack might be up.
+  - When a PRD lists a narrow set of files to change for a DB column rename, still grep the WHOLE column name
+    across `src/` before trusting the list — a consumer of that column that isn't a "writer" (here, the webhook's
+    status-update reader in `ingest.ts`) can be just as load-bearing and isn't always obvious from the story
+    description. `git grep -n whatsapp_message_id` and reading each hit's surrounding code (DB column vs. unrelated
+    variable/JSON-field of the same name) was necessary to get the true scope right without either under- or
+    over-reaching.
+---

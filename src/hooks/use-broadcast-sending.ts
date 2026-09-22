@@ -80,7 +80,7 @@ function sleep(ms: number) {
 interface BroadcastApiResult {
   phone: string;
   status: 'sent' | 'failed';
-  whatsapp_message_id?: string;
+  external_message_id?: string;
   error?: string;
 }
 
@@ -600,7 +600,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
                 .update({
                   status: 'sent',
                   sent_at: new Date().toISOString(),
-                  whatsapp_message_id: result.whatsapp_message_id ?? null,
+                  external_message_id: result.external_message_id ?? null,
                   error_message: null,
                 })
                 .eq('id', recipient.id);
