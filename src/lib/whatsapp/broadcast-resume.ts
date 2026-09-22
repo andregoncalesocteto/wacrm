@@ -26,9 +26,10 @@ import {
   CONNECTION_DISABLED_CODE,
   ConnectionDisabledError,
 } from '@/lib/channels/types';
-import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection';
+import { getConnectionById, getConnectionCredentials } from '@/lib/channels/connections';
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
+import type { MessageTemplate } from '@/types';
 
 /** Which recipients a resume pass picks up. */
 export type ResumeScope = 'pending' | 'failed' | 'all';
@@ -153,7 +154,9 @@ export async function planBroadcastResume(
 ): Promise<ResumePlan> {
   const { data: broadcast, error: bcError } = await db
     .from('broadcasts')
-    .select('id, template_name, template_language, connection_id')
+    .select(
+      'id, template_name, template_language, connection_id, message_text, message_media_url'
+    )
     .eq('id', broadcastId)
     .eq('account_id', accountId)
     .maybeSingle();
@@ -215,48 +218,59 @@ export async function planBroadcastResume(
     );
   }
 
-  // The broadcast's own connection when it has one, else the account's.
-  const conn = await loadWhatsAppSendConnection(db, accountId, {
-    connectionId: broadcast.connection_id,
-  });
-  if (!conn) {
-    throw new BroadcastError(
-      'whatsapp_not_configured',
-      'WhatsApp not configured. Please set up your WhatsApp integration first.',
-      400
-    );
+  // Connection: resolved generically by the id already recorded on the
+  // broadcast (US-004's idiom) — any channel_type, no WhatsApp-only
+  // inference. Same lookup + ownership check as createBroadcast.
+  const conn = await getConnectionById(broadcast.connection_id, db);
+  if (!conn || conn.account_id !== accountId) {
+    throw new BroadcastError('not_found', 'Connection not found', 404);
   }
-
-  if (conn.connection.disabled_at) {
+  if (conn.disabled_at) {
     throw new BroadcastError(
       CONNECTION_DISABLED_CODE,
       new ConnectionDisabledError().message,
       409
     );
   }
+  const credentials = await getConnectionCredentials(conn.id);
+  const accessToken =
+    typeof credentials?.access_token === 'string'
+      ? credentials.access_token
+      : '';
 
-  const resolvedTemplate = await resolveTemplateRow(
-    db,
-    accountId,
-    broadcast.template_name,
-    broadcast.template_language
-  );
-  if (resolvedTemplate.malformed) {
-    throw new BroadcastError(
-      'template_malformed',
-      'Template row is malformed locally — run "Sync from Meta" in Settings to repair it before resuming.',
-      500
+  // Only a template broadcast has an approved template row to resolve —
+  // a free-message broadcast (US-005) has no template_name at all.
+  const hasTemplate = !!broadcast.template_name;
+  let templateRow: MessageTemplate | null = null;
+  let templateLanguage = '';
+  if (hasTemplate) {
+    const resolvedTemplate = await resolveTemplateRow(
+      db,
+      accountId,
+      broadcast.template_name,
+      broadcast.template_language
     );
+    if (resolvedTemplate.malformed) {
+      throw new BroadcastError(
+        'template_malformed',
+        'Template row is malformed locally — run "Sync from Meta" in Settings to repair it before resuming.',
+        500
+      );
+    }
+    templateRow = resolvedTemplate.row;
+    templateLanguage = resolvedTemplate.language;
   }
 
   const plan: BroadcastPlan = {
     broadcastId,
-    templateName: broadcast.template_name,
-    templateLanguage: resolvedTemplate.language,
-    connection: conn.connection,
-    phoneNumberId: conn.phoneNumberId,
-    accessToken: conn.accessToken,
-    templateRow: resolvedTemplate.row,
+    templateName: hasTemplate ? broadcast.template_name : '',
+    templateLanguage,
+    connection: conn,
+    phoneNumberId: conn.external_id,
+    accessToken,
+    templateRow,
+    messageText: broadcast.message_text ?? null,
+    messageMediaUrl: broadcast.message_media_url ?? null,
     planned: slice.map((row) => ({
       recipientRowId: row.id,
       phone: sanitizePhoneForMeta(contactPhone(row) ?? ''),

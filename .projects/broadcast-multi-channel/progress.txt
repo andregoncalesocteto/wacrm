@@ -491,3 +491,70 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     then `delete from auth.users where id='<user_id>'` separately (`accounts.owner_user_id` FK is `ON DELETE
     RESTRICT`, so the user row survives the account delete and needs its own statement).
 ---
+
+## 2026-09-22 - US-008
+- Implemented: `planBroadcastResume` (src/lib/whatsapp/broadcast-resume.ts) no longer imports
+  `loadWhatsAppSendConnection`. It resolves the connection generically off the broadcast's own persisted
+  `connection_id`, reusing the exact `getConnectionById(id, db)` + `conn.account_id === accountId` +
+  `getConnectionCredentials(conn.id)` idiom `createBroadcast` established in US-004 (no `channel_type` filter):
+  missing/wrong-account connection -> `BroadcastError('not_found', ..., 404)` (was `whatsapp_not_configured`/400 —
+  that phrasing was WhatsApp-specific "no connection found"; 404 replaces it for a bad/foreign id, matching
+  createBroadcast's own choice); disabled -> unchanged `CONNECTION_DISABLED_CODE`/409, now for any channel.
+  `resolveTemplateRow` is now gated behind `hasTemplate = !!broadcast.template_name` — only called on the
+  template path; a free-message broadcast (US-005) gets `templateRow: null` / `templateLanguage: ''` without
+  touching `message_templates` at all, matching `createBroadcast`'s own `hasTemplate` gating exactly. The
+  broadcast `select` was extended with `message_text, message_media_url` so `BroadcastPlan.messageText`/
+  `messageMediaUrl` (US-005's fields) get populated on resume too — without them a resumed free-message
+  broadcast would silently deliver an empty message. `plan.templateName` is `''` on the free-message path
+  (mirrors createBroadcast) instead of the previous unconditional `broadcast.template_name`.
+- Files changed: `src/lib/whatsapp/broadcast-resume.ts`, `src/lib/whatsapp/broadcast-resume.test.ts` (rewritten —
+  see below), `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Test-file note: the old `channel_connections`/`admin-client`-mock-based fake for WhatsApp connection resolution
+  was replaced with a direct `vi.mock('@/lib/channels/connections', ...)` of `getConnectionById`/
+  `getConnectionCredentials` (same pattern as `broadcast-core.connection-resolution.test.ts` and
+  `broadcast-core.provider.test.ts`) — simpler than faking the `channel_connections` query shape, and the same
+  idiom the codebase already uses for this. All 8 pre-existing `planBroadcastResume` tests kept their asserts
+  unchanged; only their fixture setup dropped the now-unused `config: CONFIG` field (connection comes from the
+  mock default in a new top-level `beforeEach` now, not from the fixture). New test (the AC's "Telegram abandonado"
+  case): a free-message Telegram broadcast (`template_name: null`, `message_text` set, `connection_id` already
+  on the row) with 2 pending recipients — `planBroadcastResume` builds a plan with `templateName: ''`,
+  `templateRow: null`, `messageText` populated, `connection.channel_type: 'telegram'`; `deliverBroadcast` (called
+  directly against the same fake db, real telegram provider via `registerBuiltinProviders`, only `callBotApi`
+  stubbed) delivers both recipients and stamps them `sent` with `external_message_id` `"<chat_id>:<message_id>"`;
+  the fake's always-0 `broadcast_recipients` count queries make `finalizeBroadcastStatus` (called internally by
+  `deliverBroadcast`) flip the broadcast to `status: 'sent'`, asserted via the fake's captured `broadcasts` update
+  — covers the AC's literal "entrega os que faltam e finaliza a campanha". A dedicated `telegramResumeDb` fake
+  was written for this one test (table-aware `broadcasts`/`broadcast_recipients` chain, `update(patch).eq('id',
+  id)` order handled by deferring the recipient-update commit to the `.eq()` call, since `.update()` runs before
+  `.eq()` in the real chain) rather than extending the shared `planDb` — `planDb` only ever needed one flat
+  `writes.failedUpdate`, not per-recipient history or count-query awareness, and stretching it would have made
+  the simple tests harder to read for a fixture only this one test needs. `resolveTemplateRow`'s absence in this
+  test is itself an assertion: `telegramResumeDb` throws on any unexpected table (no `message_templates` branch),
+  so the test would fail loudly if `hasTemplate` gating regressed and the code tried to resolve a template for a
+  `template_name: null` broadcast.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `TZ=UTC npm test` 161 files / 1948 tests passed (baseline 161/1947 + 1 new test). No `npm run build`
+  (story doesn't touch routing/config). No migration (none needed for this story — connection_id/message_text/
+  message_media_url are all already-existing columns from US-001/US-004/US-046). No browser check (not an AC
+  criterion for this story — resume is triggered from `POST /api/whatsapp/broadcast/[id]/resume`, an existing
+  route untouched by this change; its own route.ts already maps `BroadcastError` generically via `err.status`/
+  `err.code`, so the `not_found`/`CONNECTION_DISABLED_CODE` codes from the new resolver need no route change).
+- **Learnings for future iterations:**
+  - `getConnectionById(id, db)` + `conn.account_id === accountId` + `getConnectionCredentials(conn.id)` is now
+    reused verbatim in THREE places (`createBroadcast` US-004, `planBroadcastResume` US-008, and
+    `POST /api/v1/messages`'s `pickConnection` from channel-abstraction) — if a 4th caller needs "resolve a
+    connection by id, scoped to this account, no channel_type filter", this is the idiom, not a new one.
+  - `broadcast-resume.ts`'s recipient-addressing (`contact.phone`, `sanitizePhoneForMeta`/`isValidE164` validating
+    it, feeding `plan.planned[].phone`) was NOT touched by this story and is still literally phone-shaped —
+    confirmed by reading `deliverBroadcast` that this is already an established, pre-existing simplification
+    across the whole broadcast-core feature (US-005's own `broadcast-core.provider.test.ts` sends telegram
+    messages with `phone: '555'` as the literal Telegram chat_id, and `WA_PHONE_KIND`/`recipient.phone` is used
+    as a generic "address" field regardless of channel — the telegram provider's `send()` never inspects
+    `target.kind`, only `target.address`). Not a gap introduced or left open by US-008; nothing in this story's
+    AC asked to generalize that naming, and doing so would have been out of scope. Worth knowing before assuming
+    it needs fixing in a later story: it's `to`/`phone` used as "recipient address, whatever shape the channel
+    needs", not literally required to be a phone number.
+  - `whatsappConnectionRow(accountId, externalId, extra?)` from `credentials-admin.fake.ts` is generic enough to
+    build a fake Telegram (or any) connection row too — just spread it and override `channel_type`/`id`, same
+    trick `broadcast-core.connection-resolution.test.ts` used for its telegram case.
+---
