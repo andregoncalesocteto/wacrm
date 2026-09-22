@@ -272,6 +272,7 @@ curl -X POST https://your-crm.example.com/api/v1/broadcasts \
   -H "Content-Type: application/json" \
   -d '{
         "name": "July promo",
+        "connection_id": "…",
         "template_name": "promo_july",
         "template_language": "en_US",
         "recipients": [
@@ -281,9 +282,12 @@ curl -X POST https://your-crm.example.com/api/v1/broadcasts \
       }'
 ```
 
-Recipients are capped at **1000 per request** — split larger sends.
-Invalid phone numbers are dropped and counted as `rejected`. Response
-(202):
+`connection_id` may be omitted only when the account has exactly one
+active connection (same convention as `POST /api/v1/messages`); with
+more than one it is required, with none the call fails
+`whatsapp_not_configured`. Recipients are capped at **1000 per
+request** — split larger sends. Invalid phone numbers are dropped and
+counted as `rejected`. Response (202):
 
 ```json
 {
@@ -296,6 +300,14 @@ Invalid phone numbers are dropped and counted as `rejected`. Response
   }
 }
 ```
+
+Domain error codes beyond the table above: `connection_required` (400
+— more than one active connection, `connection_id` needed),
+`whatsapp_not_configured` (400 — no connection at all), `not_found`
+(404 — `connection_id` doesn't exist or belongs to another account),
+`connection_disabled` (409), `content_required` (400 — neither
+`template_name` nor a free-message body given), `template_malformed`
+(500).
 
 ### `GET /api/v1/broadcasts/{id}`
 

@@ -18,8 +18,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection';
 import {
+  getConnectionById,
   getConnectionCredentials,
   type ChannelConnection,
 } from '@/lib/channels/connections';
@@ -57,8 +57,25 @@ export interface BroadcastRecipientInput {
 
 export interface CreateBroadcastParams {
   name?: string | null;
-  templateName: string;
+  /**
+   * Which connection sends this broadcast — any channel_type, resolved
+   * generically (US-004). The caller (route) picks it; createBroadcast
+   * never infers one on its own.
+   */
+  connectionId: string;
+  /**
+   * Approved template name. Mutually exclusive with `messageText`/
+   * `messageMediaUrl` — exactly one content shape must be given (mirrors
+   * the `broadcasts_content_exclusive_check` CHECK from migration 052).
+   */
+  templateName?: string | null;
   templateLanguage?: string | null;
+  /** Campaign-level variable mapping; optional, either content shape. */
+  templateVariables?: Record<string, unknown> | null;
+  /** Free-message body. Mutually exclusive with `templateName`. */
+  messageText?: string | null;
+  /** Free-message media. Mutually exclusive with `templateName`. */
+  messageMediaUrl?: string | null;
   recipients: BroadcastRecipientInput[];
 }
 
@@ -97,10 +114,26 @@ export async function createBroadcast(
   auditUserId: string,
   params: CreateBroadcastParams
 ): Promise<BroadcastPlan> {
-  const { name, templateName, recipients } = params;
+  const {
+    name,
+    connectionId,
+    templateName,
+    messageText,
+    messageMediaUrl,
+    recipients,
+  } = params;
 
-  if (!templateName) {
-    throw new BroadcastError('bad_request', "'template_name' is required", 400);
+  // Exactly one content shape — mirrors the `broadcasts_content_exclusive_check`
+  // CHECK (migration 052) so a bad request gets a clean 400 here instead of
+  // an opaque DB constraint error from the RPC below.
+  const hasTemplate = !!templateName;
+  const hasMessage = !!(messageText || messageMediaUrl);
+  if (hasTemplate === hasMessage) {
+    throw new BroadcastError(
+      'content_required',
+      "Provide either 'template_name' or 'message_text'/'message_media_url' — never both, never neither",
+      400
+    );
   }
   if (!Array.isArray(recipients) || recipients.length === 0) {
     throw new BroadcastError(
@@ -117,43 +150,47 @@ export async function createBroadcast(
     );
   }
 
-  // Connection (fail fast + provides the audit trail owner already resolved
-  // by the caller). Meta send needs phone_number_id + decrypted token. A
-  // broadcast sends through ONE WhatsApp connection: the account's, and its
-  // id is persisted on the broadcast row below.
-  const conn = await loadWhatsAppSendConnection(db, accountId);
-  if (!conn) {
-    throw new BroadcastError(
-      'whatsapp_not_configured',
-      'WhatsApp not configured. Please set up your WhatsApp integration first.',
-      400
-    );
+  // Connection: resolved generically by id (US-004) — any channel_type, no
+  // WhatsApp-only inference. Same lookup + ownership check as
+  // POST /api/v1/messages' pickConnection.
+  const conn = await getConnectionById(connectionId, db);
+  if (!conn || conn.account_id !== accountId) {
+    throw new BroadcastError('not_found', 'Connection not found', 404);
   }
-  if (conn.connection.disabled_at) {
+  if (conn.disabled_at) {
     throw new BroadcastError(
       CONNECTION_DISABLED_CODE,
       new ConnectionDisabledError().message,
       409
     );
   }
-  const accessToken = conn.accessToken;
+  const credentials = await getConnectionCredentials(conn.id);
+  const accessToken =
+    typeof credentials?.access_token === 'string' ? credentials.access_token : '';
 
-  // Template row (once) for header/button components; guard a
-  // malformed local row rather than N identical opaque failures.
-  const resolvedTemplate = await resolveTemplateRow(
-    db,
-    accountId,
-    templateName,
-    params.templateLanguage
-  );
-  if (resolvedTemplate.malformed) {
-    throw new BroadcastError(
-      'template_malformed',
-      'Template row is malformed locally — run "Sync from Meta" in Settings to repair it before broadcasting.',
-      500
+  // Template row (once) for header/button components; guard a malformed
+  // local row rather than N identical opaque failures. Only resolved on
+  // the template path — a free-message broadcast has no approved template
+  // to look up.
+  let templateRow: MessageTemplate | null = null;
+  let templateLanguage = '';
+  if (hasTemplate) {
+    const resolvedTemplate = await resolveTemplateRow(
+      db,
+      accountId,
+      templateName!,
+      params.templateLanguage
     );
+    if (resolvedTemplate.malformed) {
+      throw new BroadcastError(
+        'template_malformed',
+        'Template row is malformed locally — run "Sync from Meta" in Settings to repair it before broadcasting.',
+        500
+      );
+    }
+    templateRow = resolvedTemplate.row;
+    templateLanguage = resolvedTemplate.language;
   }
-  const templateRow = resolvedTemplate.row;
 
   // Resolve each recipient to a contact. Invalid phones are dropped
   // (counted as rejected) rather than aborting the whole broadcast.
@@ -219,16 +256,22 @@ export async function createBroadcast(
     {
       p_account_id: accountId,
       p_user_id: auditUserId,
-      p_name: name || `API broadcast (${templateName})`,
-      p_template_name: templateName,
-      p_template_language: resolvedTemplate.language,
+      p_name:
+        name ||
+        (hasTemplate ? `API broadcast (${templateName})` : 'API broadcast'),
+      p_template_name: hasTemplate ? templateName : null,
+      p_template_language: hasTemplate ? templateLanguage : null,
       p_total_recipients: deduped.length,
       p_contact_ids: deduped.map((r) => r.contactId),
       // Frozen per-recipient params (migration 038) — without them a
       // resume of this broadcast has no way to reconstruct {{1}}.
       p_template_params: deduped.map((r) => r.params),
       // The connection that sends this broadcast (migration 046).
-      p_connection_id: conn.connection.id,
+      p_connection_id: conn.id,
+      // Free-message content (migration 054) — null on the template path.
+      p_message_text: hasMessage ? (messageText ?? null) : null,
+      p_message_media_url: hasMessage ? (messageMediaUrl ?? null) : null,
+      p_template_variables: params.templateVariables ?? null,
     }
   );
   if (createErr || !createdRows || createdRows.length === 0) {
@@ -254,10 +297,12 @@ export async function createBroadcast(
 
   return {
     broadcastId,
-    templateName,
-    templateLanguage: resolvedTemplate.language,
-    connection: conn.connection,
-    phoneNumberId: conn.phoneNumberId,
+    // '' on the free-message path — deliverBroadcast (US-005) still assumes
+    // a template send; nothing reads this field for a message-only plan yet.
+    templateName: hasTemplate ? templateName! : '',
+    templateLanguage,
+    connection: conn,
+    phoneNumberId: conn.external_id,
     accessToken,
     templateRow,
     planned,

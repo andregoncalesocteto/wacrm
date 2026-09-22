@@ -200,3 +200,97 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     unchanged — it tests exactly the behavior being replaced, not a permanent characterization guard. Don't
     be surprised when US-005 needs to touch it.
 ---
+
+## 2026-09-22 - US-004
+- Implemented: `createBroadcast` (src/lib/whatsapp/broadcast-core.ts) no longer calls
+  `loadWhatsAppSendConnection`. It now takes a required `connectionId` and resolves it generically via
+  `getConnectionById(connectionId, db)` + `conn.account_id === accountId` (same pattern as
+  `POST /api/v1/messages`'s `pickConnection`) — no `channel_type` filter, so any connection type works. Errors:
+  missing/wrong-account connection -> `BroadcastError('not_found', ..., 404)`; disabled -> unchanged
+  `CONNECTION_DISABLED_CODE`/409 (US-078), now for any channel. `whatsapp_not_configured` is gone from
+  createBroadcast (it was WhatsApp-specific "no connection found" phrasing; 404 replaces it for a bad id).
+  `CreateBroadcastParams.templateName` is now optional; added `messageText`/`messageMediaUrl`/`templateVariables`.
+  A new content-exclusivity check (`hasTemplate === hasMessage` -> `BroadcastError('content_required', ..., 400)`)
+  mirrors the migration-052 CHECK exactly (its XOR shape) and rejects both "neither" and "both" up front, before
+  the RPC. `resolveTemplateRow` is only called on the template path (skipped entirely for a free-message create).
+  `create_broadcast_with_recipients` gained three new DEFAULT NULL params (new migration
+  `054_broadcast_free_message_rpc.sql`, same drop-old-overload/recreate pattern as 046) —
+  `p_message_text`/`p_message_media_url`/`p_template_variables` — so a free-message broadcast can be persisted
+  atomically (the CHECK from 052 requires either shape to be present in the SAME insert). `verify-schema.sql`'s
+  two `create_broadcast_with_recipients(...)::regprocedure` casts were updated to the new 12-arg signature, plus
+  a new assertion that the RPC stores `message_media_url`.
+- Scope decision, worth flagging explicitly: the AC asks createBroadcast to persist template OR free-message
+  content, so the function fully supports both shapes (tested directly). BUT `POST /api/v1/broadcasts`
+  (route.ts) still only extracts `template_name` from the request body — it does NOT expose
+  `message_text`/`message_media_url` in this story. Reason: `deliverBroadcast` (US-005's job, untouched here)
+  still unconditionally builds a `{type:'template', template:{name: plan.templateName, ...}}` payload; wiring
+  free-message content through the only live route today would let a caller create a broadcast that
+  `deliverBroadcast` can't send correctly once `provider.capabilities.templates` is true (a benign "unsupported"
+  failure for a non-template channel, but a REAL broken-template-send risk for a WhatsApp connection, since
+  `plan.templateName` would be `''`). Keeping the route template-only until US-005 lands avoids that risk
+  entirely while still satisfying the AC's literal requirement at the function level. Whoever picks up US-005
+  (or a later story that wires the dashboard route through this core) should revisit whether the route should
+  gain `message_text`/`message_media_url` at that point.
+- Design-doc inaccuracy found and worked around, not fixed in design.md: `design.md`'s risk table says "aplicar
+  aviso [de rename] se broadcast algum dia for exposto na API pública (hoje não é)" — but `/api/v1/broadcasts`
+  ALREADY is a public, documented (`docs/public-api.md`), MCP-exposed (`mcp-server/src/tools/broadcast.ts`'s
+  `send_broadcast`, scope `broadcasts:send`) endpoint, and it's the ONLY caller of `createBroadcast`. Making
+  `connection_id` strictly required with no fallback would have silently broken that MCP tool (it doesn't send
+  `connection_id` today) for the very common single-connection deployment. Resolution: `createBroadcast` itself
+  keeps `connectionId: string` as a genuinely required param (matches the AC's "obrigatório" literally) — the
+  ROUTE (`src/app/api/v1/broadcasts/route.ts`) gained a small `resolveConnectionId` helper, copying
+  `POST /api/v1/messages`' `pickConnection` convention: explicit `connection_id` passed straight through; omitted,
+  falls back to the account's one active connection, or `connection_required`(400, ambiguous)/
+  `whatsapp_not_configured`(400, none) otherwise. This keeps the MCP tool and any other existing caller working
+  unchanged. `docs/public-api.md`'s broadcasts section documents `connection_id` as optional-with-fallback and
+  lists the new domain error codes. `mcp-server/` was NOT touched (no change needed — the fallback covers it).
+- Files changed: `src/lib/whatsapp/broadcast-core.ts`, `src/app/api/v1/broadcasts/route.ts`,
+  `supabase/migrations/054_broadcast_free_message_rpc.sql` (new), `supabase/ci/verify-schema.sql`,
+  `docs/public-api.md`, `src/lib/whatsapp/broadcast-core.test.ts`,
+  `src/lib/whatsapp/broadcast-core.disabled.test.ts`,
+  `src/lib/whatsapp/broadcast-core.connection-resolution.test.ts` (rewritten for the new behavior — this is the
+  US-003 file the previous iteration flagged; its `toHaveBeenCalledWith(db, 'acc')`-style assert on
+  `loadWhatsAppSendConnection` and its `whatsapp_not_configured` assert are both gone, replaced with
+  `getConnectionById`/404-`not_found` assertions matching this story's own AC), `.projects/broadcast-multi-channel/prd.json`,
+  `.projects/broadcast-multi-channel/progress.txt`. `broadcast-core.credentials.test.ts`,
+  `broadcast-core.provider.test.ts`, `broadcast-deliver.characterization.test.ts` and `broadcast-resume.test.ts`
+  were audited and left untouched — none of them call `createBroadcast` (they exercise `deliverBroadcast`
+  directly with a hand-built plan, or `broadcast-resume.ts`, both unchanged by this story).
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `TZ=UTC npm test` 161 files / 1941 tests passed (baseline 161/1938 + 3 new tests: 2 content-validation
+  cases + 1 free-message-persists-content case in `broadcast-core.test.ts`; `connection-resolution.test.ts` went
+  from 3 to 4 tests, net +1 there too — 1938+2+1=1941 checks out). `npm run build` run (this story touched an
+  API route file) — succeeded, `/api/v1/broadcasts` compiles. No browser check needed (no UI touched, not an AC
+  criterion for this story).
+- Migration `054` applied to the dev DB (`$FULL run --rm -T migrate` — 1 migration applied) and to the isolated
+  replay (`-p wacrm-replay`, full 54-migration replay + `verify-schema.sql`, both passed); replay torn down with
+  `down -v` on the replay project only; dev DB verified unchanged afterwards (`wacrm_migrations` 54/54 distinct,
+  no duplicates).
+- **Learnings for future iterations:**
+  - **The documented "Replay DB network collision" fix (PGHOST override on the `migrate` service alone) is
+    INCOMPLETE** when the dev stack is up at the same time as the replay one. `storage`/`auth`/`rest` in
+    `docker-compose.supabase.yml` also hardcode `db:5432` inside their own env vars (`DATABASE_URL`,
+    `GOTRUE_DB_DATABASE_URL`, `PGRST_DB_URI`) — NOT just the `migrate` service — and Docker's embedded DNS for
+    the shared `wacrm-net` alias `db` resolved these THREE containers to the DEV db (`wacrm-db-1`), not the
+    replay one, in this session (observed via `docker compose -p wacrm-replay exec storage getent hosts db` ->
+    the dev db's IP). Consequence: `storage`-replay's own internal schema migrations silently ran against DEV
+    instead of replay (harmless there since dev already has that schema — an idempotent no-op — but it meant
+    replay's OWN db never got `storage.buckets` etc., so `migrate` failed at `008_profile_avatars_storage.sql`
+    with "relation storage.buckets does not exist", and `verify-schema.sql`'s storage check would have failed
+    too). Fix used this session (not committed, repo-external): a throwaway docker-compose override file (in the
+    scratchpad, `-f <override>`) pinning `DATABASE_URL`/`GOTRUE_DB_DATABASE_URL`/`PGRST_DB_URI` to
+    `wacrm-replay-db-1` for `storage`/`auth`/`rest`, then `up -d --force-recreate --wait db auth storage rest`
+    before running `migrate`. No repo file was changed for this (transient, per-session workaround) — a FUTURE
+    story that touches `docker-compose.supabase.yml` might consider giving `db` a project-scoped alias instead of
+    the fixed network-wide one, which is the actual root cause. No evidence of any write reaching the dev auth/
+    storage schemas beyond a no-op schema-migration check (no signups/uploads were sent to the replay stack), so
+    dev data integrity was verified intact afterwards, but this is worth knowing before trusting a replay
+    `up -d --wait db auth storage` at face value while the dev stack is up.
+  - `getConnectionById(id, db)` + `conn.account_id === accountId` (mirroring `POST /api/v1/messages`'
+    `pickConnection`) is the established "generic connection lookup, no channel_type filter" idiom in this
+    codebase now — reuse it verbatim for US-006/US-008 rather than reinventing.
+  - The `broadcasts_content_exclusive_check` CHECK from migration 052 is a strict XOR
+    (`(template_name IS NOT NULL) <> (message_text IS NOT NULL OR message_media_url IS NOT NULL)`) — mirroring it
+    in application code as `hasTemplate === hasMessage -> reject` (rather than two separate "missing"/"both"
+    checks) is the shortest correct implementation and is easy to eyeball against the SQL.
+---

@@ -5,6 +5,7 @@
 // Body:
 //   {
 //     "name": "July promo",                 // optional label
+//     "connection_id": "uuid",              // optional — see below
 //     "template_name": "promo_july",        // required, approved template
 //     "template_language": "en_US",         // optional (default en_US)
 //     "recipients": [                        // required, 1..1000
@@ -12,6 +13,12 @@
 //       { "to": "+14155550124" }
 //     ]
 //   }
+//
+// `connection_id` (US-004) may be omitted only when the account has
+// exactly one active connection — same convention as POST /api/v1/messages'
+// addressing. createBroadcast itself always requires a resolved id; this
+// route is what supplies the single-connection default so existing callers
+// (incl. the MCP server's send_broadcast tool) keep working unchanged.
 //
 // The broadcast + its recipient rows are persisted synchronously, then
 // the Meta fan-out runs in `after()` so the request returns fast. Poll
@@ -23,8 +30,10 @@
 // ============================================================
 
 import { after } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { requireApiKey } from '@/lib/auth/api-context';
+import { listConnectionsByAccount } from '@/lib/channels/connections';
 
 // The `after()` fan-out below sends to every recipient sequentially and
 // runs within this route's max duration (the same constraint the
@@ -43,6 +52,37 @@ import {
   BroadcastError,
 } from '@/lib/whatsapp/broadcast-core';
 
+/**
+ * Resolve which connection a broadcast sends through. Mirrors
+ * POST /api/v1/messages' pickConnection: an explicit id is passed straight
+ * through (createBroadcast owns the existence/ownership/disabled checks);
+ * omitted, it falls back to the account's one active connection, or a
+ * typed error when that's ambiguous or there's nothing to send through.
+ */
+async function resolveConnectionId(
+  db: SupabaseClient,
+  accountId: string,
+  connectionIdInput: string
+): Promise<string> {
+  if (connectionIdInput) return connectionIdInput;
+  const all = await listConnectionsByAccount(accountId, db);
+  const active = all.filter((c) => c.disabled_at == null);
+  if (active.length === 1) return active[0].id;
+  if (active.length > 1) {
+    throw new BroadcastError(
+      'connection_required',
+      "'connection_id' is required when the account has more than one active connection",
+      400
+    );
+  }
+  if (all.length > 0) return all[0].id; // createBroadcast's own check turns this into 409 connection_disabled
+  throw new BroadcastError(
+    'whatsapp_not_configured',
+    'No channel connected. Please set up a connection first.',
+    400
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const ctx = await requireApiKey(request, 'broadcasts:send');
@@ -59,10 +99,16 @@ export async function POST(request: Request) {
       typeof body.template_name === 'string' ? body.template_name : '';
     const recipients = Array.isArray(body.recipients) ? body.recipients : [];
 
+    const connectionId = await resolveConnectionId(
+      ctx.supabase,
+      ctx.accountId,
+      typeof body.connection_id === 'string' ? body.connection_id : ''
+    );
     const auditUserId = await resolveAuditUserId(ctx.supabase, ctx.accountId);
 
     const plan = await createBroadcast(ctx.supabase, ctx.accountId, auditUserId, {
       name: typeof body.name === 'string' ? body.name : null,
+      connectionId,
       templateName,
       templateLanguage:
         typeof body.template_language === 'string'
