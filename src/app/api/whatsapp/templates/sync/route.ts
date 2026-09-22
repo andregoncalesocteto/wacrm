@@ -269,11 +269,9 @@ export async function POST(request: Request) {
         .from('message_templates')
         .select('id')
         .eq('account_id', accountId)
+        .eq('connection_id', connectionId)
         .eq('name', t.name)
         .eq('language', t.language)
-        // Never adopt another connection's row of the same name (legacy rows
-        // with NULL connection_id still match).
-        .or(`connection_id.eq.${connectionId},connection_id.is.null`)
         .maybeSingle()
 
       if (lookupErr) {

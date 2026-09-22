@@ -8,15 +8,20 @@ type Row = Record<string, unknown>;
 const state = {
   tables: {} as Record<string, Row[]>,
   seq: 0,
-  /** Rows to inject right before the next contacts insert (simulated race). */
-  raceRow: null as Row | null,
+  /**
+   * An identity row to inject right before the next `contact_identities`
+   * upsert runs, simulating a concurrent request that claimed the same
+   * identity a moment earlier (it upserts with `ignoreDuplicates`, so ours
+   * silently no-ops once this lands first).
+   */
+  raceIdentity: null as Row | null,
 };
 
 // Minimal stateful fake of the supabase-js builder, with the unique
-// indexes that matter: contacts (account, wa_user_id) / (account, phone
-// digits when non-empty) and contact_identities (account, kind, external_id).
+// indexes that matter: contacts (account, phone digits when non-empty) and
+// contact_identities (account, kind, external_id).
 class Query {
-  private op: 'select' | 'insert' | 'update' | 'upsert' = 'select';
+  private op: 'select' | 'insert' | 'update' | 'upsert' | 'delete' = 'select';
   private payload: Row | Row[] = {};
   private filters: ((r: Row) => boolean)[] = [];
   private ignoreDup = false;
@@ -36,6 +41,10 @@ class Query {
   update(p: Row) {
     this.op = 'update';
     this.payload = p;
+    return this;
+  }
+  delete() {
+    this.op = 'delete';
     return this;
   }
   upsert(p: Row[], o: { ignoreDuplicates?: boolean }) {
@@ -76,20 +85,13 @@ class Query {
       );
     }
     return rows.some(
-      (r) =>
-        r.account_id === row.account_id &&
-        ((row.wa_user_id && r.wa_user_id === row.wa_user_id) ||
-          (row.phone && r.phone === row.phone))
+      (r) => r.account_id === row.account_id && row.phone && r.phone === row.phone
     );
   }
   private run(): { data: unknown; error: unknown } {
     const rows = this.rows();
     let out: Row[] = [];
     if (this.op === 'insert') {
-      if (this.table === 'contacts' && state.raceRow) {
-        rows.push(state.raceRow);
-        state.raceRow = null;
-      }
       const row = this.payload as Row;
       if (this.conflict(row)) {
         return { data: null, error: { code: '23505', message: 'duplicate' } };
@@ -98,6 +100,10 @@ class Query {
       rows.push(withId);
       out = [withId];
     } else if (this.op === 'upsert') {
+      if (this.table === 'contact_identities' && state.raceIdentity) {
+        rows.push({ id: `contact_identities-${++state.seq}`, ...state.raceIdentity });
+        state.raceIdentity = null;
+      }
       for (const row of this.payload as Row[]) {
         if (this.conflict(row) && this.ignoreDup) continue;
         rows.push({ id: `${this.table}-${++state.seq}`, ...row });
@@ -105,6 +111,11 @@ class Query {
     } else if (this.op === 'update') {
       out = rows.filter((r) => this.filters.every((f) => f(r)));
       for (const r of out) Object.assign(r, this.payload);
+    } else if (this.op === 'delete') {
+      out = rows.filter((r) => this.filters.every((f) => f(r)));
+      state.tables[this.table] = rows.filter(
+        (r) => !this.filters.every((f) => f(r))
+      );
     } else {
       out = rows.filter((r) => this.filters.every((f) => f(r)));
     }
@@ -139,7 +150,7 @@ const identities = () => state.tables.contact_identities ?? [];
 beforeEach(() => {
   state.tables = {};
   state.seq = 0;
-  state.raceRow = null;
+  state.raceIdentity = null;
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -155,7 +166,6 @@ describe('resolveOrCreateContact', () => {
       phone: '15551230000',
       name: 'Ada',
       user_id: 'user-1',
-      wa_user_id: null,
     });
     expect(identities()).toHaveLength(1);
     expect(identities()[0]).toMatchObject({
@@ -173,8 +183,6 @@ describe('resolveOrCreateContact', () => {
     expect(out?.contact).toMatchObject({
       phone: '',
       name: 'sheena',
-      wa_user_id: 'US.13491208655302741918',
-      wa_username: 'sheena',
     });
     expect(
       identities()
@@ -228,12 +236,12 @@ describe('resolveOrCreateContact', () => {
     expect(second?.contact.id).toBe(first?.contact.id);
     expect(contacts()).toHaveLength(1);
     expect(identities()).toHaveLength(3);
-    // Legacy columns backfilled so old code paths keep working.
-    expect(contacts()[0]).toMatchObject({
-      wa_user_id: 'US.222222',
-      wa_username: 'ada',
-      phone: '15551230000',
-    });
+    expect(
+      identities()
+        .filter((i) => i.contact_id === first?.contact.id)
+        .map((i) => i.kind)
+        .sort()
+    ).toEqual(['whatsapp:bsuid', 'whatsapp:phone', 'whatsapp:username']);
     // A later BSUID-only delivery lands on the same contact.
     const third = await resolveOrCreateContact(db, {
       ...base,
@@ -275,13 +283,12 @@ describe('resolveOrCreateContact', () => {
     expect(contacts()[0].name).toBe('Ada (VIP)');
   });
 
-  it('falls back to legacy columns when contact_identities is empty', async () => {
+  it('falls back to the fuzzy phone match when contact_identities is empty', async () => {
     (state.tables.contacts ??= []).push({
       id: 'legacy-1',
       account_id: ACC,
       phone: '15551230000',
       name: 'Old',
-      wa_user_id: null,
     });
     const byPhone = await resolveOrCreateContact(db, {
       ...base,
@@ -290,19 +297,6 @@ describe('resolveOrCreateContact', () => {
     expect(byPhone?.contact.id).toBe('legacy-1');
     // identity is now recorded
     expect(identities().some((i) => i.contact_id === 'legacy-1')).toBe(true);
-
-    (state.tables.contacts ??= []).push({
-      id: 'legacy-2',
-      account_id: ACC,
-      phone: '',
-      name: 'Bsuid only',
-      wa_user_id: 'US.444444',
-    });
-    const byBsuid = await resolveOrCreateContact(db, {
-      ...base,
-      candidates: [bsuid('US.444444')],
-    });
-    expect(byBsuid?.contact.id).toBe('legacy-2');
   });
 
   it('does not mix contacts across accounts', async () => {
@@ -319,13 +313,18 @@ describe('resolveOrCreateContact', () => {
     expect(contacts()).toHaveLength(2);
   });
 
-  it('recovers from a unique violation race by re-reading the winner', async () => {
-    state.raceRow = {
+  it('recovers from a race by re-reading the winner when another request claims the same BSUID identity first', async () => {
+    (state.tables.contacts ??= []).push({
       id: 'winner',
       account_id: ACC,
       phone: '',
       name: 'Winner',
-      wa_user_id: 'US.555555',
+    });
+    state.raceIdentity = {
+      account_id: ACC,
+      contact_id: 'winner',
+      kind: 'whatsapp:bsuid',
+      external_id: 'US.555555',
     };
     const out = await resolveOrCreateContact(db, {
       ...base,
@@ -333,6 +332,8 @@ describe('resolveOrCreateContact', () => {
     });
     expect(out?.wasCreated).toBe(false);
     expect(out?.contact.id).toBe('winner');
+    // Our own duplicate contact (created before the rival's identity write
+    // was visible to us) is deleted once the rival is detected.
     expect(contacts()).toHaveLength(1);
   });
 
@@ -391,10 +392,8 @@ describe('contactDisplayName', () => {
     ).toBe('@zed');
   });
 
-  it('falls back to the legacy columns when identities are not loaded', () => {
+  it('falls back to the phone column when identities are not loaded', () => {
     expect(contactDisplayName({ phone: '15551230000' })).toBe('15551230000');
-    expect(contactDisplayName({ wa_username: 'sheena' })).toBe('@sheena');
-    expect(contactDisplayName({ wa_user_id: 'US.1234' })).toBe('US.1234');
   });
 
   it('is empty only when there is no identity at all', () => {

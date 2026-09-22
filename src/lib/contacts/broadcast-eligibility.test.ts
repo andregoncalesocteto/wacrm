@@ -20,16 +20,14 @@ const bsuid = {
     { kind: 'whatsapp:bsuid', external_id: 'US.ABC12345', handle: null },
   ],
 };
-const legacyBsuid = { id: '4', phone: '', wa_user_id: 'US.ZZZ99999' };
 const nothing = { id: '5', phone: '  ', contact_identities: [] };
 
 describe('isBroadcastEligible', () => {
   it('is eligible with a phone', () => {
     expect(isBroadcastEligible(wa)).toBe(true);
   });
-  it('is eligible with a WhatsApp BSUID identity or legacy wa_user_id', () => {
+  it('is eligible with a WhatsApp BSUID identity', () => {
     expect(isBroadcastEligible(bsuid)).toBe(true);
-    expect(isBroadcastEligible(legacyBsuid)).toBe(true);
   });
   it('is eligible with a whatsapp:phone identity and no phone column', () => {
     expect(

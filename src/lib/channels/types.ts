@@ -294,12 +294,6 @@ export type InboundEvent =
        * (WhatsApp sticker -> "[sticker]", template button -> "[button]").
        */
       emptyPreview?: string;
-      /**
-       * Portfolio-level parent id of the sender (WhatsApp parent BSUID).
-       * Only used to keep `contacts.wa_parent_user_id` filled until US-070
-       * removes that column.
-       */
-      parentExternalId?: string;
     }
   | {
       kind: 'status';

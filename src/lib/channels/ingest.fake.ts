@@ -11,7 +11,7 @@ export const state = {
 
 // Stateful fake of the supabase-js builder with the unique indexes that matter
 // here: conversations (account, contact) [the pre-US-032 index], messages
-// (conversation, message_id), contacts (account, wa_user_id / phone) and
+// (conversation, message_id), contacts (account, phone) and
 // contact_identities (account, kind, external_id).
 class Query {
   private op: 'select' | 'insert' | 'update' | 'upsert' | 'delete' = 'select';
@@ -118,8 +118,8 @@ class Query {
         return rows.some(
           (r) =>
             r.account_id === row.account_id &&
-            ((row.wa_user_id && r.wa_user_id === row.wa_user_id) ||
-              (row.phone && r.phone === row.phone))
+            row.phone &&
+            r.phone === row.phone
         );
     }
   }

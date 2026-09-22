@@ -86,7 +86,7 @@ export function useBrowserNotifications(): void {
       const { data } = await supabase
         .from("conversations")
         .select(
-          "contact:contacts(name, wa_username, wa_user_id, phone, contact_identities(kind, external_id, handle))",
+          "contact:contacts(name, phone, contact_identities(kind, external_id, handle))",
         )
         .eq("id", msg.conversation_id)
         .maybeSingle();
@@ -95,8 +95,6 @@ export function useBrowserNotifications(): void {
       const contact = (data as {
         contact?: {
           name?: string | null;
-          wa_username?: string | null;
-          wa_user_id?: string | null;
           phone?: string | null;
           contact_identities?: {
             kind: string;

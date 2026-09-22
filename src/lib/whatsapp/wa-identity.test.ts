@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  contactHandle,
   hasUsableIdentity,
   identityDisplayName,
   isBusinessScopedUserId,
@@ -116,7 +115,7 @@ describe('resolveInboundIdentity', () => {
     expect(identity.waUserId).toBe('GB.99999999999999999999')
   })
 
-  // A junk value written to `wa_user_id` would become a permanent wrong
+  // A junk BSUID would become a permanent wrong
   // contact key, so anything not BSUID-shaped is discarded and the
   // phone fallback carries the delivery.
   it('discards a BSUID field that is not BSUID-shaped', () => {
@@ -199,7 +198,7 @@ describe('resolveContactSendTarget', () => {
     expect(
       resolveContactSendTarget({
         phone: '+1 (555) 123-0000',
-        wa_user_id: 'US.13491208655302741918',
+        bsuid: 'US.13491208655302741918',
       })
     ).toEqual({ target: '15551230000', isPhone: true })
   })
@@ -208,7 +207,7 @@ describe('resolveContactSendTarget', () => {
     expect(
       resolveContactSendTarget({
         phone: '',
-        wa_user_id: 'US.13491208655302741918',
+        bsuid: 'US.13491208655302741918',
       })
     ).toEqual({ target: 'US.13491208655302741918', isPhone: false })
   })
@@ -218,7 +217,7 @@ describe('resolveContactSendTarget', () => {
     expect(
       resolveContactSendTarget({
         phone: '123',
-        wa_user_id: 'US.13491208655302741918',
+        bsuid: 'US.13491208655302741918',
       })
     ).toEqual({ target: 'US.13491208655302741918', isPhone: false })
   })
@@ -230,32 +229,9 @@ describe('resolveContactSendTarget', () => {
     expect(resolveContactSendTarget(undefined)).toBeNull()
   })
 
-  it('refuses a wa_user_id that is not BSUID-shaped', () => {
+  it('refuses a bsuid that is not BSUID-shaped', () => {
     expect(
-      resolveContactSendTarget({ phone: '', wa_user_id: 'garbage' })
+      resolveContactSendTarget({ phone: '', bsuid: 'garbage' })
     ).toBeNull()
-  })
-})
-
-describe('contactHandle', () => {
-  it('shows the phone when there is one', () => {
-    expect(contactHandle({ phone: '+15551230000' })).toBe('+15551230000')
-  })
-
-  it('shows @username for a contact with no phone', () => {
-    expect(
-      contactHandle({ phone: '', wa_username: 'realsheenanelson' })
-    ).toBe('@realsheenanelson')
-  })
-
-  it('falls back to the BSUID rather than rendering a blank row', () => {
-    expect(
-      contactHandle({ phone: '', wa_user_id: 'US.13491208655302741918' })
-    ).toBe('US.13491208655302741918')
-  })
-
-  it('is empty only when the contact carries no identity at all', () => {
-    expect(contactHandle({})).toBe('')
-    expect(contactHandle({ phone: null, wa_username: null, wa_user_id: null })).toBe('')
   })
 })

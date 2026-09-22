@@ -76,7 +76,7 @@ export const whatsappCloudCapabilities: Capabilities = {
 function resolveTarget(identities: ContactIdentity[]): Target | null {
   const phone = identities.find((i) => i.kind === PHONE_KIND)?.externalId;
   const bsuid = identities.find((i) => i.kind === BSUID_KIND)?.externalId;
-  const resolved = resolveContactSendTarget({ phone, wa_user_id: bsuid });
+  const resolved = resolveContactSendTarget({ phone, bsuid });
   if (!resolved) return null;
   return {
     kind: resolved.isPhone ? PHONE_KIND : BSUID_KIND,

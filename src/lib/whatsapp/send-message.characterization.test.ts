@@ -172,6 +172,7 @@ const NOT_ALLOWED = '(#131030) Recipient phone number not in allowed list';
 function seed(contact: Row = { phone: PHONE }, extra: Row = {}) {
   h.db = {
     contacts: [{ id: 'ct-1', account_id: 'acct-1', ...contact }],
+    contact_identities: [],
     conversations: [
       {
         id: 'cv-1',
@@ -189,6 +190,19 @@ function seed(contact: Row = { phone: PHONE }, extra: Row = {}) {
     messages: [],
     message_templates: [],
   };
+}
+
+/** BSUID reachability now lives on `contact_identities`, not a contact column. */
+function seedBsuidIdentity(bsuid: string) {
+  h.db.contact_identities = [
+    {
+      id: 'id-1',
+      account_id: 'acct-1',
+      contact_id: 'ct-1',
+      kind: 'whatsapp:bsuid',
+      external_id: bsuid,
+    },
+  ];
 }
 
 const send = (params: Parameters<typeof sendMessageToConversation>[2]) =>
@@ -297,7 +311,8 @@ describe('phone-variant retry on "recipient not allowed"', () => {
   });
 
   it('gives a BSUID a single attempt even on "not allowed"', async () => {
-    seed({ phone: '', wa_user_id: BSUID });
+    seed({ phone: '' });
+    seedBsuidIdentity(BSUID);
     h.sendTextMessage.mockRejectedValue(new Error(NOT_ALLOWED));
 
     await expect(
@@ -326,7 +341,8 @@ describe('phone-variant retry on "recipient not allowed"', () => {
 
 describe('destination resolution and pre-send failures', () => {
   it('sends to the BSUID (single attempt, no contact rewrite) for a BSUID-only contact', async () => {
-    seed({ phone: '', wa_user_id: BSUID });
+    seed({ phone: '' });
+    seedBsuidIdentity(BSUID);
     await send({
       conversationId: 'cv-1',
       messageType: 'text',

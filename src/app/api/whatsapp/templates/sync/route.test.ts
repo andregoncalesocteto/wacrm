@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   inserted: [] as Array<Record<string, unknown>>,
   updated: [] as Array<Record<string, unknown>>,
   orFilters: [] as string[],
+  eqFilters: [] as [string, unknown][],
   loadCalls: [] as Array<string | null>,
   ownConnections: new Set<string>(),
   loaded: null as null | {
@@ -50,7 +51,10 @@ function makeClient() {
       let payload: Record<string, unknown> = {};
       const q = {
         select: () => q,
-        eq: () => q,
+        eq: (col: string, v: unknown) => {
+          h.eqFilters.push([col, v]);
+          return q;
+        },
         or: (f: string) => {
           h.orFilters.push(f);
           return q;
@@ -93,6 +97,7 @@ beforeEach(() => {
   h.inserted = [];
   h.updated = [];
   h.orFilters = [];
+  h.eqFilters = [];
   h.loadCalls = [];
   h.fetchUrls = [];
   h.ownConnections = new Set(['conn-b']);
@@ -197,9 +202,8 @@ describe('POST /api/whatsapp/templates/sync with connection_id', () => {
     expect(h.loadCalls).toEqual(['conn-b']);
     expect(h.fetchUrls[0]).toContain('/waba-2/message_templates');
     expect(h.inserted[0]).toMatchObject({ connection_id: 'conn-b' });
-    expect(h.orFilters[0]).toBe(
-      'connection_id.eq.conn-b,connection_id.is.null'
-    );
+    expect(h.eqFilters).toContainEqual(['connection_id', 'conn-b']);
+    expect(h.orFilters).toHaveLength(0);
   });
 
   it("404 for a connection that is not the account's WhatsApp connection", async () => {

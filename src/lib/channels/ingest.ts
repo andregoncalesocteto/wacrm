@@ -316,7 +316,6 @@ async function resolveThread(
   input: {
     sender: MessageEvent['sender'];
     senderName?: string;
-    parentExternalId?: string;
   }
 ): Promise<
   | { skip: string }
@@ -328,7 +327,6 @@ async function resolveThread(
     candidates: input.sender,
     senderName: input.senderName,
     auditUserId: opts.auditUserId,
-    parentExternalId: input.parentExternalId,
   });
   if (!outcome) return { skip: 'no contact' };
   const contact = outcome.contact;
@@ -375,7 +373,6 @@ async function ingestMessage(
   const resolved = await resolveThread(db, connection, opts, {
     sender: event.sender,
     senderName: event.senderName,
-    parentExternalId: event.parentExternalId,
   });
   if ('skip' in resolved) return skip(resolved.skip);
   const { ctx, conversation, contact } = resolved;

@@ -16,8 +16,6 @@ type EligibilityRow = {
   id: string;
   name?: string | null;
   phone?: string | null;
-  wa_username?: string | null;
-  wa_user_id?: string | null;
   contact_identities?: RawContactIdentity[] | null;
 };
 
@@ -55,7 +53,7 @@ export async function fetchIneligibleContacts(
   const { data, error } = await supabase
     .from('contacts')
     .select(
-      `id, name, phone, wa_username, wa_user_id, ${CONTACT_IDENTITIES_EMBED}`
+      `id, name, phone, ${CONTACT_IDENTITIES_EMBED}`
     )
     .eq('phone', '');
   if (error || !data) return [];

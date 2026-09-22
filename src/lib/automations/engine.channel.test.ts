@@ -180,14 +180,28 @@ describe('wait step saves the conversation', () => {
     });
   });
 
-  it('stores nulls when the run has no conversation yet', async () => {
+  it('resolves the contact\'s most recent conversation when the trigger has none in context', async () => {
     steps({ step_type: 'wait', step_config: { amount: 1, unit: 'hours' } });
 
     await fire();
 
     expect(h.db.automation_pending_executions[0]).toMatchObject({
-      conversation_id: null,
-      connection_id: null,
+      conversation_id: 'cv-new-wa',
+      connection_id: WA_CONN,
+    });
+  });
+
+  it('is ignored, with the reason, when the contact has no conversation at all', async () => {
+    h.db.conversations = [];
+    steps({ step_type: 'wait', step_config: { amount: 1, unit: 'hours' } });
+
+    await fire();
+
+    expect(h.db.automation_pending_executions).toHaveLength(0);
+    const steps_executed = log().steps_executed as { status: string; detail: string }[];
+    expect(steps_executed[0]).toMatchObject({
+      status: 'failed',
+      detail: expect.stringContaining('no existing conversation'),
     });
   });
 

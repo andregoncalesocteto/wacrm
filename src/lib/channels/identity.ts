@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
 import { sortIdentities } from '@/lib/contacts/display-name';
-import type { ContactIdentity, IdentityCandidate } from './types';
+import type { IdentityCandidate } from './types';
 
 /**
  * Channel-agnostic contact resolution (US-018).
@@ -12,10 +12,7 @@ import type { ContactIdentity, IdentityCandidate } from './types';
  * `whatsapp:bsuid`, `whatsapp:username`, `telegram:chat_id`, ...); this
  * module finds the contact behind ANY of them, or creates one carrying all of
  * them. `contact_identities` (UNIQUE (account_id, kind, external_id)) is the
- * source of truth. During the strangler transition it is only partially
- * populated by old code, so a miss falls back to the legacy columns
- * (`contacts.wa_user_id`, the fuzzy phone match) and the legacy columns are
- * still backfilled so the old code paths keep working.
+ * source of truth; a miss falls back to the fuzzy phone match.
  *
  * `db` must be a service-role client (webhook / engines have no user session).
  */
@@ -31,8 +28,6 @@ export type ContactRow = Record<string, unknown> & {
   id: string;
   phone?: string | null;
   name?: string | null;
-  wa_user_id?: string | null;
-  wa_username?: string | null;
 };
 
 export interface ResolveContactInput {
@@ -42,12 +37,6 @@ export interface ResolveContactInput {
   senderName?: string | null;
   /** NOT NULL audit column `contacts.user_id`. */
   auditUserId: string;
-  /**
-   * Portfolio-level BSUID, kept in `contacts.wa_parent_user_id` (no identity
-   * kind; US-070 removes the column). Written with the same INSERT / backfill
-   * UPDATE as the other legacy columns.
-   */
-  parentExternalId?: string;
 }
 
 export interface ResolveContactOutcome {
@@ -91,7 +80,7 @@ function newContactName(
   return first.externalId;
 }
 
-/** Contact lookups by identity, then by the legacy columns. */
+/** Contact lookups by identity, then by the fuzzy phone match. */
 async function findContact(
   db: SupabaseClient,
   accountId: string,
@@ -125,18 +114,7 @@ async function findContact(
     }
   }
 
-  // Legacy fallback: BSUID column first (stable key), then the fuzzy phone.
-  const bsuid = byKind(candidates, WA_BSUID_KIND);
-  if (bsuid) {
-    const { data, error: e } = await db
-      .from('contacts')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('wa_user_id', bsuid.externalId)
-      .maybeSingle();
-    if (e) channelLog('error', {}, 'BSUID lookup failed', { error: e });
-    if (data) return data as ContactRow;
-  }
+  // Fallback: the fuzzy phone match (contacts created without identities).
   const phone = byKind(candidates, WA_PHONE_KIND);
   if (phone) {
     const found = await findExistingContact(db, accountId, phone.externalId);
@@ -167,31 +145,21 @@ async function addIdentities(
 }
 
 /**
- * Legacy-column backfill, same rules as the webhook's `contactIdentityPatch`:
- * only a name the channel supplied (never clobber a hand-edited one with a
- * fallback label), BSUID / username when changed, phone only to fill a blank.
+ * Contact backfill: only a name the channel supplied (never clobber a
+ * hand-edited one with a fallback label), phone only to fill a blank.
  */
 function legacyPatch(
   existing: ContactRow,
   candidates: IdentityCandidate[],
-  senderName?: string | null,
-  parentExternalId?: string
+  senderName?: string | null
 ): Record<string, unknown> | null {
   const patch: Record<string, unknown> = {};
   const username = usernameOf(byKind(candidates, WA_USERNAME_KIND));
-  const bsuid = byKind(candidates, WA_BSUID_KIND)?.externalId;
   const phone = byKind(candidates, WA_PHONE_KIND)?.externalId;
 
   const name = senderName?.trim() || username;
   if (name && name !== existing.name) patch.name = name;
-  if (bsuid && bsuid !== existing.wa_user_id) patch.wa_user_id = bsuid;
-  if (username && username !== existing.wa_username) {
-    patch.wa_username = username;
-  }
   if (phone && !normalizePhone(existing.phone ?? '')) patch.phone = phone;
-  if (parentExternalId && parentExternalId !== existing.wa_parent_user_id) {
-    patch.wa_parent_user_id = parentExternalId;
-  }
 
   return Object.keys(patch).length > 0 ? patch : null;
 }
@@ -205,21 +173,14 @@ export async function resolveOrCreateContact(
   db: SupabaseClient,
   input: ResolveContactInput
 ): Promise<ResolveContactOutcome | null> {
-  const { accountId, senderName, auditUserId, parentExternalId } = input;
+  const { accountId, senderName, auditUserId } = input;
   const candidates = clean(input.candidates);
   if (candidates.length === 0) return null;
 
   const existing = await findContact(db, accountId, candidates);
   if (existing)
     return {
-      contact: await enrich(
-        db,
-        accountId,
-        existing,
-        candidates,
-        senderName,
-        parentExternalId
-      ),
+      contact: await enrich(db, accountId, existing, candidates, senderName),
       wasCreated: false,
     };
 
@@ -231,27 +192,17 @@ export async function resolveOrCreateContact(
       // NOT NULL DEFAULT '': blank for senders with no phone.
       phone: byKind(candidates, WA_PHONE_KIND)?.externalId ?? '',
       name: newContactName(candidates, senderName),
-      wa_user_id: byKind(candidates, WA_BSUID_KIND)?.externalId ?? null,
-      wa_username: usernameOf(byKind(candidates, WA_USERNAME_KIND)),
-      ...(parentExternalId && { wa_parent_user_id: parentExternalId }),
     })
     .select()
     .single();
 
   if (error || !created) {
-    // Lost a race (unique phone / BSUID index): re-read the winner.
+    // Lost a race (unique phone index): re-read the winner.
     if (isUniqueViolation(error)) {
       const raced = await findContact(db, accountId, candidates);
       if (raced) {
         return {
-          contact: await enrich(
-            db,
-            accountId,
-            raced,
-            candidates,
-            senderName,
-            parentExternalId
-          ),
+          contact: await enrich(db, accountId, raced, candidates, senderName),
           wasCreated: false,
         };
       }
@@ -260,22 +211,50 @@ export async function resolveOrCreateContact(
     return null;
   }
 
-  await addIdentities(db, accountId, (created as ContactRow).id, candidates);
+  const createdId = (created as ContactRow).id;
+  await addIdentities(db, accountId, createdId, candidates);
+
+  // Only the phone is unique on `contacts`: two concurrent first messages from
+  // a sender with no phone (BSUID / Telegram) can both get here. The identity
+  // unique index picked one winner; ours is the duplicate, so drop it and
+  // continue with the winner.
+  const { data: owned } = await db
+    .from('contact_identities')
+    .select('contact_id, kind, external_id')
+    .eq('account_id', accountId)
+    .in(
+      'external_id',
+      candidates.map((c) => c.externalId)
+    );
+  const rival = ((owned as Record<string, unknown>[] | null) ?? []).find(
+    (r) =>
+      r.contact_id !== createdId &&
+      candidates.some((c) => c.kind === r.kind && c.externalId === r.external_id)
+  );
+  if (rival) {
+    await db.from('contacts').delete().eq('id', createdId);
+    const winner = await findContact(db, accountId, candidates);
+    if (winner) {
+      return {
+        contact: await enrich(db, accountId, winner, candidates, senderName),
+        wasCreated: false,
+      };
+    }
+  }
   return { contact: created as ContactRow, wasCreated: true };
 }
 
-/** Attach new identities to a matched contact and backfill legacy columns. */
+/** Attach new identities to a matched contact and backfill name / phone. */
 async function enrich(
   db: SupabaseClient,
   accountId: string,
   contact: ContactRow,
   candidates: IdentityCandidate[],
-  senderName?: string | null,
-  parentExternalId?: string
+  senderName?: string | null
 ): Promise<ContactRow> {
   await addIdentities(db, accountId, contact.id, candidates);
 
-  const patch = legacyPatch(contact, candidates, senderName, parentExternalId);
+  const patch = legacyPatch(contact, candidates, senderName);
   if (!patch) return contact;
   const { data: updated, error } = await db
     .from('contacts')

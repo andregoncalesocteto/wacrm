@@ -13,10 +13,10 @@ const state = {
 
 // Stateful fake of the supabase-js builder with the unique indexes that matter
 // here: conversations (contact, connection) [migration 047], messages
-// (conversation, message_id), contacts (account, wa_user_id / phone) and
+// (conversation, message_id), contacts (account, phone) and
 // contact_identities (account, kind, external_id).
 class Query {
-  private op: 'select' | 'insert' | 'update' | 'upsert' = 'select';
+  private op: 'select' | 'insert' | 'update' | 'upsert' | 'delete' = 'select';
   private payload: Row | Row[] = {};
   private filters: ((r: Row) => boolean)[] = [];
   private ignoreDup = false;
@@ -39,6 +39,10 @@ class Query {
   update(p: Row) {
     this.op = 'update';
     this.payload = p;
+    return this;
+  }
+  delete() {
+    this.op = 'delete';
     return this;
   }
   upsert(
@@ -105,8 +109,8 @@ class Query {
         return rows.some(
           (r) =>
             r.account_id === row.account_id &&
-            ((row.wa_user_id && r.wa_user_id === row.wa_user_id) ||
-              (row.phone && r.phone === row.phone))
+            row.phone &&
+            r.phone === row.phone
         );
     }
   }
@@ -141,6 +145,11 @@ class Query {
     } else if (this.op === 'update') {
       out = rows.filter((r) => this.filters.every((f) => f(r)));
       for (const r of out) Object.assign(r, this.payload);
+    } else if (this.op === 'delete') {
+      out = rows.filter((r) => this.filters.every((f) => f(r)));
+      state.tables[this.table] = rows.filter(
+        (r) => !this.filters.every((f) => f(r))
+      );
     } else {
       out = rows.filter((r) => this.filters.every((f) => f(r)));
       if (this.head) return { data: null, error: null, count: out.length };
@@ -308,22 +317,19 @@ describe('ingestInbound: contact and conversation', () => {
     await ingestInbound(
       db,
       CONN,
-      [
-        msg({
-          sender,
-          senderName: 'Sheena',
-          parentExternalId: 'US.ENT.9999999',
-        }),
-      ],
+      [msg({ sender, senderName: 'Sheena' })],
       OPTS
     );
     expect(t('contacts')[0]).toMatchObject({
       phone: '',
       name: 'Sheena',
-      wa_user_id: 'US.1111111',
-      wa_username: 'sheena_n',
-      wa_parent_user_id: 'US.ENT.9999999',
     });
+    expect(
+      (t('contact_identities') as Row[])
+        .filter((i) => i.contact_id === t('contacts')[0].id)
+        .map((i) => i.kind)
+        .sort()
+    ).toEqual(['whatsapp:bsuid', 'whatsapp:username']);
     await ingestInbound(
       db,
       CONN,
@@ -333,17 +339,6 @@ describe('ingestInbound: contact and conversation', () => {
     expect(t('contacts')).toHaveLength(1);
     expect(t('conversations')).toHaveLength(1);
     expect(t('messages')).toHaveLength(2);
-  });
-
-  it('the parent BSUID is backfilled onto an existing contact', async () => {
-    await ingestInbound(db, CONN, [msg()], OPTS);
-    await ingestInbound(
-      db,
-      CONN,
-      [msg({ externalId: 'wamid.2', parentExternalId: 'US.ENT.42' })],
-      OPTS
-    );
-    expect(t('contacts')[0].wa_parent_user_id).toBe('US.ENT.42');
   });
 
   it('another account never reuses the contact', async () => {

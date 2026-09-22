@@ -70,7 +70,7 @@ export async function POST(request: Request) {
 
     const { data: conversation, error: convError } = await supabase
       .from('conversations')
-      .select('id, account_id, connection_id, contact:contacts(phone, wa_user_id)')
+      .select('id, account_id, connection_id, contact:contacts(phone, contact_identities(kind, external_id))')
       .eq('id', targetMessage.conversation_id)
       .eq('account_id', accountId)
       .maybeSingle();
@@ -87,7 +87,15 @@ export async function POST(request: Request) {
       : conversation.contact;
     // Phone number, or the business-scoped user ID for a contact Meta
     // never gave us a number for (issue #519).
-    const sendTarget = resolveContactSendTarget(contact);
+    const identities =
+      (contact?.contact_identities as
+        | { kind: string; external_id: string }[]
+        | null
+        | undefined) ?? [];
+    const sendTarget = resolveContactSendTarget({
+      phone: contact?.phone,
+      bsuid: identities.find((i) => i.kind === 'whatsapp:bsuid')?.external_id,
+    });
     if (!sendTarget) {
       return NextResponse.json(
         { error: 'Contact has no phone number or WhatsApp user ID' },

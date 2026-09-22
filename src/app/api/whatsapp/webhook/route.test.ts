@@ -29,12 +29,16 @@ const h = vi.hoisted(() => ({
     }[],
     /** Error the next storage upload resolves with, if any. */
     storageUploadError: null as { message: string } | null,
-    /** Row `findContactByWaUserId` resolves for a BSUID lookup (#519). */
+    /** Contact `resolveOrCreateContact` fetches by id once an identity matched. */
     contactByWaUserId: null as Record<string, unknown> | null,
+    /** `contact_identities` rows already on file, matched by external id (#519). */
+    contactIdentityRows: [] as Record<string, unknown>[],
     /** Rows inserted into `contacts`. */
     contactInserts: [] as Record<string, unknown>[],
     /** Patches applied to an existing `contacts` row. */
     contactUpdates: [] as Record<string, unknown>[],
+    /** Rows upserted into `contact_identities`. */
+    identityUpserts: [] as Record<string, unknown>[],
     /** Patches applied to `messages` by a status webhook (#535). */
     messageUpdates: [] as Record<string, unknown>[],
     /** Row the status webhook's broadcast_recipients lookup resolves. */
@@ -138,16 +142,23 @@ vi.mock('@supabase/supabase-js', () => ({
             }),
           }
         case 'contact_identities':
-          // resolveOrCreateContact: select().eq().in() finds nothing (the
-          // legacy columns and findExistingContact decide), then
-          // upsert() records the identities.
+          // resolveOrCreateContact: select().eq().in() finds a match by
+          // identity (or nothing, falling back to findExistingContact),
+          // then upsert() records the identities.
           return {
             select: () => ({
               eq: () => ({
-                in: () => Promise.resolve({ data: [], error: null }),
+                in: () =>
+                  Promise.resolve({
+                    data: h.state.contactIdentityRows,
+                    error: null,
+                  }),
               }),
             }),
-            upsert: () => Promise.resolve({ error: null }),
+            upsert: (rows: Record<string, unknown>[]) => {
+              h.state.identityUpserts.push(...rows)
+              return Promise.resolve({ error: null })
+            },
           }
         case 'broadcast_recipients':
           // Two chains land here:
@@ -434,8 +445,10 @@ beforeEach(() => {
   h.state.storageUploads = []
   h.state.storageUploadError = null
   h.state.contactByWaUserId = null
+  h.state.contactIdentityRows = []
   h.state.contactInserts = []
   h.state.contactUpdates = []
+  h.state.identityUpserts = []
   h.state.messageUpdates = []
   h.state.broadcastRecipient = null
   h.state.recipientUpdates = []
@@ -740,7 +753,6 @@ describe('inbound webhook: after() awaits automations (#368)', () => {
 const USERNAME_ONLY_MESSAGE = {
   id: 'wamid.BSUID1',
   from_user_id: 'US.13491208655302741918',
-  from_parent_user_id: 'US.ENT.11815799212886844830',
   timestamp: '1700000000',
   type: 'text',
   text: { body: 'does it come in another color?' },
@@ -750,7 +762,6 @@ const USERNAME_ONLY_CONTACTS = [
   {
     profile: { name: 'Sheena Nelson', username: 'realsheenanelson' },
     user_id: 'US.13491208655302741918',
-    parent_user_id: 'US.ENT.11815799212886844830',
   },
 ]
 
@@ -758,6 +769,7 @@ describe('inbound webhook: business-scoped user IDs (#519)', () => {
   it('creates ONE contact keyed on the BSUID when Meta sends no phone', async () => {
     // Nothing on file under either key yet.
     h.state.contactByWaUserId = null
+    h.state.contactIdentityRows = []
     mockFindExistingContact.mockResolvedValue(null)
 
     await runWebhook(USERNAME_ONLY_MESSAGE, USERNAME_ONLY_CONTACTS)
@@ -766,11 +778,11 @@ describe('inbound webhook: business-scoped user IDs (#519)', () => {
     expect(h.state.contactInserts[0]).toMatchObject({
       account_id: 'acc-1',
       phone: '',
-      wa_user_id: 'US.13491208655302741918',
-      wa_parent_user_id: 'US.ENT.11815799212886844830',
-      wa_username: 'realsheenanelson',
       name: 'Sheena Nelson',
     })
+    expect(
+      h.state.identityUpserts.map((i) => i.kind).sort()
+    ).toEqual(['whatsapp:bsuid', 'whatsapp:username'])
     // The message still lands in the thread.
     expect(h.state.upsertCalls).toHaveLength(1)
   })
@@ -787,14 +799,19 @@ describe('inbound webhook: business-scoped user IDs (#519)', () => {
   })
 
   it('reuses the existing contact on the SECOND message from the same BSUID', async () => {
-    // The row the first message created.
+    // The identity + contact the first message created.
+    h.state.contactIdentityRows = [
+      {
+        account_id: 'acc-1',
+        contact_id: 'contact-bsuid',
+        kind: 'whatsapp:bsuid',
+        external_id: 'US.13491208655302741918',
+      },
+    ]
     h.state.contactByWaUserId = {
       id: 'contact-bsuid',
       name: 'Sheena Nelson',
       phone: '',
-      wa_user_id: 'US.13491208655302741918',
-      wa_parent_user_id: 'US.ENT.11815799212886844830',
-      wa_username: 'realsheenanelson',
     }
     mockFindExistingContact.mockResolvedValue(null)
 
@@ -808,10 +825,11 @@ describe('inbound webhook: business-scoped user IDs (#519)', () => {
     expect(h.state.contactUpdates).toHaveLength(0)
   })
 
-  it('backfills the BSUID onto a contact we already knew by phone', async () => {
+  it('attaches the BSUID identity to a contact we already knew by phone', async () => {
     // Transition payload: Meta sends both keys. We match on the phone
-    // and stamp the BSUID so the next phone-less message still finds
-    // this row instead of forking a new one.
+    // and attach the BSUID identity so the next phone-less message still
+    // finds this row instead of forking a new one.
+    h.state.contactIdentityRows = []
     mockFindExistingContact.mockResolvedValue({
       id: 'contact-1',
       name: 'Pablo',
@@ -837,23 +855,34 @@ describe('inbound webhook: business-scoped user IDs (#519)', () => {
     )
 
     expect(h.state.contactInserts).toHaveLength(0)
-    expect(h.state.contactUpdates).toHaveLength(1)
-    expect(h.state.contactUpdates[0]).toMatchObject({
-      wa_user_id: 'US.13491208655302741918',
-      wa_username: 'pablomorales',
-    })
-    // The number we already had is left alone.
-    expect(h.state.contactUpdates[0]).not.toHaveProperty('phone')
+    // Name and phone are unchanged, so no legacy-column patch either.
+    expect(h.state.contactUpdates).toHaveLength(0)
+    expect(
+      h.state.identityUpserts.map((i) => [i.kind, i.contact_id])
+    ).toEqual(
+      expect.arrayContaining([
+        ['whatsapp:phone', 'contact-1'],
+        ['whatsapp:bsuid', 'contact-1'],
+        ['whatsapp:username', 'contact-1'],
+      ])
+    )
   })
 
   it('fills in the phone once Meta finally discloses it', async () => {
+    h.state.contactIdentityRows = [
+      {
+        account_id: 'acc-1',
+        contact_id: 'contact-bsuid',
+        kind: 'whatsapp:bsuid',
+        external_id: 'US.13491208655302741918',
+      },
+    ]
     h.state.contactByWaUserId = {
       id: 'contact-bsuid',
       name: 'Sheena Nelson',
       phone: '',
-      wa_user_id: 'US.13491208655302741918',
-      wa_username: 'realsheenanelson',
     }
+    mockFindExistingContact.mockResolvedValue(null)
 
     await runWebhook(
       {

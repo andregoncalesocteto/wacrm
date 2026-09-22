@@ -1,5 +1,4 @@
 import type { ContactIdentity } from '@/lib/channels/types';
-import { contactHandle } from '@/lib/whatsapp/wa-identity';
 
 /**
  * Client-safe contact display helpers (US-018, US-052). Pure: no server-only
@@ -10,8 +9,6 @@ import { contactHandle } from '@/lib/whatsapp/wa-identity';
 type DisplayContact = {
   name?: string | null;
   phone?: string | null;
-  wa_username?: string | null;
-  wa_user_id?: string | null;
 };
 
 /** Lower rank = more recognisable to a human. */
@@ -42,9 +39,8 @@ export function identityLabel(i: ContactIdentity): string {
 
 /**
  * Name to show for a contact: its own name, else the primary identity
- * (`@username`, phone, BSUID, Telegram handle / chat id), else the legacy
- * `wa_*` columns. Empty only when the contact carries no identity at all.
- * Generalises `contactHandle` (wa-identity.ts), which stays for old callers.
+ * (`@username`, phone, BSUID, Telegram handle / chat id), else the phone
+ * column. Empty only when the contact carries no identity at all.
  */
 export function contactDisplayName(
   contact: DisplayContact,
@@ -55,7 +51,7 @@ export function contactDisplayName(
     const label = identityLabel(i);
     if (label) return label;
   }
-  return contactHandle(contact);
+  return contact.phone?.trim() ? contact.phone : '';
 }
 
 /**
@@ -71,8 +67,8 @@ export function primaryIdentity(
     const label = identityLabel(i);
     if (label) return { label, channelType: identityChannelType(i.kind) };
   }
-  const legacy = contactHandle(contact);
-  return legacy ? { label: legacy, channelType: 'whatsapp_cloud' } : null;
+  const phone = contact.phone?.trim() ? contact.phone : '';
+  return phone ? { label: phone, channelType: 'whatsapp_cloud' } : null;
 }
 
 /** `whatsapp:phone` -> `whatsapp_cloud`, `telegram:chat_id` -> `telegram`. */
@@ -102,8 +98,7 @@ export function contactInitial(label: string): string {
 }
 
 /**
- * Text search over a contact: name, phone, legacy WhatsApp username / BSUID
- * and every identity's handle and external id (so `@maria` finds a Telegram
+ * Text search over a contact: name, phone and every identity's handle and external id (so `@maria` finds a Telegram
  * contact). Case-insensitive substring; an empty query matches.
  */
 export function matchesContactSearch(
@@ -117,8 +112,6 @@ export function matchesContactSearch(
   const fields: (string | null | undefined)[] = [
     contact.name,
     contact.phone,
-    contact.wa_username,
-    contact.wa_user_id,
   ];
   for (const i of contact.identities ?? []) {
     fields.push(i.externalId, i.handle, identityLabel(i));
@@ -189,14 +182,14 @@ export function contactSecondaryLine(
 
 /**
  * Whether a broadcast (WhatsApp template) can reach the contact: it has a
- * phone, a WhatsApp phone / BSUID identity, or a legacy `wa_user_id`.
+ * phone or a WhatsApp phone / BSUID identity.
  * Telegram-only contacts are not eligible.
  */
 export function isWhatsAppReachable(
   contact: DisplayContact,
   identities: ContactIdentity[] = []
 ): boolean {
-  if (contact.phone?.trim() || contact.wa_user_id?.trim()) return true;
+  if (contact.phone?.trim()) return true;
   return identities.some(
     (i) => i.kind === 'whatsapp:phone' || i.kind === 'whatsapp:bsuid'
   );

@@ -9,8 +9,7 @@ vi.mock('../../connections', () => ({
 import { whatsappCloudProvider as provider } from './index';
 
 // Additive hints the ingestion core needs to reproduce what the webhook
-// stores (US-019): stored override for degenerate messages, emptyPreview,
-// parentExternalId.
+// stores (US-019): stored override for degenerate messages, emptyPreview.
 
 const CONN = { id: 'conn-1', external_id: 'pn-1' } as unknown as Connection;
 
@@ -79,17 +78,5 @@ describe('parse: hints for the ingestion core', () => {
     expect(
       await parseOne({ id: 't', type: 'text', text: { body: 'hi' } })
     ).not.toHaveProperty('emptyPreview');
-  });
-
-  it('the parent BSUID travels as parentExternalId', async () => {
-    const e = await parseOne({
-      id: 'p',
-      from: undefined,
-      from_user_id: 'US.1111111',
-      from_parent_user_id: 'US.ENT.9999999',
-      type: 'text',
-      text: { body: 'hi' },
-    });
-    expect(e).toMatchObject({ parentExternalId: 'US.ENT.9999999' });
   });
 });

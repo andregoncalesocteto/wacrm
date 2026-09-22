@@ -151,7 +151,6 @@ function toLegacyInteractive(p: InteractivePayload): InteractiveMessagePayload {
 const providerFailures = new WeakSet<object>();
 
 const WA_PHONE = 'whatsapp:phone';
-const WA_BSUID = 'whatsapp:bsuid';
 
 type Row = Record<string, unknown>;
 
@@ -190,16 +189,14 @@ async function loadIdentities(
       handle: (r.handle as string | null) ?? null,
     })
   );
-  // Accounts not yet dual-populated: fall back to the legacy columns.
-  if (channelType === 'whatsapp_cloud') {
-    const phone = contact.phone as string | undefined;
-    const bsuid = contact.wa_user_id as string | undefined;
-    if (phone && !identities.some((i) => i.kind === WA_PHONE)) {
-      identities.push({ kind: WA_PHONE, externalId: phone });
-    }
-    if (bsuid && !identities.some((i) => i.kind === WA_BSUID)) {
-      identities.push({ kind: WA_BSUID, externalId: bsuid });
-    }
+  // A contact created without identities (manual / import) still has a phone.
+  const phone = contact.phone as string | undefined;
+  if (
+    channelType === 'whatsapp_cloud' &&
+    phone &&
+    !identities.some((i) => i.kind === WA_PHONE)
+  ) {
+    identities.push({ kind: WA_PHONE, externalId: phone });
   }
   return identities;
 }

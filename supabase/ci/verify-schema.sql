@@ -17,9 +17,6 @@ BEGIN
   IF to_regclass('public.messages') IS NULL THEN
     RAISE EXCEPTION 'public.messages is missing — migrations did not apply';
   END IF;
-  IF to_regclass('public.whatsapp_config') IS NULL THEN
-    RAISE EXCEPTION 'public.whatsapp_config is missing — migrations did not apply';
-  END IF;
 
   -- Supabase provides the storage schema; migrations 016/020/023 write
   -- to it. If it is absent the bucket migrations silently accomplish
@@ -42,13 +39,6 @@ BEGIN
     RAISE EXCEPTION 'public.accounts is missing — migration 017 did not apply';
   END IF;
 
-  -- The BSUID index (040) is the only thing stopping a username-only
-  -- WhatsApp sender from forking a new contact per inbound message. A
-  -- typo in its name would apply cleanly and guarantee nothing.
-  IF to_regclass('public.idx_contacts_account_wa_user_id') IS NULL THEN
-    RAISE EXCEPTION
-      'idx_contacts_account_wa_user_id is missing — migration 040 did not apply';
-  END IF;
 
   -- 041 repairs create_broadcast_with_recipients, which 037/038 shipped
   -- with an ambiguous bare `RETURNING id, contact_id` (SQLSTATE 42702 on
@@ -103,14 +93,10 @@ BEGIN
   -- connection_id became NOT NULL in 047, so it is asserted below, not here.
   IF (
     SELECT count(*) FROM information_schema.columns
-    WHERE table_schema = 'public' AND is_nullable = 'YES' AND (
-      (table_name = 'message_templates' AND column_name = 'connection_id')
-      OR (table_name = 'broadcasts' AND column_name = 'connection_id')
-      OR (table_name = 'automation_pending_executions' AND column_name IN ('conversation_id', 'connection_id'))
-      OR (table_name = 'quick_replies' AND column_name = 'store_id')
-    )
-  ) <> 5 THEN
-    RAISE EXCEPTION 'nullable channel columns are missing — migration 044 did not apply';
+    WHERE table_schema = 'public' AND is_nullable = 'YES'
+      AND table_name = 'quick_replies' AND column_name = 'store_id'
+  ) <> 1 THEN
+    RAISE EXCEPTION 'quick_replies.store_id must stay nullable — migration 044 did not apply';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
@@ -126,44 +112,10 @@ BEGIN
     RAISE EXCEPTION 'notifications.connection_id is missing (migration 050)';
   END IF;
 
-  -- Backfill (045): accounts that had a whatsapp_config must have a
-  -- connection, and none of their conversations/templates/broadcasts may be
-  -- left without connection_id. Accounts WITHOUT a whatsapp_config get no
-  -- connection and are deliberately excluded (their rows stay NULL).
-  IF EXISTS (
-    SELECT 1 FROM whatsapp_config wc
-    WHERE NOT EXISTS (
-      SELECT 1 FROM channel_connections cc
-      WHERE cc.account_id = wc.account_id AND cc.channel_type = 'whatsapp_cloud'
-        AND cc.external_id = wc.phone_number_id
-    )
-    OR NOT EXISTS (
-      SELECT 1 FROM channel_connections cc
-      JOIN channel_connection_credentials cr ON cr.connection_id = cc.id
-      WHERE cc.account_id = wc.account_id AND cc.external_id = wc.phone_number_id
-        AND cr.secrets_format = 'wa_token_v0' AND cr.secrets_encrypted = wc.access_token
-    )
-  ) THEN
-    RAISE EXCEPTION 'whatsapp_config without connection/credentials after backfill (migration 045)';
-  END IF;
-  IF EXISTS (
-    SELECT 1 FROM conversations c
-    WHERE c.connection_id IS NULL
-      AND EXISTS (SELECT 1 FROM whatsapp_config wc WHERE wc.account_id = c.account_id)
-  ) THEN
-    RAISE EXCEPTION 'conversations with NULL connection_id in an account that has a connection (migration 045)';
-  END IF;
-  IF EXISTS (
-    SELECT 1 FROM message_templates t
-    WHERE t.connection_id IS NULL
-      AND EXISTS (SELECT 1 FROM whatsapp_config wc WHERE wc.account_id = t.account_id)
-  ) OR EXISTS (
-    SELECT 1 FROM broadcasts b
-    WHERE b.connection_id IS NULL
-      AND EXISTS (SELECT 1 FROM whatsapp_config wc WHERE wc.account_id = b.account_id)
-  ) THEN
-    RAISE EXCEPTION 'templates/broadcasts with NULL connection_id in an account that has a connection (migration 045)';
-  END IF;
+  -- Backfill (045) fed conversations/templates/broadcasts from whatsapp_config;
+  -- 051 drops that table and makes the connection_id columns NOT NULL, so
+  -- their final state is asserted there instead of re-derived from a table
+  -- that no longer exists.
 
   -- 046: the broadcast RPC persists the sending connection and the old
   -- 8-argument overload is gone (it would make omitted-arg calls ambiguous).
@@ -248,6 +200,46 @@ BEGIN
       RAISE EXCEPTION 'merge_contacts does not handle: % (migration 049)', v_missing;
     END IF;
   END;
+
+  -- 051: final contract. The legacy table/columns are gone, and the
+  -- three connection columns this migration finishes are NOT NULL with
+  -- no leftover NULL rows.
+  IF to_regclass('public.whatsapp_config') IS NOT NULL THEN
+    RAISE EXCEPTION 'whatsapp_config must be gone (migration 051)';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'contacts'
+      AND column_name IN ('wa_user_id', 'wa_parent_user_id', 'wa_username')
+  ) THEN
+    RAISE EXCEPTION 'contacts.wa_user_id/wa_parent_user_id/wa_username must be gone (migration 051)';
+  END IF;
+  IF (
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND is_nullable = 'YES' AND (
+      (table_name = 'message_templates' AND column_name = 'connection_id')
+      OR (table_name = 'broadcasts' AND column_name = 'connection_id')
+      OR (table_name = 'automation_pending_executions' AND column_name IN ('conversation_id', 'connection_id'))
+    )
+  ) <> 0 THEN
+    RAISE EXCEPTION 'message_templates/broadcasts/automation_pending_executions connection columns must be NOT NULL (migration 051)';
+  END IF;
+  IF EXISTS (SELECT 1 FROM message_templates WHERE connection_id IS NULL)
+     OR EXISTS (SELECT 1 FROM broadcasts WHERE connection_id IS NULL)
+     OR EXISTS (SELECT 1 FROM automation_pending_executions WHERE conversation_id IS NULL OR connection_id IS NULL)
+  THEN
+    RAISE EXCEPTION 'NULL connection rows left after migration 051';
+  END IF;
+  IF to_regclass('public.message_templates_user_name_language_key') IS NOT NULL THEN
+    RAISE EXCEPTION 'the old message_templates (user_id, name, language) index must be gone (migration 051)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'message_templates_connection_name_language_key'
+      AND indexdef LIKE 'CREATE UNIQUE INDEX%(connection_id, name, language)%'
+  ) THEN
+    RAISE EXCEPTION 'message_templates (connection_id, name, language) unique index is missing (migration 051)';
+  END IF;
 
   RAISE NOTICE 'schema verification passed';
 END

@@ -42,7 +42,7 @@ vi.mock('@supabase/supabase-js', () => {
 
   class Query {
     private op: 'select' | 'insert' | 'update' | 'upsert' | 'delete' = 'select';
-    private payload: Row = {};
+    private payload: Row | Row[] = {};
     private filters: Filter[] = [];
     private opts: { onConflict?: string; ignoreDuplicates?: boolean } = {};
     private head = false;
@@ -68,7 +68,10 @@ vi.mock('@supabase/supabase-js', () => {
       this.payload = patch;
       return this;
     }
-    upsert(row: Row, o: { onConflict?: string; ignoreDuplicates?: boolean }) {
+    upsert(
+      row: Row | Row[],
+      o: { onConflict?: string; ignoreDuplicates?: boolean }
+    ) {
       this.op = 'upsert';
       this.payload = row;
       this.opts = o;
@@ -122,24 +125,24 @@ vi.mock('@supabase/supabase-js', () => {
       const rows = this.rows();
       let out: Row[] = [];
       if (this.op === 'insert') {
-        const row = { id: `${this.table}-${++h.seq}`, ...this.payload };
+        const row = { id: `${this.table}-${++h.seq}`, ...(this.payload as Row) };
         rows.push(row);
         out = [row];
       } else if (this.op === 'upsert') {
         const keys = (this.opts.onConflict ?? 'id').split(',');
-        const hit = rows.find((r) =>
-          keys.every((k) => r[k] === this.payload[k])
-        );
-        if (hit) {
-          if (this.opts.ignoreDuplicates) out = [];
-          else {
-            Object.assign(hit, this.payload);
-            out = [hit];
+        const list = Array.isArray(this.payload) ? this.payload : [this.payload];
+        for (const payload of list) {
+          const hit = rows.find((r) => keys.every((k) => r[k] === payload[k]));
+          if (hit) {
+            if (!this.opts.ignoreDuplicates) {
+              Object.assign(hit, payload);
+              out.push(hit);
+            }
+          } else {
+            const row = { id: `${this.table}-${++h.seq}`, ...payload };
+            rows.push(row);
+            out.push(row);
           }
-        } else {
-          const row = { id: `${this.table}-${++h.seq}`, ...this.payload };
-          rows.push(row);
-          out = [row];
         }
       } else if (this.op === 'update') {
         out = this.matches();
@@ -408,7 +411,6 @@ describe('inbound: contact and conversation resolution', () => {
       user_id: 'user-1',
       phone: '15551230000',
       name: 'Ada',
-      wa_user_id: null,
     });
     expect(table('conversations')).toHaveLength(1);
     expect(table('conversations')[0]).toMatchObject({
@@ -558,7 +560,6 @@ describe('inbound: sender identified only by BSUID / username', () => {
   const MSG = {
     id: 'wamid.B1',
     from_user_id: 'US.1111111',
-    from_parent_user_id: 'US.ENT.9999999',
     timestamp: '1700000000',
     type: 'text',
     text: { body: 'oi' },
@@ -567,7 +568,6 @@ describe('inbound: sender identified only by BSUID / username', () => {
     {
       profile: { name: 'Sheena', username: 'sheena_n' },
       user_id: 'US.1111111',
-      parent_user_id: 'US.ENT.9999999',
     },
   ];
 
@@ -577,10 +577,13 @@ describe('inbound: sender identified only by BSUID / username', () => {
     expect(table('contacts')[0]).toMatchObject({
       phone: '', // contacts.phone stays NOT NULL: '' for "no phone"
       name: 'Sheena',
-      wa_user_id: 'US.1111111',
-      wa_parent_user_id: 'US.ENT.9999999',
-      wa_username: 'sheena_n',
     });
+    expect(
+      table('contact_identities')
+        .filter((i) => i.contact_id === table('contacts')[0].id)
+        .map((i) => i.kind)
+        .sort()
+    ).toEqual(['whatsapp:bsuid', 'whatsapp:username']);
 
     await inbound({ ...MSG, id: 'wamid.B2' }, CONTACTS);
     expect(table('contacts')).toHaveLength(1);
@@ -612,10 +615,12 @@ describe('inbound: sender identified only by BSUID / username', () => {
       },
     ]);
     expect(table('contacts')).toHaveLength(1);
-    expect(table('contacts')[0]).toMatchObject({
-      wa_user_id: 'US.2222222',
-      wa_username: 'ada',
-    });
+    expect(
+      table('contact_identities')
+        .filter((i) => i.contact_id === table('contacts')[0].id)
+        .map((i) => i.kind)
+        .sort()
+    ).toEqual(['whatsapp:bsuid', 'whatsapp:phone', 'whatsapp:username']);
 
     await inbound(
       {

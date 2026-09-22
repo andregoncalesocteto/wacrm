@@ -42,7 +42,7 @@ function supabase() {
                 id: 'cv1',
                 account_id: 'acct-1',
                 connection_id: 'conn-1',
-                contact: { phone: '15551234567', wa_user_id: null },
+                contact: { phone: '15551234567', contact_identities: [] },
               },
               error: null,
             };

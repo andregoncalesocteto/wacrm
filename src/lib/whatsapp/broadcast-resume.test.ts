@@ -15,7 +15,7 @@ vi.mock('@/lib/whatsapp/encryption', () => ({
 }));
 
 // Credentials now come from channel_connection_credentials (US-015): serve the
-// same "tok" the legacy whatsapp_config row carried.
+// same "tok" the removed legacy config table carried.
 vi.mock('@/lib/channels/admin-client', async () => {
   const { fakeCredentialsAdmin } = await import(
     '@/lib/channels/credentials-admin.fake'

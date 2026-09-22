@@ -221,7 +221,8 @@ interface CapturedWrites {
 function sendPathDb(
   templateRows: unknown[],
   captured: CapturedWrites,
-  contact: Record<string, unknown> = { id: 'ct-1', phone: '+15551234567' }
+  contact: Record<string, unknown> = { id: 'ct-1', phone: '+15551234567' },
+  identities: Record<string, unknown>[] = []
 ): SupabaseClient {
   const conversation = {
     id: 'cv-1',
@@ -260,7 +261,9 @@ function sendPathDb(
                 ? templateRows
                 : table === 'channel_connections'
                   ? [whatsappConnectionRow('acct-1', 'pn-1')]
-                  : [],
+                  : table === 'contact_identities'
+                    ? identities
+                    : [],
             error: null,
           }),
       };
@@ -366,13 +369,16 @@ describe('sendMessageToConversation — template persistence (#483)', () => {
 // Business-scoped user IDs (issue #519)
 //
 // Meta withholds the phone number for a customer who has adopted a
-// WhatsApp username, so their contact row carries only `wa_user_id`.
-// The send path used to reject those outright with "Contact phone
-// number not found" — the business could receive their messages but
-// never answer them.
+// WhatsApp username, so their contact is only reachable through a
+// `whatsapp:bsuid` identity. The send path used to reject those outright
+// with "Contact phone number not found" — the business could receive
+// their messages but never answer them.
 // ============================================================
 
 const BSUID = 'US.13491208655302741918';
+const bsuidIdentity = (external_id: string) => [
+  { kind: 'whatsapp:bsuid', external_id },
+];
 
 describe('sendMessageToConversation — BSUID recipients (#519)', () => {
   it('sends to the BSUID when the contact has no phone number', async () => {
@@ -381,7 +387,12 @@ describe('sendMessageToConversation — BSUID recipients (#519)', () => {
     vi.mocked(sendTextMessage).mockClear();
 
     await sendMessageToConversation(
-      sendPathDb([], captured, { id: 'ct-1', phone: '', wa_user_id: BSUID }),
+      sendPathDb(
+        [],
+        captured,
+        { id: 'ct-1', phone: '' },
+        bsuidIdentity(BSUID)
+      ),
       'acct-1',
       { conversationId: 'cv-1', messageType: 'text', contentText: 'hi' }
     );
@@ -397,11 +408,12 @@ describe('sendMessageToConversation — BSUID recipients (#519)', () => {
     vi.mocked(sendTextMessage).mockClear();
 
     await sendMessageToConversation(
-      sendPathDb([], captured, {
-        id: 'ct-1',
-        phone: '+15551234567',
-        wa_user_id: BSUID,
-      }),
+      sendPathDb(
+        [],
+        captured,
+        { id: 'ct-1', phone: '+15551234567' },
+        bsuidIdentity(BSUID)
+      ),
       'acct-1',
       { conversationId: 'cv-1', messageType: 'text', contentText: 'hi' }
     );
@@ -419,11 +431,12 @@ describe('sendMessageToConversation — BSUID recipients (#519)', () => {
     vi.mocked(sendTextMessage).mockClear();
 
     await sendMessageToConversation(
-      sendPathDb([], captured, {
-        id: 'ct-1',
-        phone: 'not-a-number',
-        wa_user_id: BSUID,
-      }),
+      sendPathDb(
+        [],
+        captured,
+        { id: 'ct-1', phone: 'not-a-number' },
+        bsuidIdentity(BSUID)
+      ),
       'acct-1',
       { conversationId: 'cv-1', messageType: 'text', contentText: 'hi' }
     );
@@ -444,15 +457,16 @@ describe('sendMessageToConversation — BSUID recipients (#519)', () => {
     ).rejects.toThrow(/no phone number or WhatsApp user ID/);
   });
 
-  it('ignores a wa_user_id that is not BSUID-shaped', async () => {
+  it('ignores a BSUID identity that is not BSUID-shaped', async () => {
     const captured: CapturedWrites = {};
     await expect(
       sendMessageToConversation(
-        sendPathDb([], captured, {
-          id: 'ct-1',
-          phone: '',
-          wa_user_id: 'garbage',
-        }),
+        sendPathDb(
+          [],
+          captured,
+          { id: 'ct-1', phone: '' },
+          bsuidIdentity('garbage')
+        ),
         'acct-1',
         { conversationId: 'cv-1', messageType: 'text', contentText: 'hi' }
       )

@@ -392,9 +392,6 @@ export async function parse(
           ...(m.context?.id && { replyToExternalId: m.context.id }),
           ...(identity.name && { senderName: identity.name }),
           ...(EMPTY_PREVIEW[m.type] && { emptyPreview: EMPTY_PREVIEW[m.type] }),
-          ...(identity.waParentUserId && {
-            parentExternalId: identity.waParentUserId,
-          }),
         });
         return;
       }

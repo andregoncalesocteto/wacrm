@@ -158,16 +158,14 @@ export function buildNotificationContent(
 
 /**
  * Display name for the notification title, in the order the inbox uses:
- * saved name, then WhatsApp username, then phone. Null when none exist.
+ * saved name, then phone. Null when none exist.
  */
 export function pickContactDisplayName(contact: {
   name?: string | null;
-  wa_username?: string | null;
   phone?: string | null;
 } | null | undefined): string | null {
   if (!contact) return null;
   if (contact.name?.trim()) return contact.name.trim();
-  if (contact.wa_username?.trim()) return `@${contact.wa_username.trim()}`;
   if (contact.phone?.trim()) return contact.phone.trim();
   return null;
 }

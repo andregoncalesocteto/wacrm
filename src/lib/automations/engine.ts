@@ -292,18 +292,43 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
       const ms = waitMs(cfg)
       // Remember WHICH conversation (and connection) the run is on so the
       // resume sends through it, whatever the customer's other threads do.
-      const waitConversationId = args.context.conversation_id ?? null
-      let waitConnectionId: string | null = null
-      if (waitConversationId) {
-        const { data: convRow } = await db
-          .from('conversations')
-          .select('connection_id')
-          .eq('id', waitConversationId)
-          .eq('account_id', args.automation.account_id)
-          .maybeSingle()
-        waitConnectionId =
-          (convRow as { connection_id?: string | null } | null)?.connection_id ?? null
+      // `automation_pending_executions.conversation_id`/`.connection_id` are
+      // NOT NULL (US-070), so a trigger with no conversation in context
+      // (time-based, tag-based, new-contact) resolves the contact's most
+      // recent one, same rule as a send step (design.md R4); a contact with
+      // none at all fails the step, same as a send that can't resolve one.
+      let waitConversationId: string
+      try {
+        waitConversationId = await resolveConversationId(args, 'text')
+      } catch (err) {
+        if (err instanceof ExecutionIgnored) {
+          results.push({
+            step_id: step.id,
+            step_type: step.step_type,
+            status: 'skipped',
+            detail: `ignored: ${err.message}`,
+          })
+          break
+        }
+        const msg = err instanceof Error ? err.message : String(err)
+        results.push({
+          step_id: step.id,
+          step_type: step.step_type,
+          status: 'failed',
+          detail: msg,
+        })
+        status = 'failed'
+        errorMessage = msg
+        break
       }
+      const { data: convRow } = await db
+        .from('conversations')
+        .select('connection_id')
+        .eq('id', waitConversationId)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle()
+      const waitConnectionId =
+        (convRow as { connection_id?: string | null } | null)?.connection_id ?? null
       await db.from('automation_pending_executions').insert({
         automation_id: args.automation.id,
         // Tenancy: account_id required NOT NULL post-017.

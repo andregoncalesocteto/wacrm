@@ -11,8 +11,8 @@ import crypto from 'crypto'
  *
  * Why GCM instead of CBC:
  *   CBC without a MAC is unauthenticated — an attacker who can write
- *   rows to `whatsapp_config` (directly, through a future RLS bug, or
- *   via a DB backup being modified) can flip bits in the ciphertext
+ *   rows to `channel_connection_credentials` (directly, through a future
+ *   RLS bug, or via a DB backup being modified) can flip bits in the ciphertext
  *   without the decrypt throwing. You'd silently get garbled tokens;
  *   worst case, if the mutated bytes happen to form a valid access
  *   token, messages go out under a spoofed account. GCM appends a

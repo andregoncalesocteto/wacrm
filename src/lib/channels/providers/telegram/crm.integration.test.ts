@@ -340,13 +340,11 @@ describe('what the agent does in the CRM', () => {
 describe('nothing requires a phone number or a wamid', () => {
   it('no phone, no WhatsApp identity, no wamid and no Meta call anywhere', () => {
     expect(contact().phone ?? '').toBe('');
-    expect(contact().wa_user_id ?? null).toBeNull();
     expect(
       t('contact_identities').every(
         (r) => !String(r.kind).startsWith('whatsapp:')
       )
     ).toBe(true);
-    expect(t('whatsapp_config')).toHaveLength(0);
 
     const ids = t('messages').map((m) => String(m.message_id));
     expect(ids.length).toBeGreaterThan(1);
