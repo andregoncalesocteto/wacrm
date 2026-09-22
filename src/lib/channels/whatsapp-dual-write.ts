@@ -1,3 +1,4 @@
+import { channelLog } from './log';
 import { decrypt, encrypt } from '@/lib/whatsapp/encryption';
 import { supabaseAdmin } from './admin-client';
 
@@ -15,16 +16,14 @@ import { supabaseAdmin } from './admin-client';
  */
 
 const CHANNEL = 'whatsapp_cloud';
-const LOG = '[channel:whatsapp_cloud]';
 
 type Row = Record<string, unknown>;
 
 function logFailure(op: string, err: unknown) {
   // Never log secrets: only the operation and the error message.
-  console.error(
-    `${LOG} dual-write ${op} failed:`,
-    err instanceof Error ? err.message : err
-  );
+  channelLog('error', { type: CHANNEL }, `dual-write ${op} failed`, {
+    error: err,
+  });
 }
 
 function must<T>(res: { data: T; error: { message: string } | null }): T {

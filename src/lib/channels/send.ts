@@ -1,3 +1,4 @@
+import { channelLog, connCtx } from './log';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { supabaseAdmin as flowsAdmin } from '@/lib/flows/admin-client';
@@ -408,8 +409,10 @@ export async function sendOutbound(
     }
     const parentExternal = (parent as Row).message_id as string | null;
     if (!parentExternal) {
-      console.warn(
-        '[send] reply target has no provider message id; sending without context'
+      channelLog(
+        'warn',
+        connCtx(connection),
+        'reply target has no provider message id; sending without context'
       );
     } else {
       outbound = { ...outboundBase, replyTo: { externalId: parentExternal } };
@@ -440,8 +443,13 @@ export async function sendOutbound(
   );
 
   if (sent.resolvedAddress && target.kind === WA_PHONE) {
-    console.log(
-      `[send] Auto-corrected contact phone: ${target.address} → ${sent.resolvedAddress}`
+    channelLog(
+      'info',
+      connCtx(connection, sent.externalId),
+      'auto-corrected contact phone',
+      {
+        contact: contact.id,
+      }
     );
     await db
       .from('contacts')
@@ -503,7 +511,12 @@ export async function sendOutbound(
     .select()
     .single();
   if (msgError || !record) {
-    console.error('[send] error inserting sent message:', msgError);
+    channelLog(
+      'error',
+      connCtx(connection, sent.externalId),
+      'error inserting sent message',
+      { error: msgError }
+    );
     throw new OutboundPersistError(msgError?.message ?? 'no row returned');
   }
 
@@ -533,12 +546,19 @@ export async function sendOutbound(
         .eq('conversation_id', conversationId)
         .eq('status', 'active');
       if (pauseErr) {
-        console.error('[flows] pause-on-agent-send failed:', pauseErr.message);
+        channelLog(
+          'error',
+          connCtx(connection, sent.externalId),
+          'flows pause-on-agent-send failed',
+          { error: pauseErr }
+        );
       }
     } catch (err) {
-      console.error(
-        '[flows] pause-on-agent-send threw:',
-        err instanceof Error ? err.message : err
+      channelLog(
+        'error',
+        connCtx(connection, sent.externalId),
+        'flows pause-on-agent-send threw',
+        { error: err }
       );
     }
   }

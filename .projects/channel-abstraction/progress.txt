@@ -808,3 +808,10 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Browser (pt :3100, QA): seeded a needs_action connection + notification by SQL (cleaned up): list shows translated text, click opens the connection detail. Real transition not reachable (no Meta/Telegram).
 - **Learnings:** notification dedupe is transition-based on the loaded connection status (stale loads could double-notify in a race; acceptable). Realtime INSERT rows have no embed, so the page reloads on connection_down. Broadcast sends still bypass sendOutbound (no needs_action from them).
 ---
+
+## 2026-09-21 - US-068
+- New src/lib/channels/log.ts: channelLog(level, ctx, message, fields?) emits ONE string `[channel:<type>] conn=<id> event=<id> <message> key=value` (`-` for unknown parts); connCtx(conn, eventId) builds the context. Fields whose key looks secret (token/secret/credential/password/authorization/api key/bearer) are redacted (also nested in objects); strings are scrubbed of Telegram bot tokens and any api.telegram.org URL (file URLs embed the bot token); errors are rendered as message only. Every console.* call in lib/channels (ingest, identity, send, media, fanout, connection-state, connection-down, whatsapp-dual-write, whatsapp-cloud and telegram providers) now goes through it. The client-only whatsapp-connection-panel.tsx keeps browser console.error (UI, no connection context).
+- Tests: log.test.ts (6: format, unknown parts, level, key redaction incl. nested, Telegram URL/bot-token scrubbing). Two existing assertions on the old two-arg console.error shape were loosened (fanout.test.ts, route.dualwrite.test.ts): contract change of this story; the token-not-in-logs tests in ingest.telegram/inbound tests pass unchanged.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 160 files/1944 tests. No build, no browser (no UI).
+- **Learnings:** new code under lib/channels must log via channelLog, never console.* directly. Helpers without a loaded connection (identity, fanout engines) log with an empty context (`[channel:-] conn=- event=-`); pass connCtx(conn, eventId) when a connection is at hand.
+---

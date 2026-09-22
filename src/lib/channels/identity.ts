@@ -1,3 +1,4 @@
+import { channelLog } from './log';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
@@ -107,7 +108,7 @@ async function findContact(
       candidates.map((c) => c.externalId)
     );
   if (error) {
-    console.error('[identity] identity lookup failed:', error.message);
+    channelLog('error', {}, 'identity lookup failed', { error });
   } else if (rows) {
     for (const c of candidates) {
       const hit = (rows as Record<string, unknown>[]).find(
@@ -133,7 +134,7 @@ async function findContact(
       .eq('account_id', accountId)
       .eq('wa_user_id', bsuid.externalId)
       .maybeSingle();
-    if (e) console.error('[identity] BSUID lookup failed:', e.message);
+    if (e) channelLog('error', {}, 'BSUID lookup failed', { error: e });
     if (data) return data as ContactRow;
   }
   const phone = byKind(candidates, WA_PHONE_KIND);
@@ -162,8 +163,7 @@ async function addIdentities(
     })),
     { onConflict: 'account_id,kind,external_id', ignoreDuplicates: true }
   );
-  if (error)
-    console.error('[identity] adding identities failed:', error.message);
+  if (error) channelLog('error', {}, 'adding identities failed', { error });
 }
 
 /**
@@ -256,7 +256,7 @@ export async function resolveOrCreateContact(
         };
       }
     }
-    console.error('[identity] error creating contact:', error);
+    channelLog('error', {}, 'error creating contact', { error });
     return null;
   }
 
@@ -285,7 +285,7 @@ async function enrich(
     .maybeSingle();
   if (error) {
     // e.g. a BSUID already claimed by another row: not fatal.
-    console.error('[identity] contact backfill failed:', error.message);
+    channelLog('error', {}, 'contact backfill failed', { error });
     return contact;
   }
   return (updated as ContactRow | null) ?? contact;

@@ -1,3 +1,4 @@
+import { channelLog, connCtx } from './log';
 import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
@@ -44,7 +45,7 @@ async function isolated<T>(
   try {
     return await fn();
   } catch (err) {
-    console.error(`[channel:fanout] ${name} failed:`, err);
+    channelLog('error', {}, `fanout ${name} failed`, { error: err });
     return null;
   }
 }
@@ -176,13 +177,14 @@ export async function flagBroadcastReplyIfAny(
       .eq('id', recs[0].id);
 
     if (updErr) {
-      console.error(
-        '[channel:fanout] marking recipient replied failed:',
-        updErr
-      );
+      channelLog('error', {}, 'fanout marking recipient replied failed', {
+        error: updErr,
+      });
     }
   } catch (err) {
-    console.error('[channel:fanout] flagBroadcastReplyIfAny failed:', err);
+    channelLog('error', {}, 'fanout flagBroadcastReplyIfAny failed', {
+      error: err,
+    });
   }
 }
 
@@ -203,7 +205,12 @@ export async function conversationCreatedHook(
       }
     );
   } catch (err) {
-    console.error('[channel:fanout] conversation.created webhook failed:', err);
+    channelLog(
+      'error',
+      connCtx(ctx.connection),
+      'conversation.created webhook failed',
+      { error: err }
+    );
   }
 }
 

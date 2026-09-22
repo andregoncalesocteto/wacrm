@@ -1,3 +1,4 @@
+import { channelLog, connCtx } from './log';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
@@ -213,7 +214,9 @@ async function findOrCreateConversation(
       .eq('contact_id', contactId)
       .order('created_at', { ascending: true });
     if (error) {
-      console.error('[ingest] error finding conversation:', error);
+      channelLog('error', { connectionId }, 'error finding conversation', {
+        error,
+      });
       return null;
     }
     const rows = (data ?? []) as ConversationRow[];
@@ -232,7 +235,9 @@ async function findOrCreateConversation(
       .eq('id', row.id)
       .is('connection_id', null);
     if (error) {
-      console.error('[ingest] error adopting conversation:', error);
+      channelLog('error', { connectionId }, 'error adopting conversation', {
+        error,
+      });
       return row;
     }
     return { ...row, connection_id: connectionId };
@@ -259,7 +264,9 @@ async function findOrCreateConversation(
       const raced = await find();
       if (raced) return { conversation: await adopt(raced), created: false };
     }
-    console.error('[ingest] error creating conversation:', error);
+    channelLog('error', { connectionId }, 'error creating conversation', {
+      error,
+    });
     return null;
   }
   return { conversation: created as ConversationRow, created: true };
@@ -277,7 +284,9 @@ async function lookupInternalIdByExternalId(
     .eq('conversation_id', conversationId)
     .maybeSingle();
   if (error) {
-    console.error('[ingest] reply lookup failed:', error.message);
+    channelLog('error', { eventId: externalId }, 'reply lookup failed', {
+      error,
+    });
     return null;
   }
   return (data as { id: string } | null)?.id ?? null;
@@ -292,7 +301,7 @@ async function runHook<A>(
   try {
     await fn(arg);
   } catch (err) {
-    console.error(`[ingest] hook ${name} failed:`, err);
+    channelLog('error', {}, `hook ${name} failed`, { error: err });
   }
 }
 
@@ -386,7 +395,12 @@ async function ingestMessage(
         mediaType = media.mimeType ?? mediaType;
       }
     } catch (err) {
-      console.error('[ingest] resolveMedia failed:', err);
+      channelLog(
+        'error',
+        connCtx(connection, event.externalId),
+        'resolveMedia failed',
+        { error: err }
+      );
     }
   }
 
@@ -399,9 +413,13 @@ async function ingestMessage(
       conversation.id
     );
     if (!replyTo) {
-      console.warn(
-        '[ingest] reply context parent not found:',
-        event.replyToExternalId
+      channelLog(
+        'warn',
+        connCtx(connection, event.externalId),
+        'reply context parent not found',
+        {
+          parent: event.replyToExternalId,
+        }
       );
     }
   }
@@ -440,13 +458,19 @@ async function ingestMessage(
     .select('id');
 
   if (msgError) {
-    console.error('[ingest] error inserting message:', msgError);
+    channelLog(
+      'error',
+      connCtx(connection, event.externalId),
+      'error inserting message',
+      { error: msgError }
+    );
     return skip('insert failed');
   }
   if (!inserted || inserted.length === 0) {
-    console.info(
-      '[ingest] duplicate inbound message ignored (idempotent replay):',
-      event.externalId
+    channelLog(
+      'info',
+      connCtx(connection, event.externalId),
+      'duplicate inbound message ignored (idempotent replay)'
     );
     return { status: 'duplicate', event, conversation, contact };
   }
@@ -457,8 +481,14 @@ async function ingestMessage(
     p_conversation_id: conversation.id,
     p_last_message_text: shape.preview,
   });
-  if (convError)
-    console.error('[ingest] error updating conversation:', convError);
+  if (convError) {
+    channelLog(
+      'error',
+      connCtx(connection, event.externalId),
+      'error updating conversation',
+      { error: convError }
+    );
+  }
 
   // A customer writing again re-opens the thread (issue #409).
   await reopenClosedConversation(db, conversation);
@@ -496,8 +526,13 @@ async function ingestStatus(
 ): Promise<IngestOutcome> {
   const failure = event.status === 'failed' ? event.error : undefined;
   if (failure) {
-    console.warn(
-      `[ingest] message ${event.externalId} failed: ${failure.message}`
+    channelLog(
+      'warn',
+      connCtx(connection, event.externalId),
+      'message failed',
+      {
+        reason: failure.message,
+      }
     );
   }
 
@@ -511,7 +546,14 @@ async function ingestStatus(
     .from('messages')
     .update(messageUpdate)
     .eq('message_id', event.externalId);
-  if (msgErr) console.error('[ingest] error updating message status:', msgErr);
+  if (msgErr) {
+    channelLog(
+      'error',
+      connCtx(connection, event.externalId),
+      'error updating message status',
+      { error: msgErr }
+    );
+  }
 
   const tsIso = (event.at ?? new Date()).toISOString();
   let recipientUpdated = false;
@@ -521,7 +563,12 @@ async function ingestStatus(
     .eq('whatsapp_message_id', event.externalId)
     .maybeSingle();
   if (recFetchErr) {
-    console.error('[ingest] error fetching broadcast recipient:', recFetchErr);
+    channelLog(
+      'error',
+      connCtx(connection, event.externalId),
+      'error fetching broadcast recipient',
+      { error: recFetchErr }
+    );
   } else if (
     recipient &&
     isValidStatusTransition(
@@ -539,9 +586,11 @@ async function ingestStatus(
       .update(update)
       .eq('id', (recipient as { id: string }).id);
     if (recUpdateErr) {
-      console.error(
-        '[ingest] error updating broadcast recipient status:',
-        recUpdateErr
+      channelLog(
+        'error',
+        connCtx(connection, event.externalId),
+        'error updating broadcast recipient status',
+        { error: recUpdateErr }
       );
     } else {
       recipientUpdated = true;
@@ -615,9 +664,10 @@ async function ingestReaction(
     conversation.id
   );
   if (!targetMessageId) {
-    console.warn(
-      '[ingest] reaction target message not found; skipping',
-      event.externalId
+    channelLog(
+      'warn',
+      connCtx(connection, event.externalId),
+      'reaction target message not found; skipping'
     );
     return skip('reaction target not found');
   }
@@ -630,7 +680,12 @@ async function ingestReaction(
       .eq('actor_type', 'customer')
       .eq('actor_id', contact.id);
     if (error) {
-      console.error('[ingest] reaction delete failed:', error.message);
+      channelLog(
+        'error',
+        connCtx(connection, event.externalId),
+        'reaction delete failed',
+        { error }
+      );
       return skip('reaction delete failed');
     }
     return {
@@ -653,7 +708,12 @@ async function ingestReaction(
     { onConflict: 'message_id,actor_type,actor_id' }
   );
   if (error) {
-    console.error('[ingest] reaction upsert failed:', error.message);
+    channelLog(
+      'error',
+      connCtx(connection, event.externalId),
+      'reaction upsert failed',
+      { error }
+    );
     return skip('reaction upsert failed');
   }
   return {
@@ -706,7 +766,12 @@ export async function ingestInbound(
           });
       }
     } catch (err) {
-      console.error('[ingest] unexpected error:', err);
+      channelLog(
+        'error',
+        connCtx(connection, 'externalId' in event ? event.externalId : null),
+        'unexpected error',
+        { error: err }
+      );
       out.push({ status: 'skipped', event, reason: 'unexpected error' });
       failure = {
         code: 'ingest_failed',

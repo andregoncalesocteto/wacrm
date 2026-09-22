@@ -220,8 +220,7 @@ describe('POST /api/whatsapp/config dual write', () => {
     expect((await res.json()).success).toBe(true);
     expect(h.tables.whatsapp_config).toHaveLength(1);
     expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining('[channel:whatsapp_cloud]'),
-      expect.anything()
+      expect.stringContaining('[channel:whatsapp_cloud]')
     );
   });
 });

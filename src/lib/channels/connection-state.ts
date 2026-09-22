@@ -1,3 +1,4 @@
+import { channelLog } from './log';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ChannelConnection } from './connections';
 import type { ChannelErrorCode, Health } from './types';
@@ -117,16 +118,17 @@ export async function recordConnectionEvent(
       .update(patch)
       .eq('id', connectionId);
     if (error) {
-      console.error('[connection-state] update failed:', error.message);
+      channelLog('error', { connectionId }, 'connection state update failed', {
+        error,
+      });
       return;
     }
     if (previous && isConnectionDownTransition(previous.status, patch.status)) {
       await notifyConnectionDown(previous);
     }
   } catch (err) {
-    console.error(
-      '[connection-state] update threw:',
-      err instanceof Error ? err.message : err
-    );
+    channelLog('error', { connectionId }, 'connection state update threw', {
+      error: err,
+    });
   }
 }

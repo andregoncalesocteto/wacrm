@@ -1,3 +1,4 @@
+import { channelLog, connCtx } from './log';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from './admin-client';
 import type { ChannelConnection } from './connections';
@@ -52,9 +53,8 @@ export async function notifyConnectionDown(
     const { error: insErr } = await admin.from('notifications').insert(rows);
     if (insErr) throw new Error(insErr.message);
   } catch (err) {
-    console.error(
-      '[connection-down] notify failed:',
-      err instanceof Error ? err.message : err
-    );
+    channelLog('error', connCtx(conn), 'connection-down notify failed', {
+      error: err,
+    });
   }
 }

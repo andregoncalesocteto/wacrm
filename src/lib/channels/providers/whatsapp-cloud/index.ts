@@ -1,3 +1,4 @@
+import { channelLog } from '../../log';
 import { ChannelError } from '../../types';
 import type {
   Capabilities,
@@ -196,8 +197,13 @@ async function send(
       // Only "recipient not in allowed list" moves on to the next variant.
       if (!isRecipientNotAllowedError(message)) throw toChannelError(err);
       lastError = err;
-      console.warn(
-        `[whatsapp-cloud] variant "${variant}" rejected by Meta, trying next…`
+      channelLog(
+        'warn',
+        { type: 'whatsapp_cloud' },
+        'variant rejected by Meta, trying next',
+        {
+          variant,
+        }
       );
     }
   }

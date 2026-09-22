@@ -253,9 +253,11 @@ describe('US-074 fan-out additions', () => {
     automations.mockReset().mockResolvedValue(undefined);
     ai.mockReset().mockResolvedValue(undefined);
     webhook.mockReset().mockResolvedValue(undefined);
-    identityRows.mockReset().mockReturnValue([
-      { kind: 'telegram:user', external_id: '42', handle: 'ada' },
-    ]);
+    identityRows
+      .mockReset()
+      .mockReturnValue([
+        { kind: 'telegram:user', external_id: '42', handle: 'ada' },
+      ]);
     flagQuery.mockReset().mockResolvedValue({ data: [], error: null });
     flagUpdate.mockReset().mockResolvedValue({ error: null });
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -285,7 +287,7 @@ describe('US-074 fan-out additions', () => {
     expect(flagUpdate).not.toHaveBeenCalled();
   });
 
-  it('dispatches message.received with today\'s fields plus connection, store, channel and contact', async () => {
+  it("dispatches message.received with today's fields plus connection, store, channel and contact", async () => {
     await fanOutInbound(stored({ contentType: 'image', contentText: 'cap' }), {
       configOwnerUserId: 'owner',
     });
@@ -305,7 +307,9 @@ describe('US-074 fan-out additions', () => {
       contact: {
         id: 'ct',
         phone: null,
-        identities: [{ kind: 'telegram:user', external_id: '42', handle: 'ada' }],
+        identities: [
+          { kind: 'telegram:user', external_id: '42', handle: 'ada' },
+        ],
       },
     });
   });
@@ -379,8 +383,7 @@ describe('US-074 fan-out additions', () => {
       fanOutInbound(stored(), { configOwnerUserId: 'o' })
     ).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining('[channel:fanout]'),
-      expect.anything()
+      expect.stringContaining('fanout')
     );
   });
 

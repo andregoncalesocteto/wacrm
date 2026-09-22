@@ -1,3 +1,4 @@
+import { channelLog, connCtx } from './log';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   mirrorInboundMedia,
@@ -85,9 +86,14 @@ export function createMediaResolver(
       });
       if (url) return { url };
     } catch (err) {
-      console.error(
-        `[channel:media] could not resolve media ${ref.id}:`,
-        err instanceof Error ? err.message : err
+      channelLog(
+        'error',
+        connCtx(connection, event.externalId),
+        'could not resolve media',
+        {
+          media: ref.id,
+          error: err,
+        }
       );
     }
     return { url: downloadFailed ? null : fallbackUrl };

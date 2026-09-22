@@ -1,3 +1,4 @@
+import { channelLog, connCtx } from '../../log';
 import { timingSafeEqual } from 'node:crypto';
 import { getConnectionById, getConnectionCredentials } from '../../connections';
 import { ChannelError } from '../../types';
@@ -76,7 +77,7 @@ export async function verify(req: Request, conn: Connection): Promise<boolean> {
   try {
     stored = (await getConnectionCredentials(conn.id))?.secret_token;
   } catch {
-    console.error('[telegram] could not read the webhook secret');
+    channelLog('error', connCtx(conn), 'could not read the webhook secret');
     return false;
   }
   if (typeof stored !== 'string' || !stored) return false;
@@ -314,7 +315,11 @@ export async function parse(
 
   const isPrivate = (chat?: TgChat) => {
     if (chat?.type === 'private') return true;
-    console.debug('[telegram] ignoring update from a non-private chat');
+    channelLog(
+      'debug',
+      { type: 'telegram', connectionId: _conn.id },
+      'ignoring update from a non-private chat'
+    );
     return false;
   };
 
