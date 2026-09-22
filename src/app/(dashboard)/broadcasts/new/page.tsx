@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { toast } from 'sonner';
 import { MessageTemplate } from '@/types';
+import { Step0ChooseConnection } from '@/components/broadcasts/step0-choose-connection';
 import { Step1ChooseTemplate } from '@/components/broadcasts/step1-choose-template';
 import { Step2SelectAudience } from '@/components/broadcasts/step2-select-audience';
 import { Step3Personalize } from '@/components/broadcasts/step3-personalize';
@@ -16,6 +17,7 @@ import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 const steps = [
+  { label: 'connection', key: 'connection' },
   { label: 'template', key: 'template' },
   { label: 'audience', key: 'audience' },
   { label: 'personalize', key: 'personalize' },
@@ -47,41 +49,11 @@ export default function NewBroadcastPage() {
   const [headerMediaUrl, setHeaderMediaUrl] = useState('');
   const [name, setName] = useState('');
 
-  /**
-   * This wizard only sends WhatsApp templates today (Step1ChooseTemplate is
-   * the only step 1) — no step 0 connection picker exists yet (US-009).
-   * Auto-resolve the account's own WhatsApp connection, same query
-   * `createAndSendBroadcast` used to run at send time, so eligibility (US-006)
-   * and the persisted `connection_id` agree. US-009 replaces this with a real
-   * user pick and other channels.
-   */
+  // Chosen at step 0 (Step0ChooseConnection) — the user's own pick now,
+  // no more auto-resolving "the" WhatsApp connection (US-010).
   const [connection, setConnection] = useState<BroadcastConnectionContext | null>(
     null
   );
-  useEffect(() => {
-    if (!accountId) return;
-    let alive = true;
-    const supabase = createClient();
-    supabase
-      .from('channel_connections')
-      .select('id')
-      .eq('account_id', accountId)
-      .eq('channel_type', 'whatsapp_cloud')
-      .order('disabled_at', { ascending: true, nullsFirst: true })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!alive) return;
-        setConnection({
-          connectionId: data?.id ?? '',
-          channelType: 'whatsapp_cloud',
-          initiate: 'template',
-        });
-      });
-    return () => {
-      alive = false;
-    };
-  }, [accountId]);
 
   async function handleSend() {
     if (!template || !connection) return;
@@ -227,34 +199,42 @@ export default function NewBroadcastPage() {
           }}
         >
           {currentStep === 0 && (
-            <Step1ChooseTemplate
-              selectedTemplate={template}
-              onSelect={setTemplate}
+            <Step0ChooseConnection
+              selected={connection}
+              onSelect={setConnection}
               onNext={() => setCurrentStep(1)}
               onBack={() => router.push('/broadcasts')}
             />
           )}
           {currentStep === 1 && (
+            <Step1ChooseTemplate
+              selectedTemplate={template}
+              onSelect={setTemplate}
+              onNext={() => setCurrentStep(2)}
+              onBack={() => setCurrentStep(0)}
+            />
+          )}
+          {currentStep === 2 && (
             <Step2SelectAudience
               audience={audience}
               onUpdate={setAudience}
-              onNext={() => setCurrentStep(2)}
-              onBack={() => setCurrentStep(0)}
+              onNext={() => setCurrentStep(3)}
+              onBack={() => setCurrentStep(1)}
               connection={connection}
             />
           )}
-          {currentStep === 2 && template && (
+          {currentStep === 3 && template && (
             <Step3Personalize
               template={template}
               variables={variables}
               onUpdate={setVariables}
               headerMediaUrl={headerMediaUrl}
               onHeaderMediaUrlChange={setHeaderMediaUrl}
-              onNext={() => setCurrentStep(3)}
-              onBack={() => setCurrentStep(1)}
+              onNext={() => setCurrentStep(4)}
+              onBack={() => setCurrentStep(2)}
             />
           )}
-          {currentStep === 3 && template && (
+          {currentStep === 4 && template && (
             <Step4ScheduleSend
               name={name}
               onNameChange={setName}
@@ -262,7 +242,7 @@ export default function NewBroadcastPage() {
               audience={audience}
               onSend={handleSend}
               onSaveDraft={handleSaveDraft}
-              onBack={() => setCurrentStep(2)}
+              onBack={() => setCurrentStep(3)}
               isProcessing={isProcessing}
               progress={progress}
               connection={connection}

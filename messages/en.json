@@ -795,6 +795,7 @@
       "title": "New Broadcast",
       "subtitle": "Create and send a broadcast message to your contacts.",
       "steps": {
+        "connection": "Connection",
         "template": "Template",
         "audience": "Audience",
         "personalize": "Personalize",
@@ -810,6 +811,16 @@
       "next": "Next",
       "back": "Back",
       "cancel": "Cancel",
+      "chooseConnection": {
+        "title": "Choose a connection",
+        "subtitle": "Choose which connection this broadcast will send from.",
+        "label": "Connection",
+        "placeholder": "Select a connection",
+        "emptyTitle": "No connected channel",
+        "emptyBody": "Connect a channel before creating a broadcast.",
+        "emptyCta": "Go to Settings → Channels",
+        "errorLoad": "Failed to load connections"
+      },
       "chooseTemplate": {
         "title": "Choose a Template",
         "subtitle": "Select an approved message template for your broadcast.",

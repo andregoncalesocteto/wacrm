@@ -795,6 +795,7 @@
       "title": "Nueva difusión",
       "subtitle": "Crea y envía un mensaje masivo a tus contactos.",
       "steps": {
+        "connection": "Conexión",
         "template": "Plantilla",
         "audience": "Audiencia",
         "personalize": "Personalizar",
@@ -810,6 +811,16 @@
       "next": "Siguiente",
       "back": "Atrás",
       "cancel": "Cancelar",
+      "chooseConnection": {
+        "title": "Elige una conexión",
+        "subtitle": "Elige desde qué conexión se enviará esta difusión.",
+        "label": "Conexión",
+        "placeholder": "Selecciona una conexión",
+        "emptyTitle": "Ningún canal conectado",
+        "emptyBody": "Conecta un canal antes de crear una difusión.",
+        "emptyCta": "Ir a Configuración → Canales",
+        "errorLoad": "Error al cargar las conexiones"
+      },
       "chooseTemplate": {
         "title": "Elige una plantilla",
         "subtitle": "Selecciona una plantilla de mensaje aprobada para tu difusión.",

@@ -795,6 +795,7 @@
       "title": "새 브로드캐스트",
       "subtitle": "연락처에 보낼 브로드캐스트 메시지를 만듭니다.",
       "steps": {
+        "connection": "연결",
         "template": "템플릿",
         "audience": "대상",
         "personalize": "개인화",
@@ -810,6 +811,16 @@
       "next": "다음",
       "back": "뒤로",
       "cancel": "취소",
+      "chooseConnection": {
+        "title": "연결 선택",
+        "subtitle": "이 브로드캐스트를 보낼 연결을 선택하세요.",
+        "label": "연결",
+        "placeholder": "연결을 선택하세요",
+        "emptyTitle": "연결된 채널이 없습니다",
+        "emptyBody": "브로드캐스트를 만들기 전에 채널을 연결하세요.",
+        "emptyCta": "설정 → 채널로 이동",
+        "errorLoad": "연결을 불러오지 못했습니다"
+      },
       "chooseTemplate": {
         "title": "템플릿 선택",
         "subtitle": "브로드캐스트에 사용할 승인된 메시지 템플릿을 선택하세요.",

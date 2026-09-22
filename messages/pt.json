@@ -795,6 +795,7 @@
       "title": "Novo broadcast",
       "subtitle": "Crie e envie uma mensagem em massa para seus contatos.",
       "steps": {
+        "connection": "Conexão",
         "template": "Template",
         "audience": "Público",
         "personalize": "Personalizar",
@@ -810,6 +811,16 @@
       "next": "Avançar",
       "back": "Voltar",
       "cancel": "Cancelar",
+      "chooseConnection": {
+        "title": "Escolha uma conexão",
+        "subtitle": "Escolha por qual conexão este broadcast vai sair.",
+        "label": "Conexão",
+        "placeholder": "Selecione uma conexão",
+        "emptyTitle": "Nenhum canal conectado",
+        "emptyBody": "Conecte um canal antes de criar um broadcast.",
+        "emptyCta": "Ir para Configurações → Canais",
+        "errorLoad": "Falha ao carregar as conexões"
+      },
       "chooseTemplate": {
         "title": "Escolha um template",
         "subtitle": "Selecione um template de mensagem aprovado para o seu broadcast.",

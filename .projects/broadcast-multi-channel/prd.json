@@ -159,8 +159,8 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "step1-choose-template.tsx (index 1) still renders unconditionally regardless of the chosen connection's capabilities.initiate — a non-template connection (e.g. Telegram) picked at step 0 currently still advances into the template-choosing step. That branch (step1-compose-message.tsx vs. step1-choose-template.tsx) is explicitly US-011's job per this story's own AC and design.md's component table; not implemented here to stay surgical. Verified in browser: empty state (no connected channel) blocks advance and links to Settings → Channels; single eligible connection pre-selects while the step stays visible; two eligible connections (WhatsApp + Telegram, same store) show neither pre-selected, list as 'Canal — Loja', block advance until chosen, and the pick survives navigating back from step 1."
     },
     {
       "id": "US-011",

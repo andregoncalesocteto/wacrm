@@ -639,3 +639,75 @@ No test-scenarios.json (acceptanceCriteria are the bar).
     phone fallback, it would need to be added there explicitly (or via a whatsapp-cloud-style identities
     fallback), not assumed to already work.
 ---
+
+## 2026-09-22 - US-010
+- Implemented: new `src/components/broadcasts/step0-choose-connection.tsx`, the wizard's real step 0. Fetches
+  `/api/stores` + `/api/channels/connections` + `/api/channels/providers` in parallel (same pattern
+  `connect-channel-wizard.tsx`/`channels-panel.tsx` already use), filters connections to `status === 'connected'
+  && !disabled_at`, and labels each `"${channelLabel} — ${storeName}"` (channelLabel via
+  `Settings.channels.type.<type>`, same `t.has(...) ? t(...) : type` fallback `channels-panel.tsx` uses locally).
+  `capabilities.initiate` per connection comes from the providers list (`GET /api/channels/providers`, no
+  server-only import needed client-side). Exactly one eligible connection: pre-selects it via an effect (step
+  stays visible, per the AC — no auto-advance). Zero eligible: empty state with a `PlugZap` icon + a
+  `/settings?tab=channels` link, `Avançar` disabled. `>=2` eligible: dropdown (shadcn/base-ui `Select`), nothing
+  pre-selected, `Avançar` disabled until the user picks one.
+  `new/page.tsx`: added `Step0ChooseConnection` as the new index-0 step (`steps` array gained `'connection'`
+  first; every other step index +1), removed the old `useEffect` that auto-resolved the account's single
+  WhatsApp connection (`channelType: 'whatsapp_cloud'`/`initiate: 'template'` hardcoded — that was US-006's
+  documented stand-in until this story). `connection` state now starts `null` and is set only by
+  `Step0ChooseConnection`'s `onSelect`. `Step1ChooseTemplate`'s `onBack` now goes to `setCurrentStep(0)` (was
+  `router.push('/broadcasts')`, which moved to step 0's own `onBack`).
+- Bug caught by the browser check, not by typecheck/lint/tests (none of those exercise the rendered label): the
+  first render showed the RAW connection UUID in the closed `SelectTrigger` instead of "WhatsApp — QA Store
+  Centro". `@base-ui/react` `Select.Value` only auto-resolves a label when the `value` string is itself the
+  displayed text (confirmed in `template-manager.tsx`'s header-format `Select`, which already works around the
+  exact same limitation with `<SelectValue>{headerFormatLabel(form.header_format)}</SelectValue>`). Fixed by
+  passing `<SelectValue>{(value) => eligible.find(r => r.connection.id === value)?.label ?? value}</SelectValue>`
+  — a render-prop children, per `SelectValueProps.children`'s documented `(value) => ReactNode` form. Rebuilt the
+  container and re-verified after the fix.
+- Files changed: `src/components/broadcasts/step0-choose-connection.tsx` (new),
+  `src/app/(dashboard)/broadcasts/new/page.tsx`, `messages/en.json`, `messages/pt.json`, `messages/es.json`,
+  `messages/ko.json` (`Broadcasts.new.steps.connection` + `Broadcasts.wizard.chooseConnection.{title,subtitle,
+  label,placeholder,emptyTitle,emptyBody,emptyCta,errorLoad}` in all four), `.projects/broadcast-multi-channel/
+  prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `npx vitest run src/i18n` 3 files/19 tests passed, `TZ=UTC npm test` 161 files/1950 tests passed
+  (matches baseline exactly — no unit-test AC for this story, it's UI/wizard-state only). No `npm run build` run
+  standalone (not an AC criterion; the containerized rebuild's Next build already compiles the route/component).
+- Browser check (dev-browser, containerized app rebuilt twice — once before the Select-label fix, once after —
+  with `up -d --build app --no-deps`): seeded a throwaway QA account (`/auth/v1/signup`, auto-confirmed), visited
+  `/dashboard` once to trigger its lazy account/profile creation, then seeded one `stores` row and, incrementally,
+  two `channel_connections` (`whatsapp_cloud` then `telegram`, both `status='connected'`, same store) to exercise
+  all three AC branches: (1) zero connections → empty state, link to Settings → Channels, `Avançar` disabled; (2)
+  one connection → pre-selected `"WhatsApp — QA Store Centro"`, step still shows the dropdown, `Avançar` enabled;
+  (3) two connections → dropdown open lists `"WhatsApp — QA Store Centro"` and `"Telegram — QA Store Centro"`,
+  neither pre-selected, `Avançar` disabled until picked; picking one and clicking `Avançar` advances to step 1
+  (`Step1ChooseTemplate`, unchanged) with step 0 marked completed; `Voltar` from step 1 returns to step 0 with the
+  same connection still selected (state preserved, not re-fetched-and-lost). Screenshots saved under
+  `/tmp/claude-1000/.../scratchpad/us010-*.png` (not in the repo). All seeded rows deleted afterwards (`delete
+  from accounts where id=...` cascades store/connections/profile; `delete from auth.users where id=...`
+  separately) — verified 0 rows remain by name pattern.
+- **Learnings for future iterations:**
+  - **`@base-ui/react` `Select` does NOT auto-resolve a label for a controlled `value` unless that value string
+    equals the item's displayed text.** This bit US-010 live (raw UUID shown instead of the connection's label)
+    and is silent at typecheck/lint/test time — only a rendered screenshot catches it. `template-manager.tsx`
+    already had the workaround for its header-format select; the pattern
+    (`<SelectValue>{(value) => lookupLabel(value)}</SelectValue>`, using `SelectValueProps.children`'s
+    `(value) => ReactNode` form) is now used twice. Any future `Select` bound to an id/enum whose value isn't
+    literally its own display text needs this — don't rely on the bare `<SelectValue />`.
+  - `GET /api/channels/providers` (no `channel_type` filter, any account member) is the client-safe way to read
+    `capabilities.initiate` per channel type — no need to import server-only `getProvider`/`registry.ts` into a
+    client component. `ConnectChannelWizard` already established this; `Step0ChooseConnection` reuses it.
+  - `new/page.tsx`'s step-index shift (adding step 0 pushed every other step's `currentStep` number by one) was a
+    pure renumbering — no step component's own props/behavior changed, only which numeric index triggers it and
+    which index each step's own `onNext`/`onBack` targets. Worth remembering for US-011 (inserting a step1
+    alternative doesn't renumber anything already indexed 2+).
+  - **Left deliberately unimplemented, per the AC's own wording and design.md's component table:** step 1 (index
+    1) is still unconditionally `Step1ChooseTemplate` regardless of the chosen connection's `capabilities.initiate`.
+    A Telegram connection picked at step 0 today still advances into the WhatsApp-template step (which then shows
+    "no templates" if none exist, or would let you pick a real template that `deliverBroadcast`/the route can't
+    actually send on that connection — no live regression today since `POST /api/whatsapp/broadcast` and
+    `use-broadcast-sending.ts` are still template-only end-to-end per US-004's own note, US-013 is where the route
+    gains conditional content). US-011 is explicitly where `step1-compose-message.tsx` gets built and this
+    branches; not attempted here to stay surgical (design.md: "step1-choose-template.tsx | Inalterado").
+---
