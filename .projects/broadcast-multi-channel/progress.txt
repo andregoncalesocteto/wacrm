@@ -1,0 +1,69 @@
+# Ralph Progress Log — ralph/broadcast-multi-channel
+Started: 2026-09-22
+PRD: .projects/broadcast-multi-channel/prd.json (14 stories, priority order = id order, no gaps).
+Base docs: SOLUTION.md, design.md, adr/ADR-001-resolver-de-conexao-do-broadcast.md,
+adr/ADR-002-modelo-de-dados-do-broadcast-multicanal.md, prd-broadcast-multi-channel.md.
+No test-scenarios.json (acceptanceCriteria are the bar).
+
+## Codebase Patterns
+- Run project commands from the repo root (cwd can drift into .projects/…).
+- Quality checks: `npm run typecheck`, `npm run lint` (0 errors), `TZ=UTC npm test`. TZ=UTC is REQUIRED (date-utils
+  tests fail on this machine's TZ -03). If `.next/` was built by a different branch, `rm -rf .next` before typecheck
+  (stale `.next/types/validator.ts` references routes that don't exist on the current checkout — false failures).
+- Baseline before US-001 (main, post channel-abstraction merge): typecheck clean; lint 0 errors / 41 warnings
+  (pre-existing, do not "fix" unrelated ones); `TZ=UTC npm test` green (160 files, 1935 tests).
+- **`deliverBroadcast` (src/lib/whatsapp/broadcast-core.ts) is ALREADY mostly generic** — already uses
+  `getProvider(plan.connection.channel_type)` + `getConnectionCredentials` (read once) + `provider.send(...)`
+  directly (NOT `sendOutbound` — broadcast doesn't write `messages`/`conversations` per recipient like a
+  conversation does, so keep calling `provider.send` directly, don't introduce `sendOutbound` here). The ONLY
+  hardcoded-to-WhatsApp pieces are: (1) `createBroadcast` calling `loadWhatsAppSendConnection` (the single place
+  that resolves "the" WhatsApp connection automatically — US-004 fixes this), and (2) the
+  `if (!provider.capabilities.templates) throw ChannelError('unsupported', ...)` guard in `deliverBroadcast`
+  (US-005 turns this into a send-free-text branch instead of a rejection). Don't assume more refactoring is needed
+  than that — this is a surgical change, not a rewrite.
+- Existing characterization coverage to build on, not duplicate: `broadcast-core.test.ts`,
+  `broadcast-core.credentials.test.ts`, `broadcast-core.disabled.test.ts`, `broadcast-core.provider.test.ts`,
+  `broadcast-deliver.characterization.test.ts`, `broadcast-resume.test.ts` — already cover phone-variant retry,
+  credentials-read-once, disabled connection, `finalizeBroadcastStatus`, resume. US-003 only needs to add coverage
+  for `createBroadcast`'s connection resolution and the capability-reject branch specifically (the two things about
+  to change).
+- `Capabilities.initiate: 'template' | 'after_inbound' | 'free'` (src/lib/channels/types.ts) is the single field
+  that should drive wizard step branching, eligibility, and payload construction — don't reinvent the distinction
+  with a separate boolean check somewhere else.
+- `contact_identities` is per ACCOUNT, not per connection (`UNIQUE(account_id, kind, external_id)`). For
+  `capabilities.initiate !== 'template'` channels, eligibility must check an existing `conversations` row for that
+  SPECIFIC `connection_id`, not just "has an identity of that channel kind" — otherwise a contact who only talked
+  to Bot A would wrongly show eligible for Bot B's broadcast (see US-006, and the ⚠️ TENSÃO in SOLUTION.md).
+- Migrations: supabase/migrations/NNN_name.sql, next number = highest + 1 (052 at start of this feature — confirm
+  with `ls supabase/migrations | tail -1` before writing one, another story may have already taken it). Expand-only
+  for the `whatsapp_message_id` → `external_message_id` rename (US-002): the OLD column stays until a future
+  story/PRD drops it — never remove it in this PRD.
+- Apply to the dev DB: `$FULL run --rm -T migrate`. FULL="docker compose -f docker-compose.yml -f
+  docker-compose.supabase.yml --env-file .env.local". Replay isolated (never touches dev data):
+    R="docker compose -p wacrm-replay -f docker-compose.yml -f docker-compose.supabase.yml --env-file .env.local"
+    $R up -d --wait db auth storage && $R run --rm -T migrate && \
+    $R exec -T db psql -U postgres -v ON_ERROR_STOP=1 < supabase/ci/verify-schema.sql ; $R down -v
+  ALWAYS `-p wacrm-replay` for replay; `down -v` ONLY on that project, NEVER on the default (dev) one.
+- i18n rules (CLAUDE.md): text via useTranslations (no literals), keys in ALL FOUR catalogues
+  (messages/{en,pt,es,ko}.json; `npx vitest run src/i18n` for parity), never toLocale*String / new Intl.*Format.
+  Prefer exact string replace (python str.replace on the raw file text) over json.dump/reload for existing files —
+  a full re-dump can silently reformat unrelated lines.
+- Docker/app stack: production-style stack is up on the default compose project (`wacrm-net` network, both
+  docker-compose.yml + docker-compose.supabase.yml). Rebuild the app image after a source/env change:
+  `docker compose -f docker-compose.yml -f docker-compose.supabase.yml --env-file .env.local up -d --build app
+  --no-deps`. The app is also reachable publicly at https://wacrm-dev.agiledelivery.app.br (Cloudflare Tunnel,
+  same-origin Supabase proxy via next.config.ts rewrites) — either that or http://localhost:3000 works for
+  dev-browser checks; no need for a separate :3100 dev server for this feature (the containerized app already
+  reflects committed + rebuilt code).
+- Real Telegram bot: a real, working Telegram channel connection exists in the account the human user actually
+  uses — do NOT touch it or seed test data against the real account. For story verification, seed a SEPARATE test
+  connection (a throwaway QA account signed up via `/auth/v1/signup` with `ENABLE_EMAIL_AUTOCONFIRM=true`, then
+  seed a `channel_connections` row with `channel_type='telegram'`) or use fixtures/mocked fetch like the rest of
+  the Telegram provider tests do — never assume you can drive a real Telegram bot conversation end-to-end without
+  a human sending the first message (bots can't initiate; see docs/telegram.md).
+- Seeding data for browser checks: one SQL statement per psql call; clean up seeds afterwards
+  (`docker compose ... exec -T db psql -U postgres -d postgres -c "delete from ... where ..."`).
+- dev-browser: Sheet/dialog buttons may need force:true or `page.evaluate(el.click())`. Screenshots only under the
+  scratchpad, never in the repo. `waitUntil: "networkidle"` can hang forever on a page with an open websocket
+  (Realtime) — use `waitUntil: "load"` + a fixed `waitForTimeout` instead.
+- Never commit AGENTS.md (Next dev/build can touch it) or `.vscode/`. Never `git add -f` an ignored file.
