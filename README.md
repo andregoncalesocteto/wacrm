@@ -23,9 +23,10 @@ clone or fork it to run your own CRM.
 
 ## What you get out of the box
 
-- **Shared inbox** on the official WhatsApp Business API — multiple
-  agents working one number, per-conversation assignment, status, and
-  notes.
+- **Shared inbox**, multi-store and multi-channel — the official
+  WhatsApp Business API and Telegram bots, any number of stores and
+  connections in one account, multiple agents, per-conversation
+  assignment, status, and notes.
 - **Contacts + tags + custom fields**, CSV import, deduplication.
 - **Sales pipelines** (Kanban) with deals linked to conversations.
 - **Broadcasts** with Meta-approved templates, delivery + read
@@ -170,12 +171,16 @@ Key pages:
   trace id to quote to Meta support
 - [Several WABAs on one deployment](./docs/multi-waba.md) — one Meta
   App or several; how `META_APP_SECRET` takes a comma-separated list
+- [Telegram channel](./docs/telegram.md) — create the bot, test on
+  `localhost` with a public HTTPS tunnel, and the channel's limitations
 
 ## Stack
 
 - **App** — Next.js 16 (App Router), React 19, TypeScript, Tailwind v4.
 - **Data** — Supabase (Postgres + Auth + Storage + RLS).
-- **WhatsApp** — Meta Cloud API (official WhatsApp Business API).
+- **Channels** — Meta Cloud API (official WhatsApp Business API) and
+  Telegram Bot API, behind a shared provider contract so more can be
+  added.
 
 ## Contributing
 

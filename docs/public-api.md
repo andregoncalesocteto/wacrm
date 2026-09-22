@@ -8,6 +8,12 @@ broadcasts — without going through the dashboard UI.
 > messages / contacts / conversations / broadcasts endpoints, and
 > outbound event [webhooks](#webhooks) all ship now.
 
+> **Pre-stable until the first client:** the multi-store, multi-channel
+> contract (`/stores`, `/connections`, `connection_id` / `channel` /
+> `external_message_id` on messages and conversations, contact `identities`,
+> and the new webhook fields) may still change before it is frozen. Breaking
+> changes to it are announced in the release notes.
+
 ## Authentication
 
 Every request authenticates with an **API key**, sent as a bearer
@@ -48,6 +54,7 @@ it. Grant the minimum.
 | `contacts:read`      | List and read contacts                   |
 | `contacts:write`     | Create and update contacts               |
 | `conversations:read` | List and read conversations              |
+| `connections:read`   | List stores and channel connections      |
 | `broadcasts:send`    | Launch broadcast campaigns               |
 | `webhooks:manage`    | Register and manage outbound webhooks    |
 
@@ -117,9 +124,15 @@ curl https://your-crm.example.com/api/v1/me \
 
 ### `POST /api/v1/messages`
 
-Send a WhatsApp message to a phone number. Scope: `messages:send`. You
-pass an **E.164 number**, not an internal id — the endpoint
-finds-or-creates the contact + conversation, then sends.
+Send a message. Scope: `messages:send`. Address it in one of two ways:
+
+- `{ "conversation_id": "…" }` — reply in an existing conversation.
+- `{ "connection_id": "…", "to": "+14155550123" }` — go through a channel
+  connection. `to` is an **E.164 number** for WhatsApp (the endpoint
+  finds-or-creates the contact + conversation) or the channel's own address
+  for others (e.g. a Telegram chat id, which must already have written to the
+  bot). `connection_id` may be omitted only when the account has exactly one
+  active connection; otherwise the answer is `400 connection_required`.
 
 ```bash
 curl -X POST https://your-crm.example.com/api/v1/messages \
@@ -152,17 +165,24 @@ Response (201):
 {
   "data": {
     "message_id": "…",
-    "whatsapp_message_id": "wamid.…",
+    "external_message_id": "wamid.…",
     "conversation_id": "…",
+    "connection_id": "…",
+    "channel": "whatsapp_cloud",
     "contact_id": "…",
     "contact_created": true
   }
 }
 ```
 
-Domain error codes beyond the table above: `whatsapp_not_configured`
-(400), `meta_error` (502 — the request reached Meta and it rejected the
-send), `template_malformed` (500).
+`external_message_id` replaces the old `whatsapp_message_id`.
+
+Domain error codes beyond the table above: `connection_required` (400),
+`whatsapp_not_configured` (400), `unsupported` (409 — the channel lacks the
+capability, e.g. templates on Telegram), `window_closed` (409 — WhatsApp 24h
+window), `connection_disabled` (409), `recipient_unreachable` (422),
+`meta_error` (502 — the request reached Meta and it rejected the send),
+`template_malformed` (500).
 
 ### `GET /api/v1/contacts`
 
@@ -174,7 +194,10 @@ or phone) and `?tag=<tagId>`.
 {
   "data": [
     {
-      "id": "…", "phone": "+14155550123", "name": "Jane Doe",
+      "id": "…", "phone": "14155550123", "name": "Jane Doe",
+      "identities": [
+        { "kind": "whatsapp:phone", "external_id": "14155550123", "handle": null }
+      ],
       "email": null, "company": "Acme", "avatar_url": null,
       "tags": [{ "id": "…", "name": "vip", "color": "#3b82f6" }],
       "created_at": "…", "updated_at": "…"
@@ -186,11 +209,16 @@ or phone) and `?tag=<tagId>`.
 
 ### `POST /api/v1/contacts`
 
-Create a contact. Scope: `contacts:write`. `phone` (E.164) is required;
+Create a contact. Scope: `contacts:write`. Send `phone` (E.164, a shortcut
+for a `whatsapp:phone` identity) and/or `identities`
+(`[{ "kind": "telegram:chat_id", "external_id": "123", "handle": "@maria" }]`;
+kinds come from the channels, e.g. `whatsapp:phone`, `whatsapp:bsuid`,
+`telegram:chat_id`, `telegram:username`); at least one is required.
 `name`, `email`, `company`, and `tags` (an array of tag names, created
-if missing) are optional. **Find-or-create by phone:** an existing
-match returns `200` with the existing contact; a new contact returns
-`201`. The response body is the serialized contact (same shape as the
+if missing) are optional. `phone` is `null` in responses when the contact
+has none. **Find-or-create by any identity:** an existing
+match returns `200` with the existing contact (its data is not
+overwritten); a new contact returns `201`. The response body is the serialized contact (same shape as the
 list rows above).
 
 ### `GET` / `PATCH /api/v1/contacts/{id}`
@@ -204,7 +232,9 @@ contact in another account returns `404`.
 
 List conversations, newest first. Scope: `conversations:read`.
 Paginated. Optional filters: `?status=` (`open` / `pending` / `closed`)
-and `?contact_id=`. Each conversation embeds its contact + tags.
+and `?contact_id=`. Each conversation carries `connection_id`, `store_id`
+and `channel` (e.g. `whatsapp_cloud`, `telegram`), and embeds its contact
+(with `identities`; `phone` is `null` when absent) + tags.
 
 ### `GET /api/v1/conversations/{id}`
 
@@ -218,6 +248,16 @@ Paginated. Each message includes its `direction` (`inbound` /
 `outbound`), `status` (delivery state), `whatsapp_message_id`, and
 `content_*`. The conversation is verified to belong to your account
 first (`404` otherwise).
+
+### `GET /api/v1/stores` and `GET /api/v1/connections`
+
+Read-only discovery of the ids you pass to `POST /api/v1/messages`
+(`connection_id`). Scope `connections:read`. Credentials and connection
+`config` are never returned. Both return the whole list (`next_cursor` is
+always `null`).
+
+- `stores[]`: `id`, `name`, `address`, `phone`, `manager_name`, `created_at`.
+- `connections[]`: `id`, `store_id`, `channel` (e.g. `whatsapp_cloud`, `telegram`), `display_name`, `external_id`, `status`, `enabled` (`false` when the connection was disabled), `last_inbound_at`, `last_outbound_at`, `connected_at`, `created_at`. Optional filter: `?store_id=`.
 
 ### `POST /api/v1/broadcasts`
 
@@ -332,12 +372,17 @@ delivery uuid you can dedupe on, and `data` varies by `event`:
 
 ```jsonc
 // message.received
-{ "conversation_id": "…", "contact_id": "…", "whatsapp_message_id": "wamid.…", "content_type": "text", "text": "Hi 👋" }
+{ "conversation_id": "…", "contact_id": "…", "whatsapp_message_id": "wamid.…", "external_message_id": "wamid.…", "content_type": "text", "text": "Hi 👋",
+  "connection_id": "…", "store_id": "…", "channel": "whatsapp_cloud",
+  "contact": { "id": "…", "phone": "15551234567", "identities": [{ "kind": "whatsapp:phone", "external_id": "15551234567", "handle": null }] } }
 // conversation.created
-{ "conversation_id": "…", "contact_id": "…" }
+{ "conversation_id": "…", "contact_id": "…", "connection_id": "…", "store_id": "…", "channel": "telegram", "contact": { /* as above */ } }
 // message.status_updated
-{ "whatsapp_message_id": "wamid.…", "conversation_id": "…", "status": "delivered" }
+{ "whatsapp_message_id": "wamid.…", "external_message_id": "wamid.…", "conversation_id": "…", "status": "delivered",
+  "connection_id": "…", "store_id": "…", "channel": "whatsapp_cloud", "contact": { /* as above */ } }
 ```
+
+Every event carries `connection_id`, `store_id`, `channel` and `contact` (`contact.phone` is `null` when the contact has none, e.g. a Telegram contact; `contact.identities` lists the handles per channel). `whatsapp_message_id` is kept for compatibility; prefer `external_message_id`, which holds the provider's message id on any channel.
 
 Headers: `X-Wacrm-Event`, `X-Wacrm-Webhook-Id`, and `X-Wacrm-Signature`.
 

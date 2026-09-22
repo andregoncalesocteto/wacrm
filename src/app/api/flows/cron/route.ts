@@ -12,7 +12,7 @@ import { resolveFallbackPolicy } from '@/lib/flows/fallback'
  * row for the audit trail.
  *
  * Without this sweep, a customer who abandons a flow mid-conversation
- * keeps a row in `idx_one_active_run_per_contact` (the partial unique
+ * keeps a row in `idx_one_active_run_per_conversation` (the partial unique
  * index on `flow_runs WHERE status='active'`) forever — blocking any
  * new triggers for them. The cron is therefore not optional.
  *

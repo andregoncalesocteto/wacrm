@@ -1,0 +1,865 @@
+# Ralph Progress Log — ralph/channel-abstraction
+Started: 2026-09-21
+PRD: .projects/channel-abstraction/prd.json (75 stories; execution order = `priority`, not id order: 011→073, 020→074, 039→075).
+Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md. No test-scenarios.json (acceptanceCriteria are the bar).
+
+## Codebase Patterns
+- Run project commands from the repo root (cwd can drift into .projects/…).
+- Quality checks: `npm run typecheck`, `npm run lint` (0 errors), `TZ=UTC npm test`. TZ=UTC is REQUIRED: two tests in
+  src/lib/dashboard/date-utils.test.ts fail on this machine's TZ (-03). Never edit that test.
+- Baseline before US-001: typecheck clean; lint 0 errors / 41 warnings (pre-existing, do not "fix" unrelated ones);
+  `TZ=UTC npm test` green (91 files, 1025 tests).
+- i18n rules (CLAUDE.md): text via useTranslations (no literals; react/jsx-no-literals is warn), keys in ALL FOUR catalogues
+  (messages/{en,pt,es,ko}.json; parity test), dates/numbers via useFormatter() with presets in src/i18n/formats.ts, never
+  toLocale*String / new Intl.*Format (lint error; exceptions: currency.ts, trigger-meta.ts, browser-time-zone.ts, tests).
+  Don't rewrite en.json/ko.json with json.dump (irregular whitespace): insert keys textually. pt.json round-trips OK.
+- Migrations: supabase/migrations/NNN_name.sql, next number = highest + 1 (043 at start). Never edit an applied one.
+  Idempotent DDL (IF NOT EXISTS / DO blocks). Apply to the dev DB: `$FULL run --rm -T migrate`; check with
+  `$FULL exec -T db psql -U postgres -tAc "<sql>"`. FULL="docker compose -f docker-compose.yml -f docker-compose.supabase.yml --env-file .env.local".
+- Replay from scratch (CI-like, ISOLATED, does not touch dev data, ~16s):
+    R="docker compose -p wacrm-replay -f docker-compose.yml -f docker-compose.supabase.yml --env-file .env.local"
+    $R up -d --wait db auth storage && $R run --rm -T migrate && \
+    $R exec -T db psql -U postgres -v ON_ERROR_STOP=1 < supabase/ci/verify-schema.sql ; $R down -v
+  ALWAYS use `-p wacrm-replay` for replay and `down -v` ONLY on that project. NEVER `down -v` the default (dev) project.
+- Strangler / expand-contract: the WhatsApp official channel must keep working at every commit. lib/whatsapp/* stays where it is;
+  the provider is an ADAPTER over it (design deviation, see PRD "Technical Considerations").
+- Credentials: `channel_connection_credentials` has RLS on and NO policies (service role only). Never return credentials to a
+  user client; never log secrets, secret_token, or Telegram file URLs (they embed the bot token).
+- Meta and Telegram are NOT reachable from the test environment: use fixtures (signed webhook payloads: HMAC with the local
+  META_APP_SECRET; Telegram secret_token header) and mocked fetch. Real bot / real Meta verification is manual: say so in progress.
+- Idempotency boundary stays UNIQUE (conversation_id, message_id); messages.message_id is NOT renamed.
+- contacts.phone stays NOT NULL DEFAULT '' in the DB; the API translates '' to null.
+- Browser verification: dev server on http://localhost:3100 (`setsid nohup env NEXT_PUBLIC_APP_LOCALE=pt npx next dev -p 3100`,
+  log /tmp/next-dev-3100.log). Next dev REWRITES AGENTS.md on start: run `git checkout -- AGENTS.md` before committing, never commit it.
+  NEVER run `pkill -f "next dev"` inside a Bash command whose text contains that string (it kills your own shell); kill by pid
+  (`ss -ltnp | grep :3100`). The docker app on :3000 bakes NEXT_PUBLIC_* and code at build time (needs `$FULL up -d --build --wait app`).
+  `npm run build` and the dev server share `.next`: stop the dev server before building.
+- Seeding data for browser checks: one SQL statement per psql call (multi-insert heredocs silently lost rows before); the QA account's
+  profile id differs from its auth user id (account_id comes from profiles.account_id); clean up seeds afterwards.
+- dev-browser: Sheet/dialog buttons may need force:true. Screenshots only under the scratchpad, never in the repo.
+
+---
+
+## 2026-09-21 - US-001
+- Wrote .projects/channel-abstraction/coverage-map.md: existing tests per area (send, webhook, templates, broadcast, flows, automations, AI) and the gaps US-002..004 must cover. No production code changed.
+- Files changed: .projects/channel-abstraction/{coverage-map.md,prd.json,progress.txt}
+- **Learnings for future iterations:**
+  - Webhook route tests mock webhook-signature and the fan-out modules; GET verify, 401, reactions, status ladder (ladderLevel/isValidStatusTransition) and handleReaction have no test.
+  - sendMessageToConversation only has validation/recipient tests (no happy-path/Meta-failure); deliverBroadcast, flows node execution, automations meta-send and the react/media/templates routes are untested.
+  - The gap list is in coverage-map.md sections 1-9; US-002 = send, US-003 = webhook+templates, US-004 = broadcast/flows/automations/AI.
+---
+
+## 2026-09-21 - US-002
+- Added src/app/api/whatsapp/webhook/route.characterization.test.ts (51 tests, no production code changed): GET handshake (200 challenge / 403 / 400), POST 401 on bad/missing signature and 400 on bad JSON, ack-then-after(), contact+conversation creation vs reuse (phone formatting variants, other account, closed conversation reopened), replay idempotency on (conversation, wamid), BSUID/username-only contact create + refind + backfill, content types (image/document/sticker->image/unsupported->text), reactions (insert/replace/remove/unknown target), message status mirror + failure reason, broadcast_recipients status ladder (forward-only, failed only from pending/sent, failed terminal), reply flips recipient to replied.
+- Files changed: the new test file, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - The file uses a stateful in-memory fake of the supabase-js builder (h.db tables; insert/upsert with onConflict+ignoreDuplicates/update/delete/eq/in/like) and the REAL webhook-signature, encryption, wa-identity and contacts/dedupe. Reusable for US-003/004 tests; it does not model embedded-resource joins (`broadcasts.account_id` filters are skipped).
+  - The status LADDER guards only broadcast_recipients; the `messages` mirror applies any incoming status unguarded (pinned as-is by the tests; a message can go read -> delivered).
+  - BSUIDs must match /^[A-Za-z]{2}\.(ENT\.)?[A-Za-z0-9]{4,}$/ (wa-identity); fixtures like "US.111" are silently ignored.
+  - Prettier is enforced on new files (`npx prettier --write`). Baseline now: 92 files / 1074 tests green, lint 41 warnings.
+---
+
+## 2026-09-21 - US-003
+- Added src/lib/whatsapp/send-message.characterization.test.ts (28 tests, no production code changed, existing tests untouched): phone-variant retry on "recipient not allowed" (next variant, contact phone auto-corrected, stops at first other error, exhausted -> meta_error/502, BSUID gets a single attempt, media too), destination resolution (BSUID-only, no phone/BSUID -> 400 clear message, unusable phone -> "Invalid phone number format"), pre-send failures (other account 404, no config, bad reply target, db_error after Meta accepted), persistence per type (text, media with/without caption, template, interactive buttons/list, reply context) incl. conversation update, and flow pause (paused_by_agent/agent_replied scoped by account+contact+active; best-effort; not on failure).
+- Files changed: the new test file, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - When Meta fails the send, NOTHING is persisted (no `failed` row, conversation untouched); it just throws SendMessageError meta_error/502. coverage-map.md speculated a `failed` row; that does not exist today.
+  - The 3-way variant list for +15551234567 is computed via phoneVariants; the test derives expectations from it rather than hardcoding.
+  - Flow pause uses supabaseAdmin() from lib/flows/admin-client (mocked to record update patch + eq filters), not the passed db.
+  - Still untested on the send side (left for later stories): POST /api/whatsapp/react, send route for conversation_id text/media, media proxy route, templates routes.
+  - Baseline now: 93 files / 1102 tests green, lint 41 warnings, typecheck clean.
+---
+
+## 2026-09-21 - US-004
+- Added 4 characterization test files + 1 shared fake (no production code changed, existing tests untouched, 60 new tests):
+  - src/lib/whatsapp/broadcast-deliver.characterization.test.ts (16): deliverBroadcast (sent stamp with wamid/sent_at, failed + error_message, keeps going, variant retry only on "recipient not allowed", "Unknown error"), finalizeBroadcastStatus (pending -> stays sending, partial -> sent, all failed -> failed, delivered/read/replied count as reached), markBroadcastSending, resume pass (only leftovers, does not condemn the campaign).
+  - src/lib/flows/engine.characterization.test.ts (18): engineSendText/Media/InteractiveButtons/List persist a bot message + update the conversation preview; variant retry; nothing persisted when Meta fails; plus the real engine running text->media->buttons and a list flow, and a failed send failing the run.
+  - src/lib/automations/engine.characterization.test.ts (17): send_message/send_template/send_buttons/send_list through the real senders, conversation from context vs contact fallback, wait parks the run, resumePendingExecution sends via the right conversation.
+  - src/lib/ai/auto-reply.characterization.test.ts (9): real engineSendText with ai_generated=true, typing indicator, per-conversation cap (atomic claim), lost claim, failed send swallowed, handoff, per-account throttle (30/min).
+  - src/lib/automations/engine.characterization.fake.ts: shared in-memory service-role client (eq/is/in/gte/order/insert/update/rpc), imported inside vi.mock factories by the automations and AI tests.
+- Files changed: the files above, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - Every non-WhatsApp-webhook sender (flows, automations, AI) duplicates the same pattern: contact lookup by account, resolveContactSendTarget, whatsapp_config decrypt, phoneVariants retry, INSERT messages (sender_type 'bot', status 'sent'), UPDATE conversations preview. When Meta fails NOTHING is persisted (same as send-message, US-003); coverage-map.md's speculation of a 'failed' row is wrong for all of them.
+  - The send target passed to Meta is the sanitized number WITHOUT '+' ('15551234567'); the first phone variant equals it.
+  - AI: the reply slot is claimed BEFORE the send, so a failed send still consumes a slot (fail-safe, pinned). Handoff consumes no slot. auto-reply.test.ts stubs engineSendText; the new file runs it for real.
+  - Automations: executeStepsFrom swallows step errors into automation_logs, so resumePendingExecution marks the pending row 'done' even when the resumed send failed (the failure shows in the log only). The trigger type is 'new_contact_created' (not 'new_contact').
+  - Templates in automations: params sorted numerically by variable key; without a local template row the send still goes out with content_text null and preview '[template:name]'.
+  - Still untested (out of US-004 criteria): broadcast API routes (POST /api/whatsapp/broadcast, resume, /api/v1/broadcasts), flows handleReplyForActiveRun/collect_input/condition paths.
+  - Baseline now: 97 files / 1162 tests green (TZ=UTC), lint 41 warnings, typecheck clean.
+---
+
+## 2026-09-21 - US-005
+- Added supabase/migrations/043_stores_and_connections.sql: stores, channel_connections (disabled_at, status CHECK, UNIQUE (channel_type, external_id)), channel_connection_credentials (secrets_encrypted, secrets_format DEFAULT 'json_v1'; RLS ON, NO policy), contact_identities (UNIQUE (account_id, kind, external_id)); indexes, set_updated_at triggers, RLS (stores/connections: member read, admin+ write; identities: member read, agent+ write) and realtime publication for channel_connections (same DO-block pattern as 027).
+- Extended supabase/ci/verify-schema.sql (inside the single DO block): four tables exist, credentials table has RLS on and zero pg_policies.
+- Verified: dev DB migrate (1 applied, re-run 0), verify-schema on dev, isolated replay (-p wacrm-replay, 43 applied, verify passed, down -v). typecheck, lint, TZ=UTC npm test (97 files/1162) green.
+- Files changed: the migration, verify-schema.sql, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - Recent migrations use uuid_generate_v4() (035) or gen_random_uuid() (030); used uuid_generate_v4 per design. updated_at trigger is `set_updated_at` using update_updated_at_column().
+  - Policies are DROP POLICY IF EXISTS + CREATE POLICY named <table>_<select|insert|update|delete>. No columns on the new tables are referenced by code yet; 044 (nullable connection_id columns + backfill) is next.
+---
+
+## 2026-09-21 - US-006
+- Migration 044_channel_columns_nullable.sql: nullable conversations/message_templates/broadcasts.connection_id (RESTRICT), automation_pending_executions.conversation_id (CASCADE) and .connection_id (SET NULL: transient row, derivable from conversation_id), quick_replies.store_id (RESTRICT); non-unique indexes on each; notifications_type_check recreated (DROP IF EXISTS + ADD) accepting 'connection_down'. No unique index touched. verify-schema.sql asserts the 6 nullable columns and the CHECK.
+- Files changed: supabase/migrations/044_channel_columns_nullable.sql, supabase/ci/verify-schema.sql, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - The notifications CHECK was the auto-named `notifications_type_check` (only 'conversation_assigned'); the constraint is dropped and re-added, so it is idempotent.
+  - verify-schema.sql must stay ONE statement: assertions go inside the existing DO block.
+  - Dev DB and isolated replay (44 migrations) both pass verify-schema. Baseline: 97 files / 1162 tests, lint 41 warnings.
+---
+
+## 2026-09-21 - US-007
+- Added supabase/migrations/045_backfill_channel_model.sql (pure SQL, idempotent): per whatsapp_config a store (accounts.name, fallback 'Loja principal') + whatsapp_cloud connection (external_id=phone_number_id, status connected/disconnected, config jsonb = waba_id, mirror_inbound_media, registered_at, subscribed_apps_at, last_registration_error, verify_token, nulls stripped) + credentials row (access_token copied as-is, secrets_format='wa_token_v0'); fills conversations/message_templates/broadcasts.connection_id and pending executions conversation_id (contact's most recent conversation, NULL if none) + connection_id; contact_identities for whatsapp:phone / whatsapp:bsuid / whatsapp:username (DISTINCT ON + ON CONFLICT DO NOTHING).
+- verify-schema.sql: asserts every whatsapp_config has a connection + byte-identical credentials, and no NULL connection_id in conversations/templates/broadcasts of accounts that have a whatsapp_config.
+- Proof on dev DB: seeded config + contacts (phone, BSUID+username) + conversation + template + broadcast + 2 pending runs + a second account without config; ran 045; asserted; deleted the 045 row from wacrm_migrations and reran: md5 snapshot of all new/filled rows identical; seed cleaned. Isolated replay (-p wacrm-replay): 45 applied, verify passes.
+- Files changed: 045 migration, verify-schema.sql, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - Accounts WITHOUT whatsapp_config keep connection_id NULL on conversations (and the contact_identities still get created); the contract phase must handle/decide them before NOT NULL.
+  - contacts.phone_normalized is GENERATED (cannot be inserted); unique (account_id, phone_normalized) and (account_id, contact_id) on conversations make phone collisions / several conversations per contact unreachable today; the SQL still guards both.
+  - wacrm_migrations tracking column is `name` (not filename); to re-run a migration on dev: delete its row, `$FULL run --rm -T migrate`.
+  - The dev DB had no whatsapp_config, so on dev the migration only created the identities of existing contacts (1 real row kept).
+---
+
+## 2026-09-21 - US-008
+- Added src/lib/channels/{admin-client,connections,connections.test}.ts (no reader migrated). connections.ts: getConnectionById, getConnectionByExternalId(channelType, externalId), listConnectionsByAccount, listConnectionsByStore (optional client param, default service role; never touch the credentials table) and getConnectionCredentials(connectionId) (NO client param: uses only the module's service-role client). wa_token_v0 -> { access_token }; json_v1 -> parsed JSON; wa_token_v0 rows and legacy CBC ciphertexts are rewritten as GCM json_v1 on first read, best-effort (try/catch, guarded by .eq('secrets_format', old) against races).
+- Files changed: the three new files, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - "Service client only" is enforced by API shape (no client param on credentials) plus a test asserting a user client passed anyway is never touched and reads with a user client never query channel_connection_credentials.
+  - Credentials shape is snake_case (access_token) for every provider; verify_token of WhatsApp stays in connection.config, not in credentials.
+  - Tests mock './admin-client' with a chainable fake; encryption uses the vitest dummy ENCRYPTION_KEY. Baseline: 98 files, lint 41 warnings.
+---
+
+## 2026-09-21 - US-009
+- Added src/lib/channels/{types,registry,registry.test}.ts. types.ts: ChannelType, Capabilities (each field commented), ChannelProvider, InboundEvent/InboundContent, OutboundMessage, SendResult, Target, Health, ConnectResult, ContactIdentity, MessageRef/MediaRef and the ChannelError class (code, providerCode, retryable, toInfo()). `Connection` is an alias of ChannelConnection from connections.ts. registry.ts: registerProvider (duplicate throws), getProvider (unknown type throws listing registered ones), hasProvider, listProviders, resetRegistryForTests. Registry starts empty; providers register from US-010+.
+- Files changed: the three new files, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - types.ts imports nothing from lib/whatsapp: MediaKind and the interactive payload (camelCase buttonLabel) are redefined channel-neutral; WhatsApp provider must map from/to lib/whatsapp types.
+  - zod is NOT a direct dependency (only transitive), so configSchema/credentialsSchema use a structural `Schema` interface with safeParse (a zod schema satisfies it).
+  - ChannelError.retryable defaults to true only for 'rate_limited'.
+  - Baseline: 99 files / 1180 tests, lint 41 warnings.
+---
+
+## 2026-09-21 - US-010
+- Added src/lib/channels/providers/whatsapp-cloud/{index,errors,schemas,whatsapp-cloud.test}.ts and providers/index.ts (`registerBuiltinProviders()`, idempotent; registry.ts does NOT import providers). Provider = adapter over lib/whatsapp/* (untouched). Outbound only: capabilities, config/credentials schemas, resolveTarget (resolveContactSendTarget over whatsapp:phone / whatsapp:bsuid), send (text/media/template/interactive/reaction) with the phone-variant retry inside the provider, react(). connect/disconnect/health/resolveConnection/verify/parse throw ChannelError('unsupported') until US-011+. `typing` is not implemented (the contract has no inbound wamid; capability typingIndicator stays true).
+- Error mapping (errors.ts): MetaApiError.code (or "(#NNNNNN)" in the message) -> auth (190,102,463,467,10,200; HTTP 401), rate_limited (4,17,32,613,80007,130429,131048,131056; 429), recipient_unreachable (131026,131030,131021,131033,131037), window_closed (131047), invalid (100,131008/9,1310xx,1320xx; HTTP 400; local meta-api validation), else unknown. Original message kept, code in providerCode.
+- Small additive changes to types.ts: OutboundMessage gains `replyTo?: MessageRef`, TemplateMessage gains opaque `provider?` (WhatsApp: {row, messageParams, params} for media headers/URL buttons), SendResult gains `resolvedAddress?` (the working phone variant, so the core can persist the auto-fix like send-message.ts does).
+- Files changed: the new files above, types.ts, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - The old core wraps errors as SendMessageError('meta_error', 'Meta API error: ...', 502); when US-014+ migrates it, keep that wrapping at the core, ChannelError carries the raw message.
+  - maxMediaBytes is 16 MB (upload-media MEDIA_MAX_BYTES); the composer caps images at 5 MB per kind, the contract has one number only.
+  - Baseline: 100 files / 1208 tests, lint 41 warnings.
+---
+
+## 2026-09-21 - US-011
+- Added providers/whatsapp-cloud/inbound.ts (+ inbound.test.ts, 22 tests) and wired resolveConnection/verify/parse into the provider (connect/disconnect/health still `unsupported`). resolveConnection: metadata.phone_number_id -> getConnectionByExternalId('whatsapp_cloud', id). verify: reuses verifyMetaWebhookSignature (comma-separated META_APP_SECRET, timingSafeEqual, fail closed). parse: STATUS (sent/delivered/read/failed; others such as "deleted" dropped) and REACTION; messages are NOT parsed (US-073). The production webhook is untouched.
+- Body read-once: raw text is memoised per Request in a WeakMap (readRawBody), so resolveConnection -> verify -> parse can run in any order on one Request; the contract (Request params) is unchanged. Works with the fake {text, headers.get} Request used by the characterization test.
+- Additive type changes (types.ts): status event gains `at?: Date` and `recipient?`; reaction event gains `at?`; ChannelErrorInfo gains `title?`/`details?`. errors.ts exports classifyMetaCode (toChannelError refactored to use it, behaviour unchanged).
+- Event semantics for US-021: status.error.message = "[code] title: details" (exactly what broadcast_recipients.error_message stores), providerCode = code, title/details = messages.error_title/error_details, code is the mapped ChannelErrorCode. Reaction `externalId` = the TARGET wamid (reaction.message_id), emoji null = removal; sender = whatsapp:phone / whatsapp:bsuid / whatsapp:username identities (same resolveInboundIdentity as the webhook; contact paired by messages index, fallback contacts[0]). Reactions without target or identity are skipped like the webhook. Events keep delivery order (statuses first, then messages, per value).
+- Files changed: inbound.ts, inbound.test.ts, index.ts, errors.ts, types.ts, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - Meta status `timestamp` and `recipient_id` are needed by the ladder mirror (sent_at/delivered_at/read_at), hence the additive `at`.
+  - resolveConnection takes the first phone_number_id in the payload; a payload mixing several numbers would need a split by the caller (not seen from Meta).
+  - Baseline: 101 files / 1230 tests, lint 41 warnings.
+---
+
+## 2026-09-21 - US-073
+- inbound.ts `parse` now also emits `message` InboundEvents (+21 tests in inbound.test.ts; production webhook untouched). Mirrors parseMessageContent minus the media download/mirror: text; image/video/audio/sticker(->image)/document as `media` with MediaRef {kind, id, mimeType, fileName?} and `caption` = the text the webhook stores as content_text (caption; for documents caption || filename); button reply (payload=id, text=title, each falls back) and interactive button/list reply (title || id) as `interactive_reply`; location; unknown type / media without id / interactive without option as `unsupported` with the placeholder text as `description` ("[Unsupported message type: X]", "[image]", "[Interactive reply]"). `replyToExternalId` = context.id; `senderName` = profile name (omitted when empty); `at` = timestamp (fallback: now).
+- Identity: same resolveInboundIdentity and contacts[i] || contacts[0] pairing as the route. Candidates whatsapp:phone (digits only), whatsapp:bsuid, whatsapp:username (handle "@name"); parent BSUID has no candidate kind. Messages with neither phone nor valid BSUID are DROPPED (no event), like processMessage (a username-only sender is dropped too).
+- Additive type change: InboundContent gains `{type:'location', latitude, longitude, name?, address?, text}` (text = stored content_text) so the core can keep content_type 'location'.
+- Edited the US-011 test that asserted "messages are not parsed here (US-073)" (obsolete by this story; kept the non-JSON assertion).
+- Files changed: inbound.ts, inbound.test.ts, types.ts, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - US-021 (core) must map: media/`caption` -> content_text/media_type(mimeType), `interactive_reply` -> content_type 'interactive' + interactive_reply_id (button with no payload/text yields ''), `location` -> content_type 'location', `unsupported.description` -> content_text with content_type 'text'. Edge: an interactive without option is content_type 'interactive' in the webhook but 'text' via `unsupported`; a media without id is content_type image with null media in the webhook.
+  - Baseline: 101 files / 1248 tests, lint 41 warnings.
+---
+
+## 2026-09-21 - US-012
+- Added providers/whatsapp-cloud/lifecycle.ts (+ lifecycle.test.ts, 26 tests, meta-api mocked) and wired connect/disconnect/health/downloadMedia/typing into the provider (react already existed). Production routes untouched.
+- connect(conn, opts?: {pin}): same steps/order as POST /api/whatsapp/config: verifyPhoneNumber -> listWabaPhoneNumbers + phoneNumberBelongsToWaba -> registerPhoneNumber ONLY with a PIN (no PIN = ok with hint, details.registration 'skipped', issue #242) -> subscribeWabaToApp. Uses getConnectionCredentials + config.waba_id. Persists nothing (PIN never stored/echoed; core stores the outcome). Failures return ok:false with message (explainMetaError summary, same text as the route) and error (mapped ChannelErrorInfo, code/providerCode).
+- disconnect: documented no-op (Meta unsubscribe/deregister would affect the whole WABA; not asked). Core marks the connection disconnected.
+- health: verifyPhoneNumber + getSubscribedApps + config.registered_at. auth/invalid on the number probe, no waba_id, no subscribed apps, missing token -> needs_action (reason); rate limit/5xx -> degraded; not registered but otherwise fine -> degraded; else connected.
+- downloadMedia: getMediaUrl -> meta downloadMedia -> Blob. typing(conn, target, {inboundExternalId}) -> sendTypingIndicator; missing id throws ChannelError('invalid').
+- Additive types.ts: ConnectResult.error?, ConnectOptions {pin?}, connect(conn, opts?), typing(conn, target, opts?: {inboundExternalId?}). US-029 (AI) must pass the inbound wamid.
+- Files changed: lifecycle.ts, lifecycle.test.ts, index.ts, types.ts, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - The health "registered" signal reads conn.config.registered_at (migration 045 copies it from whatsapp_config); when the core (connect callers) succeeds with registration it must write registered_at/subscribed_apps_at back into config.
+  - Meta's downloadMedia helper throws a plain Error (no code) so failures map to 'unknown'.
+  - Baseline: 102 files / 1274 tests, lint 41 warnings.
+---
+
+## 2026-09-21 - US-013
+- Dual write into channel_connections / channel_connection_credentials on every whatsapp_config write. New src/lib/channels/whatsapp-dual-write.ts: syncWhatsappConnection(accountId) reads the whatsapp_config row (service role) and reconciles store (default = account name, created if the account has none), whatsapp_cloud connection (matched by external_id, else the account's own; phone_number_id change moves external_id of the same row; re-enables a disabled one), config jsonb (waba_id, mirror_inbound_media, registered_at, subscribed_apps_at, last_registration_error, verify_token[encrypted as in whatsapp_config], nulls stripped) and credentials (json_v1 {access_token}, GCM). removeWhatsappConnection: no conversations -> delete; otherwise disabled_at=now + status disconnected + credentials dropped (ADR-007). Both never throw; failures log "[channel:whatsapp_cloud] dual-write ... failed".
+- Hooked into POST/DELETE /api/whatsapp/config (after the legacy write succeeded; responses unchanged) and the mirror toggle: browser still updates whatsapp_config under RLS, then calls new POST /api/whatsapp/config/mirror-media (no body; account from session, requires visible whatsapp_config row, mirror rebuilt from that row so the client cannot inject values).
+- verify-registration is read-only today (never writes registered_at/last_registration_error), so nothing to mirror; left untouched.
+- Files: src/lib/channels/whatsapp-dual-write.ts, src/app/api/whatsapp/config/{route.ts,mirror-media/route.ts,route.dualwrite.test.ts}, src/components/settings/whatsapp-config.tsx, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - Deriving the mirror FROM the whatsapp_config row (not from request input) keeps the two tables consistent and makes every hook a one-liner; reuse for any future writer of whatsapp_config.
+  - Route tests use one stateful fake supabase for both the user client and supabase-js createClient (RLS not under test). Baseline now 103 files / 1283 tests, lint 41 warnings.
+  - A phone_number_id mapped to another account in channel_connections makes the mirror log and skip (legacy save still succeeds).
+---
+
+## 2026-09-21 - US-014
+- Send-side readers now use connections.ts through a shared helper src/lib/channels/whatsapp-connection.ts (resolveWhatsAppConnection / loadWhatsAppSendConnection / findAccountWhatsAppConnection): conversation.connection_id first (must be a whatsapp_cloud connection of the same account), else the account's whatsapp_cloud connection (enabled first). phone_number_id = connection.external_id; token only via getConnectionCredentials. Status is NOT checked (legacy path never did). Callers keep their own "not configured" errors (SendMessageError whatsapp_not_configured/400, Error 'WhatsApp not configured for this account').
+- Files: send-message.ts, flows/meta-send.ts (loadAccountMetaCredentials got optional 3rd arg conversationId), automations/meta-send.ts, ai/auto-reply.ts (comment only), whatsapp/resolve-conversation.ts (checks connection, sets conversations.connection_id on create), new whatsapp-connection.ts + test, credentials-admin.fake.ts (test double).
+- Tests edited (doubles/seed only, assertions unchanged): send/route.test.ts, send-message.test.ts, send-message.characterization.test.ts, resolve-conversation.test.ts, flows/engine.characterization.test.ts, automations/engine.characterization.test.ts, ai/auto-reply.characterization.test.ts.
+- **Learnings for future iterations:**
+  - Tests now seed channel_connections + channel_connection_credentials (secrets_format 'wa_token_v0', decrypt mock gives the same token as before) and mock '@/lib/channels/admin-client' via fakeCredentialsAdmin(); user-client doubles need `.order()`.
+  - auto-reply.test.ts asserts loadAccountMetaCredentials(anything, 'acct-1') exactly, so auto-reply's typing indicator uses fallback only (no conversationId).
+  - resolveAuditUserId in lib/api/v1/contacts.ts still reads whatsapp_config (used by resolve-conversation); the resolve-conversation test double keeps serving whatsapp_config for it. Migrate in the story that covers contacts.ts.
+  - Do NOT run prettier over src/lib/whatsapp/*.test.ts globally: many are not prettier-formatted and get noisy diffs.
+---
+
+## 2026-09-21 - US-015
+- broadcast-core.createBroadcast, broadcast-resume.planBroadcastResume and POST /api/whatsapp/broadcast no longer read whatsapp_config: they use loadWhatsAppSendConnection (US-014 helper). Resume passes broadcast.connection_id (falls back to the account's connection when NULL). Same "WhatsApp not configured" errors/400.
+- New broadcasts persist connection_id: migration 046 replaces create_broadcast_with_recipients with a 9-arg version (p_connection_id UUID DEFAULT NULL; the 8-arg overload is DROPped, otherwise omitted-arg calls are ambiguous); verify-schema.sql updated (regprocedure signature + assertions). The dashboard hook use-broadcast-sending.ts inserts broadcasts directly from the client, so it now looks up the account's whatsapp_cloud channel_connections row (RLS member read) and sets connection_id (best-effort, NULL falls back). Did NOT import connections.ts in the hook (it pulls the service-role client).
+- Tests edited (doubles/seed only, assertions unchanged): broadcast-core.test.ts (+1 new test for p_connection_id), broadcast-resume.test.ts. broadcast-deliver.characterization.test.ts needed no change (deliver never read config).
+- Files: broadcast-core.ts, broadcast-resume.ts, api/whatsapp/broadcast/route.ts, hooks/use-broadcast-sending.ts, 046 migration, verify-schema.sql, the two tests, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - POST /api/whatsapp/broadcast writes nothing to the DB (only the client hook and /api/v1 create rows).
+  - Checked: dev migrate + verify-schema, isolated replay (46 applied). RPC not exercised end-to-end against Meta/real data.
+  - Baseline: 104 files / 1291 tests, lint 41 warnings.
+---
+
+## 2026-09-21 - US-016
+- templates/submit, templates/[id] (PATCH+DELETE), templates/sync, media/[mediaId], react and template-webhook.ts no longer read whatsapp_config. Routes keep their auth (requireRole / profile account) and then call loadWhatsAppSendConnection(supabase, accountId, {connectionId}) (US-014 helper); waba_id comes from connection.config.waba_id; same error messages/status codes. A null load = "not configured" (no connection or no token).
+- New templates persist connection_id: submit (loaded connection; in dry-run best-effort findAccountWhatsAppConnection, null if none), sync (insert+update rows), webhook stub rows. [id] routes use the template's own connection_id first; react uses the conversation's connection_id.
+- template-webhook stub: tenant resolved via channel_connections (channel_type whatsapp_cloud, config->>waba_id = entry.id); audit user_id now = accounts.owner_user_id (connections carry no user; legacy was whatsapp_config.user_id). Webhook status/quality updates still key on meta_template_id.
+- Test edited (double/seed + call-index/table-name assertions forced by the table swap): src/lib/whatsapp/template-webhook.test.ts (stub serves channel_connections + accounts; insert now expects connection_id). No tests existed for the other five routes.
+- **Learnings for future iterations:**
+  - Stub tenant lookup order is now message_templates -> channel_connections -> accounts -> message_templates.
+  - Not exercised against real Meta; routes with Meta calls have no tests (pre-existing gap).
+  - Remaining whatsapp_config readers: contacts.ts resolveAuditUserId, webhook route, config routes, inbox page, settings components, verify-registration, meta-api/encryption (comments).
+  - Baseline: 104 files / 1291 tests, lint 41 warnings.
+---
+
+## 2026-09-21 - US-017
+- Webhook route (GET + POST), lib/api/v1/contacts.ts (resolveAuditUserId) and inbox/page.tsx no longer read whatsapp_config.
+  - GET: iterates channel_connections (whatsapp_cloud, skips disabled) and decrypts config.verify_token (same encrypted format the dual-write/backfill copy from whatsapp_config); same per-row try/catch, first match wins; legacy CBC->GCM upgrade now rewrites config.verify_token on the connection.
+  - POST: getConnectionByExternalId('whatsapp_cloud', phone_number_id, route's own admin client) + getConnectionCredentials (token) + config.mirror_inbound_media; no credentials/connection = logged and skipped. findOrCreateConversation now inserts connection_id (existing conversations with NULL connection_id are NOT backfilled).
+  - Audit user_id (webhook contacts/conversations, resolveAuditUserId) is now accounts.owner_user_id (connections carry no user; legacy was whatsapp_config.user_id). Attribution of NEW rows can change for accounts whose config was saved by a non-owner admin.
+  - Inbox banner: channel_connections (RLS member read), connected = any enabled whatsapp_cloud row with status connected.
+- Tests edited (doubles/seed only): webhook route.test.ts, route.characterization.test.ts (+1 new test: conversation gets connection_id), resolve-conversation.test.ts.
+- **Learnings for future iterations:**
+  - Passing the route's own client to getConnectionByExternalId keeps test doubles simple; getConnectionCredentials always uses channels/admin-client (also backed by the mocked createClient).
+  - route.test.ts is NOT prettier-formatted: never run prettier over it (huge diff).
+  - Baseline: 104 files / 1292 tests, lint 41 warnings.
+---
+
+## 2026-09-21 - US-018
+- New src/lib/channels/identity.ts (not wired into the webhook yet; US-019+): resolveOrCreateContact(db, {accountId, candidates, senderName, auditUserId}) -> {contact, wasCreated} | null. Lookup order: contact_identities by ANY candidate (candidate order), then legacy fallback (contacts.wa_user_id, then findExistingContact fuzzy phone). Create: phone column = whatsapp:phone candidate or '', name = senderName else @-less username/phone/BSUID/id, then upsert ALL identities (ignoreDuplicates on account,kind,external_id). Unique violation on create -> re-read via the same lookup. Found contact: adds the missing identities and backfills legacy columns with the same rules as the webhook's contactIdentityPatch (channel-supplied name only, wa_user_id/wa_username when changed, phone only fills a blank). contactDisplayName(contact, identities?): name, else @username > phone > BSUID > other (telegram handle/chat id), else legacy wa_* via contactHandle (kept, not removed).
+- Files: src/lib/channels/identity.ts, identity.test.ts (16 tests, own stateful fake with unique indexes + race injection), prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - The WhatsApp provider emits no candidate for the portfolio-level parent BSUID, so wa_parent_user_id is NOT backfilled by resolveOrCreateContact (webhook's contactIdentityPatch still does it). US-019+ must keep it (or add a kind) when the webhook switches over.
+  - Legacy wa_* backfill is keyed on 'whatsapp:*' kinds by design; drop it when the legacy columns are retired.
+  - Prettier for this repo uses semicolons in new files (differs from the wa-identity style); ran prettier only on my two files.
+  - Baseline: 105 files / 1308 tests, lint 41 warnings, typecheck clean.
+---
+
+## 2026-09-21 - US-019
+- New src/lib/channels/ingest.ts: ingestInbound(db, connection, events, {auditUserId, hooks}) -> one outcome per event ('stored' | 'duplicate' | 'skipped'). Handles `message` events only: resolveOrCreateContact (US-018) -> conversation by (contact, connection) -> idempotent upsert on messages (onConflict conversation_id,message_id, ignoreDuplicates, .select('id') empty = replay) -> RPC bump_conversation_on_inbound (unread+1, last text/at) -> reopenClosedConversation. Replay returns 'duplicate' before any bump/hook. Depends only on its args.
+- Conversation lookup transition rule (documented in the code): DB index is still UNIQUE (account, contact) until US-032, so it takes the contact's oldest conversation on this connection OR with connection_id NULL and adopts the NULL one (UPDATE ... is null). A conversation on another connection is not reused (insert then hits the old index -> 'skipped', logged).
+- Hooks (extension points, errors logged, never undo the stored message): resolveMedia (US-021), onConversationCreated (fires before the message, like the route's conversation.created), onMessageStored (US-020/074; carries contentType/contentText/interactiveReplyId/isFirstInbound/contactCreated for the fan-out). Not done here: flagBroadcastReplyIfAny, dispatchInboundToFlows/automations/AI/webhooks, reactions, statuses.
+- Additive enrichment of the event contract (types.ts + whatsapp-cloud/inbound.ts) so the core reproduces the route exactly: unsupported content may carry `stored {contentType,text}` (media without id -> media type + null text; document/location likewise; interactive without option -> 'interactive' + '[Interactive reply]'); message events may carry `emptyPreview` ('[sticker]', '[button]' for last_message_text) and `parentExternalId` (parent BSUID; ingest backfills contacts.wa_parent_user_id, US-070 removes it). Existing tests untouched (toMatchObject/toEqual still hold: fields are only emitted when relevant).
+- Files: ingest.ts, ingest.test.ts (22 tests, own stateful fake with the old unique indexes), providers/whatsapp-cloud/inbound.ingest-hints.test.ts (4), types.ts, inbound.ts, prd.json, progress.txt. Webhook route NOT touched.
+- **Learnings for future iterations:**
+  - US-022 must pass auditUserId = accounts.owner_user_id and stitch hooks: resolveMedia via provider.downloadMedia + mirrorInboundMedia with proxy fallback `/api/whatsapp/media/<id>` (route falls back to it when mirror fails; ingest stores null url without a hook), and fan-out order flows -> automations -> AI -> message.received webhook, with isFirstInbound / contactCreated from the stored outcome.
+  - Preview rule: last_message_text = contentText || emptyPreview || description || `[content_type]`.
+  - Baseline: 107 files / 1335 tests, lint 41 warnings, typecheck clean.
+---
+
+## 2026-09-21 - US-020
+- New src/lib/channels/fanout.ts: fanOutInbound(stored, {configOwnerUserId}) + fanoutHook(opts) (ready-made IngestHooks.onMessageStored). Same order/args as the webhook: dispatchInboundToFlows (userId = owner, isFirstInboundMessage) -> runAutomationsForTrigger per trigger (first_inbound_message, new_contact_created first; new_message_received, keyword_match, interactive_reply only when no flow consumed) -> dispatchInboundToAiReply (plain non-blank text, not consumed, no interactive id). All awaited; each engine wrapped in try/catch logged as `[channel:fanout]`. Engines untouched.
+- Flow engine throwing counts as "not consumed" (automations/AI still run). meta message id = event.externalId (route used message.id).
+- Files: fanout.ts, fanout.test.ts (11 tests, vi.mock of the 3 engines), ingest.test.ts (+1 test: throwing onMessageStored keeps the message stored), prd.json, progress.txt. Webhook route NOT touched.
+- **Learnings for future iterations:**
+  - US-074 fills the two SEAM comments in fanout.ts: flagBroadcastReplyIfAny BEFORE flows, message.received webhook/notifications AFTER the AI reply.
+  - US-022 wires `hooks.onMessageStored = fanoutHook({configOwnerUserId: accounts.owner_user_id})` (same value as auditUserId).
+  - Baseline: 108 files / 1347 tests, lint 41 warnings, typecheck clean.
+---
+
+## 2026-09-21 - US-074
+- fanout.ts: fanOutInbound now runs flagBroadcastReplyIfAny (exported, moved logic of the route, same queries) BEFORE flows, and dispatchWebhookEvent 'message.received' AFTER the AI reply (payload identical to the route: conversation_id, contact_id, whatsapp_message_id=externalId, content_type, text). Both awaited and wrapped in isolated() ([channel:fanout] log). Added conversationCreatedHook (ready-made IngestHooks.onConversationCreated -> 'conversation.created'; the fan-out itself never emits it).
+- Notifications: the route creates none on inbound (lib/notifications/browser-notify.ts is client-only), so nothing to port.
+- Files: fanout.ts, fanout.test.ts (+9 tests; US-020 tests untouched, new mocks record into a separate `order` array), prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - US-022 must wire hooks.onConversationCreated = conversationCreatedHook and hooks.onMessageStored = fanoutHook(...). US-063 adds connection_id/store_id/channel to the message.received payload (fanout.ts).
+  - Baseline: 108 files / 1356 tests, lint 41 warnings, typecheck clean.
+---
+
+## 2026-09-21 - US-021
+- ingest.ts: ingestInbound now also handles `status` and `reaction` (outcomes 'status_updated' {recipientUpdated, webhookDispatched}, 'reaction_set' | 'reaction_removed', or 'skipped' with reason). Contact+conversation resolution extracted into resolveThread (shared by message and reaction; behavior of messages unchanged, US-019 tests untouched).
+  - status = port of handleStatusUpdate: messages update by external id with NO order guard (+ error_code/title/details on failed, kept by later statuses); broadcast_recipients via new status-ladder.ts (forward only, failed only from pending/sent, sent_at/delivered_at/read_at from event.at, error_message = event.error.message); then message.status_updated webhook using the embedded `conversations(account_id)` join (limit 1).
+  - reaction = port of handleReaction: resolves/creates contact + conversation first (fires onConversationCreated like the route), target looked up by external id in that conversation, unknown target skipped, null emoji deletes, else upsert on (message_id, actor_type, actor_id).
+- New media.ts createMediaResolver({provider, storage, fallbackUrl?}) = IngestHooks.resolveMedia: provider.downloadMedia -> mirrorInboundMedia (its `download` override; no token/URL ever handled) -> public URL; option off or upload refused -> proxy `/api/whatsapp/media/<id>` (whatsapp_cloud only, null for other channels); provider download throws -> null.
+- Tests: ingest.events.test.ts (28) using events from the REAL WhatsApp parse of signed payloads + ingest.fake.ts (copy of the ingest fake plus delete, embedded join, reactions upsert). Route and existing tests untouched.
+- **Learnings for future iterations:**
+  - US-022 wires: hooks.resolveMedia = createMediaResolver({provider: whatsappCloudProvider, storage: supabaseAdmin().storage}), and drops the route's ladderLevel/isValidStatusTransition/handleStatusUpdate/handleReaction/parseMessageContent media code.
+  - Known deltas vs the route: (1) mirror OFF used to still call Meta getMediaUrl (null url on failure), now stores the proxy directly; (2) mirror MIME comes from the webhook's mime_type, not Meta's getMediaUrl metadata; (3) oversize pre-check by file_size is gone (post-download check remains); (4) status webhook dispatch uses the passed service-role db.
+  - message_id is not unique across numbers: the messages status update is unscoped by connection on purpose (as today).
+  - Baseline: 109 files / 1384 tests, lint 41 warnings, typecheck clean.
+---
+
+## 2026-09-21 - US-022
+- src/app/api/whatsapp/webhook/route.ts: 1480 -> ~230 lines. GET untouched. POST = readRawBody (new export of whatsapp-cloud/inbound.ts, cached per Request so provider.verify/parse reuse the bytes) -> whatsappCloudProvider.resolveConnection -> verify (401) -> JSON.parse (400) -> respond 200 -> after(): template-lifecycle fields (handleTemplateWebhookChange, kept in the route: they are not channel events and carry no phone_number_id) -> provider.parse -> connection/credentials/owner checks (log + skip) -> ingestInbound(supabaseAdmin(), connection, events, {auditUserId: owner, hooks: {resolveMedia: createMediaResolver, onMessageStored: fanoutHook, onConversationCreated: conversationCreatedHook}}). All old processing code (processWebhook, handleStatusUpdate/Reaction, processMessage, parseMessageContent, contact/conversation finders, ladder, flagBroadcastReplyIfAny, media) deleted.
+- Restoring old behavior instead of editing assertions: lifecycle.downloadMedia now pre-checks Meta's file_size (16 MB) and throws the new MediaTransferError (types.ts); createMediaResolver keeps the proxy fallback for MediaTransferError and null only for a failed lookup (as the route did). identity.resolveOrCreateContact takes parentExternalId and writes wa_parent_user_id in the same INSERT / backfill UPDATE (ingest's separate backfillParent removed) so the contact write count matches the old route.
+- Accepted deltas (RNF-01 notes): one connection per payload (first phone_number_id); statuses for a phone_number_id with no connection are skipped (were applied unscoped); mirror OFF no longer calls Meta getMediaUrl (proxy stored directly); credentials only required when the payload carries messages.
+- Test edits (assertions untouched): route.characterization.test.ts fake gained `.is()` (adopt NULL-connection thread). route.test.ts fake: contact_identities table, conversations select().eq().eq().order() + update().eq().is()/.eq(), meta-api mock keeps the real MetaApiError (importOriginal), connection row carries channel_type 'whatsapp_cloud'. New tests: 2 in lifecycle.test.ts (oversize / transfer vs lookup errors).
+- Manual: dev server, signed payload (HMAC with local META_APP_SECRET) for a seeded store+connection+credentials: bad signature 401, first delivery created contact + conversation (connection_id stamped, unread 1) + message, replay logged as duplicate and added nothing. Meta unreachable, so outbound calls not exercised. Seeds removed.
+- **Learnings for future iterations:**
+  - The route tests' fakes are chain-shaped: ingest reads conversations via select().eq().eq().order() (no limit) and adopts NULL-connection threads with update().eq().is('connection_id', null).
+  - Provider.verify ignores the connection (app-level secret), so the route verifies even when resolveConnection returns null (template events).
+  - Baseline: 109 files / 1386 tests, lint 40 warnings, typecheck clean, build OK.
+---
+
+## 2026-09-21 - US-023
+- New src/lib/channels/send.ts: sendOutbound({conversationId, accountId, message: OutboundMessage, actor, replyToMessageId?, db?}) -> {messageId, externalMessageId, connectionId, resolvedAddress?}. Text + media only. Flow: conversation (account-scoped) + contact -> connection (conversation.connection_id in this account, else account's whatsapp_cloud) -> provider from registry (registerBuiltinProviders) -> identities from contact_identities + legacy phone/wa_user_id fallback (whatsapp only) -> provider.resolveTarget (null -> ChannelError recipient_unreachable) -> capability validation (unsupported media kind, caption > captionMaxLength except audio, missing text/url -> invalid) -> reply parent lookup -> provider.send -> contacts.phone fix on resolvedAddress -> insert message -> update conversation -> flow pause for agent (best-effort). Provider error propagates: nothing persisted, conversation untouched.
+- Actor mapping: agent -> sender_type 'agent' (+ sender_id when userId given); bot/flow/automation/ai -> 'bot', ai_generated true only for 'ai'. Persisted columns match today's send-message (no media_type column written, as today).
+- Errors: ChannelError (provider/validation), ConversationNotFoundError, ConnectionNotConfiguredError, OutboundPersistError; toSendMessageError(err) maps them to the old SendMessageError (not_found 404, whatsapp_not_configured 400, db_error 500, pre-provider ChannelErrors -> bad_request 400, others -> meta_error 502 "Meta API error: ...").
+- Files: send.ts, send.test.ts (19 tests, mocked provider), prd.json, progress.txt. Existing send path untouched.
+- **Learnings for future iterations:**
+  - Input needs accountId (tenancy), not in the original sketch. template/interactive throw ChannelError unsupported ("not implemented yet"): SEAM in validate() for US-024.
+  - Known gap: phone auto-fix updates contacts.phone only, not contact_identities (same as today's legacy behavior); revisit when identities become the source of truth.
+  - send.ts imports SendMessageError from whatsapp/send-message; when US-025 makes that module delegate to send.ts the cycle is runtime-only (used inside functions), but move the class if it bites.
+  - Baseline: typecheck clean, lint 40 warnings.
+---
+
+## 2026-09-21 - US-024
+- sendOutbound now handles `template` and `interactive` (src/lib/channels/send.ts). Capability checks (templates / interactiveButtons / interactiveList) throw ChannelError 'unsupported' before the provider is called (stable messages exported: UNSUPPORTED_TEMPLATES/BUTTONS/LIST). Interactive payload is also checked with validateInteractivePayload ('invalid').
+- Persistence identical to sendMessageToConversation: template -> content_type 'template', template_name, content_text = templateContentText(row, templateBodyParams(...), contentText); interactive -> content_type 'interactive', interactive_payload jsonb, content_text = body, conversations.last_message_text = interactivePayloadPreviewText.
+- Files changed: src/lib/channels/send.ts, send.test.ts, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Decision: the core resolves the `message_templates` row (resolveTemplateRow, needs db+account) and hands `{row, messageParams, params}` to the provider in `template.provider`; callers give send-time values as `template.provider = {messageParams, params}` and an optional pre-rendered body as `SendOutboundInput.contentText`. The provider stays DB-free. Language '' means "unspecified" (resolved from the row, else en_US).
+  - The neutral InteractivePayload uses `buttonLabel`, but persisted `messages.interactive_payload` is the legacy `button_label` shape (thread renderer/quick replies read it): send.ts converts back for persistence. Callers of US-025+ pass the neutral shape.
+  - Malformed template row -> TemplateMalformedError, mapped by toSendMessageError to the legacy `template_malformed` 500. Baseline now 110 files / 1416 tests, lint 40 warnings.
+---
+
+## 2026-09-21 - US-025
+- sendMessageToConversation (src/lib/whatsapp/send-message.ts, shared by /api/whatsapp/send and /api/v1/messages) is now a thin wrapper: validateSendMessageParams -> toOutboundMessage (text/media/template/interactive; list button_label -> neutral buttonLabel; template send data in template.provider, language '' = unspecified) -> sendOutbound({actor:{type:'agent'}, contentText, db}) -> toSendMessageError. The route itself is unchanged apart from the conversation-creation path: findOrCreateConversation now stamps connection_id (findAccountWhatsAppConnection; null when the account has none, send then 400s as before). All ~350 lines of Meta plumbing removed from send-message.ts (constants, SendMessageError, validate stay).
+- Fixes in send.ts to keep EXACT legacy behavior (assertions untouched): (1) errors thrown by provider.send are tracked in a WeakSet and always map to meta_error 502 (before, a provider ChannelError 'invalid'/'unsupported' mapped to 400; pre-provider ones still 400); (2) the messages insert always writes template_name/interactive_payload (null for text/media) as the old code did; (3) "no phone number or WhatsApp user ID" message kept for whatsapp_cloud (generic text for other channels).
+- Test edits: only ADDED one test in route.test.ts (conversation created by the contact_id path carries connection_id). No existing assertion or fake changed; send-message.test.ts and characterization tests pass unchanged.
+- Known delta: order of pre-send checks is now connection lookup BEFORE recipient resolution (old: recipient first), so a contact with no address AND an account with no connection now answers "not configured" instead of "no phone number". Sender_id still not written for the dashboard agent (as before).
+- Not verified manually against the dev server (needs cookie session + seeded connection/credentials; Meta unreachable). Covered by the route/characterization tests. Build OK.
+- **Learnings for future iterations:**
+  - US-026 (/api/v1/messages) already gets the new path through sendMessageToConversation; it only needs its own tests/cleanup.
+  - Other senders (flows/automations/broadcast/AI) still call meta-api directly (US-027+).
+  - Baseline: 110 files / 1417 tests, lint 40 warnings, typecheck clean, build OK.
+---
+
+## 2026-09-21 - US-026
+- Mostly verification. POST /api/v1/messages -> resolveConversationByPhone (stamps connection_id = account's whatsapp_cloud connection on create; fails fast with whatsapp_not_configured 400 BEFORE creating anything) -> sendMessageToConversation (thin wrapper) -> sendOutbound. No production code changed.
+- Audit of every conversation creator (grep insert/upsert on conversations, non-test): resolve-conversation.ts (connection_id set), api/whatsapp/send route contact_id path (set, US-025), channels/ingest.ts (set, US-013/014). lib/api/v1/contacts.ts does not create conversations. All stamp connection_id.
+- Added src/app/api/v1/messages/route.test.ts (8 tests, real resolve-conversation + wrapper + sendOutbound over an in-memory db; only requireApiKey and Meta senders mocked): text to unknown number (contact+conversation with connection_id, 201 envelope, message persisted), reuse of contact/conversation, template, media+caption, 400 whatsapp_not_configured with nothing created, 502 meta_error with nothing persisted, 400 bad_request set (no orphan contact), 401/403/429 pass-through + scope 'messages:send'.
+- Current public contract (for US-060): request JSON {to (E.164, required), type: text|template|image|video|document|audio (default text; interactive types also accepted via interactive_payload), text (body or caption), media_url, filename, template:{name, language, params: string[] (positional body) | {header/body/button structured}}, interactive_payload, reply_to_message_id (uuid, same conversation), name (names a NEW contact)}. Success 201 {data:{message_id, whatsapp_message_id, conversation_id, contact_id, contact_created}}. Error envelope {error:{code,message}}; codes: unauthorized 401, forbidden 403 (missing scope messages:send), rate_limited 429 (+Retry-After, X-RateLimit-*; 120/min/key), bad_request 400, whatsapp_not_configured 400, not_found 404, meta_error 502, template_malformed 500, db_error 500, internal 500.
+- **Learnings for future iterations:**
+  - v1 messages route only speaks phone (`to`); no address/channel field yet, so Telegram etc. need the contract change in US-060.
+  - Rate limit runs in requireApiKey before the scope check; not exercised here (mocked), covered by the api-context tests.
+  - The fake db in the new test (like/limit/eq/insert/update, conversations embed contact) is a copy of the send-message characterization fake plus like/limit.
+
+## 2026-09-21 - US-027
+- New src/lib/flows/send.ts: engineSendText/Media/InteractiveButtons/List keep the engine's call shape and `{whatsapp_message_id}` return but are thin adapters over sendOutbound({actor:{type:'flow'}, db: flows supabaseAdmin()}) with neutral messages (interactive uses buttonLabel; core persists the legacy button_label shape). engine.ts now imports "./send"; flows no longer touch meta-api or flows/meta-send.ts. A provider failure throws before persisting, so the run still ends failed with send_*_failed and nothing is stored.
+- flows/meta-send.ts left untouched (US-031 removes dead code): its engineSend* have no flows callers now; loadAccountMetaCredentials + engineSendText(aiGenerated) still serve ai/auto-reply, and automations/meta-send.ts imports engineSendInteractive*.
+- Test edits (assertions untouched): engine.test.ts and dispatch.test.ts mock "./send" instead of "./meta-send" (module the engine imports now); engine.characterization.test.ts fake gained the `contact:contacts(*)` embed for conversations (sendOutbound loads conversation+contact in one query). The direct engineSend* sender tests in that file still exercise the old meta-send.ts (dead code until US-031). New send.test.ts (4 tests).
+- Deltas vs old flows sends (RNF-01 notes): media rows now also store media_url (core behavior, same as dashboard); text rows omit explicit ai_generated (DB default false); preview for a whitespace-only media caption is the caption not "[kind]"; empty text / oversize caption / bad interactive payload are rejected by the core before the provider (still a failed send -> failed run). Not verified against real Meta (unreachable).
+- **Learnings for future iterations:**
+  - Fakes used with sendOutbound need the conversations `contact:contacts(*)` embed, insert().select().single(), and channel_connections/contact_identities tables.
+  - US-028+ (automations, AI auto-reply) can copy flows/send.ts as the adapter pattern; then meta-send.ts files become dead (US-031).
+  - `npm run build` not run (dev server on :3100 shares .next); typecheck/lint/test clean. Baseline: 112 files / 1429 tests, lint 40 warnings.
+---
+
+## 2026-09-21 - US-028
+- New src/lib/automations/send.ts: engineSendText/Template/Interactive keep the engine call shape and `{whatsapp_message_id}` return, as thin adapters over sendOutbound({actor:{type:'automation'}, db: automations supabaseAdmin()}). engine.ts imports "./send" (automations no longer use meta-send.ts or the flows interactive senders). Failed provider send persists nothing and the step/log ends failed (unchanged).
+- Wait: the pending row now stores conversation_id (from context) and connection_id (that conversation's connection_id). resumePendingExecution accepts both (cron route passes them); the saved conversation_id overrides context.conversation_id, so the resume sends through THAT conversation. The connection is not used on resume (derived from the conversation).
+- Triggers without a conversation (time/tag/new-contact): resolveConversationId(args, need) takes the contact's most recent conversation (last_message_at desc) whose connection supports the step (provider capabilities from the registry: templates / interactiveButtons / interactiveList; text always; NULL connection_id = legacy whatsapp_cloud). If conversations exist but none supports the step -> ExecutionIgnored: no send, no throw, step result status 'skipped' with detail "ignored: contact has no conversation on a connection that supports <capability>", log status success, run stops. No conversation at all -> still a FAILED step with the old message (pinned by engine.test.ts and the characterization test, whose assertions cannot change), so "ignored" covers the "exists but unsupported" case.
+- Core tweak: SendOutboundInput.fallbackPreview (default `[<content_type>]`); automations pass `[template:<name>]` so their preview stays as before (dashboard keeps `[template]`).
+- Test edits (assertions untouched): engine.test.ts mocks "./send" instead of "./meta-send"; engine.characterization.fake.ts gained the `contact:contacts(*)` embed and string-aware order() (ISO dates). New engine.channel.test.ts (6 tests): pending stores conversation/connection (and nulls), resume via saved conversation, most recent conversation, skip unsupported connection, ignored-with-reason.
+- Files: src/lib/automations/{send.ts,engine.ts,engine.channel.test.ts,engine.test.ts,engine.characterization.fake.ts}, src/lib/channels/send.ts, src/app/api/automations/cron/route.ts, prd.json, progress.txt
+- **Learnings for future iterations:**
+  - Logs UI still draws a red X for a 'skipped' step (StepRow only knows success/other); harmless but a US for the logs page could label it neutral.
+  - The nested-branch scope treats ignored like a failure (stops that branch only; parent continues), same as errors.
+  - automations/meta-send.ts and flows/meta-send.ts are now dead except flows meta-send serving ai/auto-reply (US-031 cleanup).
+  - Ran `npm run build` (OK). Baseline: 113 files / 1435 tests, lint 40 warnings, typecheck clean.
+---
+
+## 2026-09-21 - US-029
+- src/lib/ai/auto-reply.ts: the reply now goes through sendOutbound({actor:{type:'ai'}, message:{type:'text'}, db: ai admin}) (ai_generated true, sender_type bot, as before); "typing..." goes through new `showTyping` (src/lib/channels/send.ts): loads the conversation's connection (fallback: account's WhatsApp), provider from registry, no-op unless capabilities.typingIndicator, then provider.typing(conn, target, {inboundExternalId}). Still best-effort: auto-reply catches and warns "typing indicator failed (continuing)". Slot claimed before the send, throttle, cap and handoff untouched. src/lib/ai no longer imports flows/meta-send.
+- inboundMessageId was already threaded (fanout passes externalId).
+- Tests: auto-reply.characterization.test.ts passes UNCHANGED. auto-reply.test.ts mocked the old modules (flows/meta-send, meta-api), so its mocks were re-pointed to channels/send (sendOutbound/showTyping); the loadAccountMetaCredentials(_, 'acct-1') assertion is gone since credentials are now the provider's job (typing now uses the conversation's connection, not only the fallback). New showTyping tests in channels/send.test.ts (3).
+- Files: src/lib/ai/auto-reply.ts, auto-reply.test.ts, src/lib/channels/send.ts, send.test.ts, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - flows/meta-send.ts and automations meta-send are now unused by production code (US-031 removes them).
+  - src/lib/ai files are not prettier-formatted (no semicolons style); don't run prettier over them.
+---
+
+## 2026-09-21 - US-030
+- deliverBroadcast (src/lib/whatsapp/broadcast-core.ts) now sends through the provider of the plan's connection: registerBuiltinProviders + getProvider(connection.channel_type), REQUIRES capabilities.templates (missing -> broadcast marked 'failed' and ChannelError('unsupported') thrown before any recipient), then per recipient provider.send(connection, {kind:'whatsapp:phone', address: phone}, {type:'template', template:{name, language, provider:{row, params}}}). The phone-variant loop is gone (the provider owns it, US-010). Error text identical: provider keeps Meta's message; a non-Error rejection (wrapped by toChannelError) is mapped back to 'Unknown error'.
+- BroadcastPlan gained `connection: ChannelConnection` (createBroadcast and planBroadcastResume fill it from loadWhatsAppSendConnection; resume uses the broadcast's connection_id). phoneNumberId/accessToken stay on the plan (pinned by existing core/resume assertions) but are informational now.
+- Tests: assertions unchanged; characterization test only got a `connection` in its plan fixture plus credential mocks (encryption decrypt + channels/admin-client), since the provider reads credentials itself; meta-api sendTemplateMessage mock still works. New broadcast-core.provider.test.ts (unsupported capability).
+- Deviation: credentials are read by the provider per send (one PK lookup + decrypt per recipient), not once per broadcast; the connection row is resolved once. Dashboard route /api/whatsapp/broadcast still sends directly via meta-api (not deliverBroadcast; out of scope). /api/v1/broadcasts and resume route use deliverBroadcast unchanged. Not verified against real Meta.
+- **Learnings for future iterations:**
+  - Any test that calls a provider send needs credential mocks (fakeCredentialsAdmin + decrypt).
+  - Baseline: 114 files / 1439 tests, lint 40 warnings, typecheck clean, build OK.
+---
+
+## 2026-09-21 - US-076
+- Contract: `ChannelProvider.send(conn, target, msg, opts?: SendOptions)`, `SendOptions { credentials?: ConnectionCredentials }` (additive). The WhatsApp provider uses `opts.credentials` when given, else reads them (unchanged). Scope is one delivery run, no global cache (credentials can be replaced).
+- deliverBroadcast reads getConnectionCredentials(connection.id) ONCE (`?? {}` when none -> provider raises its auth error per recipient without re-reading) and passes it to every send. New broadcast-core.credentials.test.ts: 5 recipients -> 1 read.
+- Dashboard route POST /api/whatsapp/broadcast now sends via provider.send of conn.connection (registerBuiltinProviders + getProvider, requires capabilities.templates -> 400 otherwise), passing the credentials loadWhatsAppSendConnection already resolved. Request/response shapes and per-recipient results identical. New route.test.ts (12 tests) pinned the old behavior BEFORE the migration (meta-api mocked) and passes unchanged after.
+- Files: types.ts, whatsapp-cloud/index.ts, broadcast-core.ts, api/whatsapp/broadcast/route.ts (+2 new test files), prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - route.ts of the broadcast is not prettier-formatted (no semicolons); left as is to keep the diff surgical.
+  - `sendTemplateMessage` grep: only meta-api.ts, provider, and src/lib/automations/meta-send.ts (orphan: nothing in production imports it since US-028; engine uses automations/send.ts). Delete it in US-031.
+  - Baseline: 116 files / 1453 tests, lint 40 warnings, typecheck clean, build OK.
+---
+
+## 2026-09-21 - US-031
+- Deleted src/lib/flows/meta-send.ts (engineSendText/Media/InteractiveButtons/List + loadAccountMetaCredentials) and src/lib/automations/meta-send.ts. Importer grep first: only each other and flows/engine.characterization.test.ts; loadAccountMetaCredentials had no production user left (AI moved in US-029), so nothing had to be moved. send-message.ts was already the thin wrapper over sendOutbound (only validateSendMessageParams/SendMessageError/toOutboundMessage remain), no dead code to cut. The engineSend* names in flows/send.ts and automations/send.ts are the NEW adapters over the core and stay.
+- Grep result: sendText/Template/Media/Interactive* from meta-api are called only in meta-api.ts and channels/providers/whatsapp-cloud/**; other meta-api imports are non-send helpers (downloadMedia, INTERACTIVE_LIMITS, uploadResumableMedia, template lifecycle, typing types). Tests still mock meta-api sender exports: that is the HTTP boundary under the provider, fine.
+- Removed 15 tests, all in src/lib/flows/engine.characterization.test.ts (they imported the deleted module): describe "flows engineSendText" (8: credentials+persist+preview; ai_generated flag; phone-variant retry+correction; other Meta error persists nothing; other account refused; no WhatsApp config; BSUID-only single send; no address error), "flows engineSendMedia" (3: content_type+caption; [kind] preview/null body; Meta rejection persists nothing), "flows engineSendInteractiveButtons / List" (4: buttons payload; list button_label; variant retry; Meta rejection). Equivalent coverage: channels/send.test.ts (text/media/interactive persistence, actors and ai_generated, capability/target validation, other account, no connection, failed send persists nothing, phone correction), whatsapp-cloud provider tests (variant retry, BSUID single attempt), flows/send.test.ts (adapter mapping, failure propagation), and the remaining engine runs in the same file (text->media->buttons, list prompt, failed send fails the run). Comments in the two automations/flows test headers updated; no assertions changed.
+- Files: 2 deleted, flows/engine.characterization.test.ts, flows/engine.test.ts (comment), automations/engine.characterization.test.ts (comment), prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - Baseline: 116 files / 1438 tests, lint 40 warnings, typecheck clean, build OK.
+---
+
+## 2026-09-21 - US-032
+- Migration 047_channel_unique_indexes.sql (046 was taken by US-015), idempotent: (1) re-backfill conversations.connection_id NULL from the account's whatsapp_cloud connection (enabled first, oldest); (2) accounts still with NULL conversations get a DISABLED legacy connection (external_id `legacy-<account_id>`, status disconnected, disabled_at, no credentials) in their oldest store (created from the account name / 'Loja principal' if none) and the conversations are linked; (3) conversations.connection_id NOT NULL; (4) UNIQUE idx_conversations_contact_connection (contact_id, connection_id), old idx_conversations_account_contact dropped; (connection_id,last_message_at DESC) already existed from 044 (idx_conversations_connection_last_message) so it is not duplicated; (5) flow_runs: active runs with NULL conversation_id attached to the contact's most recent conversation, else closed as 'failed' (end_reason conversation_missing_migration_047); duplicate active runs per conversation keep the newest; idx_one_active_run_per_contact replaced by partial UNIQUE idx_one_active_run_per_conversation (conversation_id) WHERE status='active'.
+- verify-schema.sql: nullable-column count 6 -> 5 (conversations.connection_id left the list) + asserts NOT NULL, no NULL rows, the three indexes, old indexes gone.
+- Code: resolve-conversation.ts and send/route.ts find the conversation per (contact, connection); send route with no connection now returns 400 "WhatsApp not configured" without creating a conversation (before: created a NULL conversation then failed the same way; NOT NULL forbids that). ingest.ts: doc comment only (NULL adoption kept as defensive fallback so existing webhook fixtures with no connection_id still pass; a conversation on another connection was already handled as "create new" by the lookup). flows/engine.ts + flows/cron comments renamed to the new index.
+- Tests: ingest.test.ts only. Its OWN fake now models UNIQUE (contact_id, connection_id) instead of (account_id, contact_id); the test "a conversation of another connection is not adopted; the old index makes the message skip" (pinned the transition behavior) was replaced by "second connection gets a second conversation" + "same connection reuses its conversation". No other assertion changed. 1438 tests green, typecheck clean, lint 0 errors/40 warnings, build ok.
+- Proof: dev DB seeded (account with connection + NULL conv, 2 orphan accounts one with an existing store, active run with NULL conversation w/ and w/o conversation to attach) -> applied: convs linked (legacy conns disabled, 0 credentials, store reused/created), run 1 attached, run 2 closed; re-run via psql = no change; dupe conversation / dupe active run / NULL insert rejected; second connection conversation allowed. Seeds cleaned. Replay -p wacrm-replay + verify-schema OK.
+- **Learnings for future iterations:**
+  - flows/engine.ts still loads the active run BY CONTACT (loadActiveRunForContact) and pauses runs by contact (channels/send.ts); with a contact on two connections these hit the wrong conversation's run. Behavior deliberately unchanged here; a later story (multi-connection contacts) should scope by conversation.
+  - Web route tests mock the supabase chain with a fixed .eq depth: adding a third .eq() to ingest's conversation lookup broke ~18 webhook tests, so filter in code, not in the query.
+  - Signing up an auth user auto-creates an account (one account per owner); seed via auth.users insert, then use that account id.
+---
+
+## 2026-09-21 - US-077
+- flows/engine.ts: loadActiveRunForContact -> loadActiveRunForConversation (extra .eq conversation_id; dispatchInboundToFlows passes input.conversationId, so handleReplyForActiveRun only sees the run of the conversation the message arrived in). channels/send.ts: agent pause filters account + conversation_id + status active (was contact_id).
+- flows/cron route reviewed: keyed by run id (sweep by age, update .eq id), nothing by contact. isDuplicateInbound stays by contact on purpose (keyed by meta message id, harmless).
+- Tests: NEW flows/engine.conversation-scope.test.ts (filtering fake; contact with runs in cv-A/cv-B: reply in A advances only run-A, reply in B only run-B); send.test.ts + new test (agent reply in cv-2 pauses with conversation_id cv-2 filter). EDITED assertions (filter shape is the behavior changed by the story): send.test.ts 'flow pause' filters, and whatsapp/send-message.characterization.test.ts line ~658 ['contact_id','ct-1'] -> ['conversation_id','cv-1'].
+- Checks: typecheck, lint, 1441 tests green, build ok.
+- **Learnings for future iterations:**
+  - engine.ts is NOT prettier-formatted (double quotes); do not run prettier on it (rewrites ~600 lines).
+  - Existing dispatch.test.ts fake ignores .eq filters, so it cannot prove scoping; use a filtering fake.
+---
+
+## 2026-09-21 - US-033
+- New routes: src/app/api/stores/route.ts (GET any member: stores of the account + `connections` summary [id, channel_type, display_name, status, disabled_at] via a second query on channel_connections, never config/credentials; POST admin+ -> 201 {store}) and src/app/api/stores/[id]/route.ts (PATCH admin+, 404 for other account / empty patch 400; DELETE admin+: 404, 409 {error, code:'has_connections'} when ANY connection exists (active or disabled), FK 23503 on delete (race) mapped to the same 409, else {ok:true}).
+- Validation in src/lib/stores/validation.ts: name required, trimmed, max 120; address 300, phone 40, manager_name 120 (trimmed, ''->null); business_hours object|null; settings object.
+- Uses the session (RLS) client from requireRole/getCurrentAccount, always also filtered by account_id. Errors: { error } via toErrorResponse (401/403).
+- Tests: src/app/api/stores/route.test.ts (15): list scoping + summary, create validation (empty/too long/bad json fields), agent 403, patch, 404 other account, delete 409 (active and disabled), delete ok, FK race 409. No UI, no migration.
+- **Learnings for future iterations:**
+  - The fake client in the test honours .eq and select columns; reusable pattern for RLS-client route tests with the real role check over a mocked getCurrentAccount.
+  - Baseline: 118 files / 1456 tests, lint 40 warnings, typecheck clean. Build not run (new routes only).
+---
+
+## 2026-09-21 - US-034
+- New routes: src/app/api/channels/connections/route.ts (GET any member; POST admin+ -> 201 {connection}) and [id]/route.ts (PATCH, DELETE admin+). Helpers in src/lib/channels/connection-input.ts (provider lookup via registerBuiltinProviders+getProvider, display_name, config/credentials schema parsing, external_id resolution, response shaping) and saveConnectionCredentials() appended to src/lib/channels/connections.ts (service role upsert, encrypt(JSON) as json_v1).
+- POST: unknown channel_type 400 code unknown_channel_type; invalid config/credentials 400 {error, code: invalid_config|invalid_credentials, details: schema error}; store of another account 404; UNIQUE(channel_type, external_id) 23505 -> 409 duplicate_connection; starts `disconnected`; if the credentials write fails the row is deleted. external_id = body.external_id, else config.phone_number_id, else 400 (providers have no derive hook yet; Telegram will pass external_id).
+- Responses go through publicConnection(): fixed column list, config with keys matching /token|secret|password|api_?key|private/ dropped (whatsapp verify_token). Credentials never selected by the session client.
+- PATCH: display_name, config (SHALLOW-merged over the stored config then validated, so the hidden verify_token survives), credentials (replace), store_id (must be the account's, else 404). DELETE: 409 has_conversations (pre-check + FK 23503), credentials cascade.
+- Tests: src/app/api/channels/connections/route.test.ts (18): roles, validation, unknown channel, other-account store 404, duplicate 409, canary, encrypted credentials (decrypt round-trip), PATCH rename/merge/move/replace, DELETE 409/200 + credentials gone.
+- **Learnings for future iterations:**
+  - No secret-field metadata exists in the provider contract; the secret-key regex in connection-input.ts is the guard. A provider with a secret config key not matching it needs the regex extended (or a contract field).
+  - middleware.ts does not protect /api/channels; routes authenticate themselves via requireRole (401/403).
+  - Baseline: 119 files / 1474 tests, lint 40 warnings, typecheck clean. Build not run.
+---
+
+## 2026-09-21 - US-035
+- Lifecycle routes under src/app/api/channels/connections/[id]/{connect,test,disable,enable}/route.ts and GET src/app/api/channels/providers/route.ts. Shared helpers in src/lib/channels/connection-lifecycle.ts (loadOwnedConnection, updateConnection).
+- connect: forwards { pin } to provider.connect, never stores/echoes it. ok -> status connected, connected_at, config.subscribed_apps_at=now, config.registered_at=now only when details.registration==='registered', config.last_registration_error=null. Failure -> 200 { ok:false, message, error }, status needs_action (auth/invalid) else disconnected, last_error + config.last_registration_error. 409 `disabled` if the connection is disabled.
+- test: provider.health -> status/last_health_check_at/last_error (null when connected). disable: idempotent (already_disabled), disconnect best-effort, keeps credentials, returns open_conversations (status <> closed). enable: clears disabled_at, status stays disconnected.
+- Contract: optional `descriptor` ({panel:'form'|'custom', fields[]}) added to ChannelProvider; whatsapp_cloud declares panel 'custom'. Providers list label is the i18n KEY `Channels.providers.<type>.name`; the key is NOT yet in messages/*.json (UI story must add it to all 4 catalogues).
+- Files: routes above, connection-lifecycle.ts, types.ts, whatsapp-cloud/index.ts, [id]/lifecycle.test.ts (17 tests).
+- **Learnings:**
+  - Provider failure on connect is HTTP 200 ok:false (like /api/whatsapp/config); only disabled -> 409.
+  - Route tests: mock '@/lib/channels/providers' (registerBuiltinProviders noop) and registerProvider a fake as 'whatsapp_cloud'.
+  - Success with registration 'skipped' still sets status connected (per story); /test then reports degraded.
+---
+
+## 2026-09-21 - US-036
+- Settings rail: `whatsapp` section replaced by `stores` (Store icon) and `channels` (PlugZap) in the workspace group; resolveSection('whatsapp') -> 'channels'. Overview WhatsApp tile now targets `channels`. New StoresPanel (placeholder) and ChannelsPanel (head + provider card + the existing WhatsAppConfig below, so the current setup flow is intact). Non-edit-settings roles see a read-only note.
+- i18n (4 catalogues): Settings.sections.{stores,channels}, Settings.stores.*, Settings.channels.*, Channels.providers.whatsapp_cloud.{name,description}.
+- Files: src/components/settings/{settings-sections.ts,settings-overview.tsx,stores-panel.tsx,channels-panel.tsx,settings-sections.test.ts}, src/app/(dashboard)/settings/page.tsx, messages/*.json.
+- Browser (pt, :3100): rail shows Lojas and Canais; ?tab=whatsapp lands on Canais with the WhatsApp config form; ?tab=stores works. Screenshots in scratchpad (us036-*.png).
+- **Learnings for future iterations:**
+  - Sidebar/header links still use ?tab=whatsapp on purpose (legacy mapping). Later stories fill StoresPanel (US-037/038?) and ChannelsPanel (US-039); keep WhatsAppConfig reachable until then.
+  - Panel copy keys live under Settings.stores / Settings.channels; provider labels under Channels.providers.<type>.{name,description}.
+---
+
+## 2026-09-21 - US-037
+- Stores screen: src/components/settings/stores-panel.tsx (list with name/address/phone + connection chips, create/edit dialog reused, delete confirm dialog, delete disabled with hint when the store has connections, empty state "Cadastre sua primeira loja", sonner toasts, writes gated by useCan('edit-settings')). Pure helpers in src/lib/stores/ui.ts (+ ui.test.ts): connectionChipState, hoursToText/textToHours (business_hours = { text } or null), validateDraft.
+- i18n: Settings.stores.* extended and Settings.channels.type.* / Settings.channels.status.{connected,degraded,disconnected,needs_action,disabled} added in all four catalogues (US-038 can reuse the channels keys). stores.listTitle is now the empty-state title.
+- Verified in browser (pt, :3100): empty state, name-required toast, create, edit, delete disabled with hint for a store with a seeded connection (seed removed), confirm-dialog delete, back to empty state. Checks: typecheck, lint (0 errors, 40 warnings), TZ=UTC tests (1507), build OK.
+- **Learnings for future iterations:**
+  - No alert-dialog ui component exists: confirmation uses Dialog + destructive Button.
+  - dev-browser screenshots land in ~/.dev-browser/tmp; use `dev-browser run file.js`, and waitUntil:"domcontentloaded" for goto (networkidle times out on Next dev).
+---
+
+## 2026-09-21 - US-038
+- ChannelsPanel now lists connections grouped by store (GET /api/stores + GET /api/channels/connections): channel icon + type, display name, state chip (connectionChipState), last inbound (date-fns relative, getDateFnsLocale), actions Configurar (disabled, detail = US-040), Desativar (confirm dialog; toast shows open_conversations) / Ativar, Apagar (only when has_conversations is false; confirm dialog; 409 -> translated toast). Writes gated by useCan('edit-settings'). Empty states: no stores -> link to ?tab=stores; stores but none connected -> "Conectar canal" scrolls to the legacy WhatsApp form (#whatsapp-config, stays until US-075).
+- GET /api/channels/connections extended with `has_conversations` (one extra query on conversations for the account, .in(connection_id, ids)); route tests extended (fake gained .in).
+- Files: src/components/settings/channels-panel.tsx, src/lib/channels/ui.ts(+test), src/app/api/channels/connections/route.ts(+test), messages/*.json (Settings.channels.*).
+- Browser (pt, :3100): empty without stores, empty with stores, list with 2 connections in 2 stores (one disabled), disable/enable, delete; Apagar hidden for the connection with a conversation. Seeds removed.
+- **Learnings for future iterations:**
+  - dev-browser session may be logged in as another account (qa-ptbr): check the auth cookie email; contacts/conversations.user_id is the auth.users id, NOT profiles.id.
+  - has_conversations query is not paginated: PostgREST caps at 1000 rows, so with huge conversation counts it can under-report (DELETE still 409s; safe).
+---
+
+## 2026-09-21 - US-039
+- New src/lib/channels/ui-registry.tsx (channel_type -> panel | form descriptor + icon; whatsapp_cloud = panel, telegram = form/no fields). whatsapp-config.tsx was `git mv`d to src/lib/channels/providers/whatsapp-cloud/ui/whatsapp-connection-panel.tsx and rewritten over the NEW routes (create: POST connections then /connect {pin}; edit: PATCH then /connect when needed; probe: /test; mirror: PATCH config). Pure helpers in ui/panel-logic.ts (+test, 30 cases). ChannelsPanel: legacy embedded form removed; Configurar opens the registry panel in place of the list; Conectar canal opens create mode with a store select (native select). ChannelConnectionRow gained optional external_id/config/last_error.
+- Secrets: never prefilled. Access token and verify token show "informado" + Substituir; create mode generates a verify token (32 hex) to copy into Meta; PIN goes only to /connect.
+- i18n: 15 keys in Settings.whatsapp, back/storeLabel in Settings.channels (4 catalogues). Old keys no longer used (tokenCorrupted, resetConfig, tokenHidden, wabaSubscribed...) were left in place; US-069 can prune.
+- Behavior changes to know: waba_id is now REQUIRED (config schema); phone number is read-only in edit (PATCH cannot change external_id); no Reset button (delete lives in the list); probe shows connected/not + reason only (Health has no per-check breakdown), Meta step/trace details of the old save error are not shown; the "token corrupted" banner is now the status message.
+- Checks: typecheck, lint 0 errors/39 warnings, TZ=UTC tests 1537, build ok. Browser verified (see prd notes); seeds removed.
+- **Learnings:** the /connect failure after a successful create leaves the connection row (needs_action); the panel stays open in edit mode with the error. Legacy /api/whatsapp/config routes untouched (US-069).
+---
+
+## 2026-09-21 - US-075
+- "Connect a channel" wizard: src/components/settings/connect-channel-wizard.tsx (4 steps: store, channel cards from GET /api/channels/providers, data, connect+test). Channels panel's "Conectar canal" opens it (create mode + native store select removed from ChannelsPanel). Step 3: registry `panel` entry hosts the WhatsApp panel (new props `onCreated(conn,{pin})` = create only, host connects; `hideChrome`), otherwise the generic src/components/channels/descriptor-form.tsx (text/secret/select/switch; DescriptorField type gained select/switch/options/pattern). Step 4: POST connect then POST test; failure shows the reason + a fix hint by error code + Try again; closing keeps the connection in the list.
+- Pure/tested: src/lib/channels/descriptor-form.ts (validation, payload split config/credentials) and wizard.ts (capability chips from flags, fix hint, step gating). 31 new keys x4 in Settings.channels.wizard (textual insertion, no json.dump).
+- Files: wizard, descriptor-form (tsx+ts+test), wizard.ts(+test), channels-panel.tsx, whatsapp-connection-panel.tsx, types.ts, ui-registry.tsx, messages x4, prd.json.
+- Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1546, build ok. Browser verified (see prd notes); seeds removed.
+- **Learnings:**
+  - NEVER run `npx prettier --write src/components` etc.: many committed files are not prettier-formatted and get rewritten; format only the files you touched.
+  - The wizard preselects the store when there is exactly one; providers endpoint lists only registered providers (today whatsapp_cloud), so the wizard shows only those.
+  - Field labels/help for a form provider: `Channels.providers.<type>.fields.<name>.label|help|options.<value>` (US-050 must add them).
+---
+
+## 2026-09-21 - US-040
+- Connection detail: src/components/settings/connection-detail.tsx (state chip + reason, last error with code/message/suggested action, 24h counts, actions Testar/Reconectar/Mover de loja/Desativar-Ativar/Apagar, registry panel rendered below). ChannelsPanel "Configurar" now opens it for every connection (view keeps the connection id; the row is re-read from the list after each change).
+- New GET /api/channels/connections/[id]/stats (any member): received/sent/failed in 24h via messages!inner(conversations.connection_id) (3 head-count queries) + conversations total/open (2 more); numbers only. Pure helpers in lib/channels/ui.ts (parseLastError, errorSuggestion, canRunConnectionActions, moveTargets) with tests; route tests (3).
+- i18n: Settings.channels.detail.* x4 (textual insertion; ICU plural for counts). Old key configureSoon now unused.
+- Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1553, build ok. Browser verified; seeds removed.
+- **Learnings:** health failures store last_error.code = the health state (e.g. needs_action), so errorSuggestion treats needs_action as auth. Test/Reconnect are disabled for a disabled connection. Dialog buttons: use exact:true names (WhatsApp panel also has "Testar conexão com a API").
+---
+
+## 2026-09-21 - US-041
+- Overview: WhatsApp tile replaced by "Lojas: N" (GET /api/stores) and "Canais: X conectados de Y" + worst state (GET /api/channels/connections); no whatsapp_config read left in components. Pure helpers in lib/channels/ui.ts: summarizeChannels (severity needs_action > disconnected > degraded > connected; DISABLED connections are excluded from Y and from the worst pick, shown as "· N desativados"), defaultConnectionId, templatesForConnection (NULL connection_id -> default connection).
+- Templates: TemplateManager reads whatsapp_cloud connections, shows a native select (#template-connection) only when >1, filters the list by connection_id and sends connection_id in sync/submit bodies. Routes sync/submit accept optional connection_id (strict check via new isAccountWhatsAppConnection: 404 if not the account's whatsapp_cloud, 400 if not a string; default = previous behavior). New route tests for both (characterization first, then connection_id). Sync's existing-row lookup now also filters connection_id = selected OR NULL so a sync never adopts another connection's row.
+- Quick replies: optional "Loja" select (hidden with <=1 store; empty = Toda a rede), POST/PATCH validate store_id against the account (lib/stores/quick-reply-store.ts + test), chip "Loja: X" in the list. Keys x4 (Settings.overview.*, Settings.templates.connectionLabel, Settings.quickReplies.store*).
+- Files: settings-overview, template-manager, quick-replies-manager, sync/submit routes(+tests), quick-replies routes, lib/channels/{ui,whatsapp-connection}, lib/stores/quick-reply-store, types, messages x4.
+- **Learnings for future iterations:**
+  - Inbox quick-reply picker still lists ALL replies: conversations carry no connection->store data in the UI yet; filter (store_id NULL or = conversation store) arrives with US-042/043.
+  - message_templates keeps UNIQUE (user_id,name,language): the same template name on two connections of one user collides on submit (upsert) / errors on sync. Not solved here.
+  - Template PATCH/DELETE ([id] route) already resolve the connection from the template's connection_id (US-016); untouched.
+  - Old overview keys (connected, needsReconnecting) are unused now; US-069 can prune.
+---
+
+## 2026-09-21 - US-042
+- CONVERSATION_SELECT now embeds `connection:channel_connections(id, channel_type, display_name, status, disabled_at, store_id, store:stores(id, name))`; types ConversationConnection + Conversation.connection/connection_id (optional). normalizeConversation passes the embed through (undefined when absent, null when null, unwraps array embeds).
+- lib/inbox/conversations.ts: ConversationScopeFilters, NO_SCOPE_FILTERS, matchesConversationScope (AND of store/connection/channel; null = no-op), deriveScopeOptions (stores/connections/channelTypes present in loaded conversations). conversation-list applies the predicate with a constant default scope (no visible change); inbox page hydrateConversation now backfills `connection` too.
+- Files: src/lib/inbox/conversations(.test).ts, src/types/index.ts, conversation-list.tsx, inbox/page.tsx, prd.json.
+- Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1599, build ok. Browser (pt, :3100): seeded conversation linked to a connection+store renders in /inbox, no PostgREST error on /rest/v1/conversations; seeds removed.
+- **Learnings:**
+  - The only other consumers of the select are the v1 API routes, whose serializeConversation is an explicit projection, so the embed does not leak into the public API.
+  - Realtime UPDATE payloads carry no `connection`; state merges keep the old embed (spread), only hydrate backfills it. US-043 UI should read the store/channel from `conversation.connection`.
+  - prettier --write on src/types/index.ts and the existing test file reformats unrelated lines: edit those textually.
+---
+
+## 2026-09-21 - US-043
+- Badges + filters + quick-reply scoping. New pure helpers in lib/inbox/conversations.ts: shouldShowScopeUi(connections) (true only with >1 connection, any status, unknown/empty/1 -> false) and filterQuickRepliesForStore(replies, storeId) (store_id null/absent or = conversation store; unknown store -> network-wide only). Tests in lib/inbox/scope-ui.test.ts.
+- inbox/page.tsx counts ALL account connections (supabase client, channel_connections by account_id, RLS) and passes showScopeUi to ConversationList and MessageThread. New components/inbox/conversation-scope-badge.tsx ("Store · Channel" via Settings.channels.type.*, plus "Desativada" marker when disabled_at). List: store/connection/channel single-select dropdowns (options from deriveScopeOptions of loaded conversations), ANDed with status/tag/company; hidden filters are ignored (effectiveScope). Header shows the badge under the contact handle. Composer gets storeId (conversation.connection.store_id) -> QuickReplyPicker filters client-side.
+- i18n: Inbox.conversationList.{store,allStores,connection,allConnections,channel,allChannels,disabled} in all four catalogues (textual insertion).
+- Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1603, build ok. Browser (pt :3100, QA account): 1 connection -> no badge, no scope filter; 3 connections/2 stores -> badges (incl. disabled marker), store/channel/connection filters narrow correctly, header badge shows, quick replies: Alfa conv shows QR Alfa + network-wide, Beta conv shows QR Beta + network-wide. Seeds removed.
+- **Learnings:** the "one connection" rule counts account connections, not derived-from-conversations; a disabled connection counts. Options only list scopes that have loaded conversations. The QA account has zero connections by default (banner "WhatsApp nao conectado" is expected). New files were prettier-formatted; touched existing files were not (they weren't formatted before).
+---
+
+## 2026-09-21 - US-044
+- Unread per store, down-connection warning, disabled-connection read-only composer.
+- lib/inbox/conversations.ts: unreadByStore (conversations with unread per store id, same unit as the sidebar total), downConnections (disconnected|needs_action and not disabled), isConversationConnectionDisabled. Tests: lib/inbox/unread-and-health.test.ts.
+- inbox/page.tsx: one loadConnections() (account connections with store name) replaces the old two queries; refetched on mount, on resyncToken (focus/reconnect) and on a realtime channel "inbox-connections-realtime" over channel_connections (table is in supabase_realtime since 043). With >1 connection a banner (data-testid down-connections-banner) names each down store + link to /settings?tab=channels; with one connection the old whatsappNotConnected banner is unchanged (old banner is hidden only while the new one shows). The live connection status/disabled_at is overlaid onto conversation.connection (embed is fetched once, realtime payloads lack it).
+- conversation-list.tsx: store dropdown labels "Loja (n)" plus a chip row "Nao lidas por loja" (click = filter by store), only with showScopeUi.
+- message-thread.tsx: disabled connection -> composer replaced by a notice (+ link for users with edit-settings); send/media/interactive/template handlers also return early. History stays readable; disabled badge kept.
+- i18n: Inbox.page.{connectionDisconnected,connectionNeedsAction,connectionWarningLink}, Inbox.conversationList.unreadByStore, Inbox.messageThread.{connectionDisabled,connectionDisabledLink} in 4 catalogues.
+- Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1609, build ok. Browser (pt :3100): 2 stores/3 connections -> chips Centro 1 / Norte 1, banner names Loja Norte, disabled conversation shows notice and no composer textarea, flipping status to connected removes the banner live (realtime); one connection -> no chips, no new banner, old banner shown. Seeds removed.
+- **Learnings:** the banner says "A loja {store}" so a store named "Loja Norte" reads "A loja Loja Norte". The reaction action is not gated by connection disabled (server-side send still errors). Next dev rewrote AGENTS.md; reverted.
+---
+
+## 2026-09-21 - US-078
+- Server refuses sends through disabled connections. New `ConnectionDisabledError` (extends ChannelError, code 'unsupported', `reason`/CONNECTION_DISABLED_CODE 'connection_disabled') in channels/types.ts. `sendOutbound` and `showTyping` throw it right after loading the connection (before provider/persist). `toSendMessageError` maps it explicitly to SendMessageError('connection_disabled', 409) BEFORE the generic ChannelError branch (which would answer 400/502). v1 route already returns err.code -> 409 envelope; dashboard send route adds `code` to its `{error}` body only for this error. Reaction route, dashboard broadcast route (409 + code), createBroadcast/resume (BroadcastError 409) and deliverBroadcast (marks campaign failed, throws) refuse too.
+- Rule documented in whatsapp-connection.ts: an existing conversation ALWAYS sends through ITS connection; resolveWhatsAppConnection still returns the (disabled) own connection, callers refuse; only conversations without connection_id use the account fallback (enabled first).
+- Flows/automations already surface a thrown error (run failed send_*_failed + event detail; automation log failed + error_message); AI keeps its console.error "dispatch failed" path (no persisted failure record exists for AI).
+- Banner key Inbox.connectionDisconnected reworded x4 (name in quotes, no article), ICU {store} unchanged.
+- Tests: send.test.ts (core, no-fallback, mapping, typing), send/route.test.ts, v1 messages route.test.ts, react/route.test.ts (new), broadcast route.test.ts + broadcast-core.disabled.test.ts (new), automations engine.channel.test.ts, flows engine.characterization.test.ts, ai auto-reply.characterization.test.ts. All prove no provider call and nothing persisted. Baseline now: 134 files / 1624 tests, lint 40 warnings.
+- Not verified in browser (banner wording only checked in catalogues). `npm run build` not run (no routing/config change).
+- **Learnings:**
+  - Several existing files are not prettier-formatted (dashboard send/broadcast/react routes, some tests): format only the files that were clean before (check with git stash + prettier --check).
+  - Automations without a conversation in context pick a conversation without checking disabled_at; it then fails visibly in sendOutbound.
+  - AI auto-reply consumes a reply slot and pays an LLM call before the send is refused (a pre-gate would be a future optimization).
+---
+
+## 2026-09-21 - US-045
+- "Conversas" section in the contact profile: inbox side panel (current conversation highlighted, click selects in place) and contacts sheet (Details tab). Hidden with <=1 conversation. One query (conversations by contact_id with CONVERSATION_SELECT embed, last_message_at desc). Pure helper lib/inbox/contact-conversations.ts `contactConversationsSummary` (order, isCurrent, visible, connectionName only when a store has several connections among the rows) + 6 tests. Component components/inbox/contact-conversations.tsx (store · channel, unread, relative time via date-fns+getDateFnsLocale, status, "Desativada" marker, link /inbox?c=<id>). Keys Inbox.contactConversations.* x4.
+- Inbox already supported ?c=<id>, but only resolves it when the list loads; a client-side Link to another conversation did not switch. Fixed with an onOpen prop (page handleOpenConversationById selects from the loaded list, returns false -> normal link navigation).
+- Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1630, build ok. Browser (pt :3100): single-conversation contact -> no section; contact with 3 conversations (2 stores, telegram + whatsapp, one disabled) -> listed newest first, current highlighted and switching on click, URL updates; contacts sheet lists them too. Seeds removed.
+- **Learnings:** the contacts sheet has no "current" conversation (no highlight there). Contacts page has a `contactId` that can be null in types; guarded.
+---
+
+## 2026-09-21 - US-046
+- Composer honors channel capabilities. Client-safe source: GET /api/channels/providers fetched once per page load (module cache in hooks/use-channel-providers.ts). Pure helper lib/channels/composer-capabilities.ts: composerCapabilities(channelType, providers) -> canTemplate/canButtons/canList/canReact/canMedia, mediaKinds, captionMax, reasons (i18n keys); unknown provider -> text+media only; providers not loaded + whatsapp/no connection -> WhatsApp-full fallback (no flash). sendErrorMessageKey(code) maps unsupported/window_closed/recipient_unreachable/connection_disabled/invalid to Inbox.messageThread.sendError.*.
+- Composer: template button (and the session-expired template link) disabled + title; interactive menu item disabled + title (enabled if buttons OR list; builder kind switch is not restricted); per-kind attach items/voice note disabled + title by mediaKinds; caption maxLength + send guard from captionMax. Thread: reaction picker hidden (MessageActions canReact) when channel has no reactions or connection disabled; postReaction gated too (closes the US-044 gap). Send errors (send/media/interactive/template/react) show translated text when the response has a known `code`.
+- Server: SendMessageError gained optional channelCode (set by toSendMessageError from the ChannelError); dashboard send route returns it as `code` (connection_disabled unchanged). Side effect: a WhatsApp window_closed/unsupported ChannelError now shows the translated text instead of the raw Meta text.
+- Tests: composer-capabilities.test.ts (whatsapp, fixture without templates/list/reactions, no media, unknown, not loaded, error-code mapping). Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC tests 1637, build ok. Browser (pt :3100, seeded WA + telegram conversations): WA template enabled, react button present, interactive enabled; telegram template disabled "Este canal não aceita templates", reaction button absent, interactive disabled with title. Translated send error not exercised in browser (needs a provider refusal); unit-tested only. Seeds removed.
+- **Learnings:** disabled dropdown items have pointer-events-none, so put title on a wrapping span. GatedButton puts title on its span, so disabled+title works.
+---
+
+## 2026-09-21 - US-047
+- Added src/lib/channels/providers/telegram/{index,api,errors,schemas,lifecycle}.ts + telegram.test.ts and registered `telegram` in registerBuiltinProviders. Capabilities per spec (buttons/reactions/typing true; templates/list/delivery/read false; initiate after_inbound; 50 MB; caption 1024). Credentials `{bot_token}` (+ `secret_token` merged by connect), config `{bot_username?}`.
+- connect: NEXT_PUBLIC_SITE_URL must be https (else ok:false, ChannelError invalid, nothing persisted/called); random 32-byte base64url secret_token saved ENCRYPTED (merged with bot_token) BEFORE setWebhook; webhook `${origin}/api/channels/telegram/webhook/<id>`; allowed_updates message/edited_message/callback_query/message_reaction. disconnect = best-effort deleteWebhook. health = getWebhookInfo: needs_action (url empty/other or 401), degraded (error <1h old or pending >100), else connected. Inbound/outbound (resolveConnection, verify, parse, send) throw ChannelError('unsupported') until US-048/049; react/typing not implemented yet.
+- Contract: optional `deriveExternalId(config, credentials)`; `resolveExternalIdFor` in connection-input.ts is used by POST /api/channels/connections when external_id is absent (Telegram: getMe -> bot id). Bad credentials -> 400 invalid_credentials; network -> 502 provider_unreachable (Fail gained optional `status`).
+- i18n: Channels.providers.telegram.{name,description,fields.bot_token.label|help} in 4 catalogues (the generic DescriptorForm renders the bot_token field).
+- Bot API facts VALIDATED against core.telegram.org (Context7 /websites/core_telegram_bots_api): setWebhook url/secret_token (1-256 chars, A-Za-z0-9_-)/allowed_updates/drop_pending_updates; header `X-Telegram-Bot-Api-Secret-Token`; webhook ports 443, 80, 88, 8443 and HTTPS POST; getWebhookInfo fields url/pending_update_count/last_error_date/last_error_message (url empty when unset); deleteWebhook; getMe returns User with id (<= 52 bits, safe as number); error body {ok:false, error_code, description, parameters.retry_after}. IMPORTANT: message_reaction is NOT in the default allowed_updates (must be listed explicitly, done). NOT confirmed by the docs snippets retrieved (still UNVALIDATED assumptions): "a bot can only message users who started it" and "no delivery/read receipts" (consistent with WebhookInfo/Update having no receipt types, but not stated verbatim).
+- Real Telegram was not reachable: everything is verified with mocked fetch only. `npm run build` not run (no routing/config change).
+- **Learnings for future iterations:**
+  - Never build a Telegram error message from a URL/fetch error without `sanitize` (api.ts does it); API URLs embed the token.
+  - Webhook secret lives in credentials as `secret_token` (US-048 verify: compare header X-Telegram-Bot-Api-Secret-Token to it, constant-time).
+  - Baseline now: 137 files / 1671 tests green, lint 40 warnings, typecheck clean.
+---
+
+## 2026-09-21 - US-048
+- Telegram inbound. New generic route src/app/api/channels/[channel]/webhook/[connectionId]/route.ts (POST, maxDuration 60): channel must be in GENERIC_WEBHOOK_CHANNELS ('telegram') and registered, else 404; provider.resolveConnection (id from URL, uuid-validated, channel_type must match) else 404; provider.verify else 401 + nothing processed; DISABLED connection -> 200 without processing (checked AFTER verify); parse BEFORE the ack, then after() { owner lookup -> ingestInbound with resolveMedia (createMediaResolver + provider.downloadMedia), fanoutHook, conversationCreatedHook }. Updates with nothing to store are acked 200 without after().
+- providers/telegram/inbound.ts: resolveConnection, verify (X-Telegram-Bot-Api-Secret-Token vs credentials.secret_token, length check + crypto.timingSafeEqual, fail closed), parse, downloadMedia (getFile -> api.ts downloadBotFile; token URL only used inside, errors sanitized, MediaTransferError on transfer failure). Fixtures in telegram/__fixtures__/*.json (15 Update payloads).
+- Decisions: message externalId `${chat.id}:${message_id}` (ids are per chat; fits UNIQUE(conversation_id, message_id)); callback tap externalId `${chat.id}:cb:${callback_query.id}` (data = interactive id, title = button text from the message's inline_keyboard, replyTo = the message with the buttons); reaction externalId = `chat:target`, empty new_reaction = removal, custom-emoji-only = ignored; private chats only (debug log, no content); edited_message and my_chat_member IGNORED; sticker static -> image/webp, animated/video sticker -> unsupported; photo = largest size, image/jpeg; contact -> unsupported '[contact]'. Identities: telegram:chat_id + telegram:username (lowercased key, handle '@AsTyped'). MediaRef.id = `${file_unique_id}:${file_id}` because the mirror path keeps only the first ~40 chars of the id and file_ids of one bot share long prefixes (would overwrite other objects).
+- Tests: inbound.test.ts (verify incl. length mismatch/missing/unreadable creds, every update type, downloadMedia), route.test.ts (401, 200+ingest, disabled, 404s, no secret/token in logs), ingest.telegram.test.ts (contact+identities+message, replay duplicate, same message_id in another chat, button tap replay, media mirrored with no token URL stored/logged, failed download, reaction). telegram.test.ts: dropped the "parse throws" assertion (parse is implemented now). Baseline: 140 files / ~1710 tests, lint 40 warnings.
+- Manual on dev :3100 (seeded telegram connection, credentials encrypted via saveConnectionCredentials): bad/missing secret 401, whatsapp_cloud channel 404, valid text -> contact + chat_id/username identities + conversation + message, replay = "duplicate" log and no new rows, button tap stored as interactive (opt_yes), photo stored with no media_url (fake token -> Unauthorized, sanitized). Seeds removed. Real Telegram not reachable: real bot/getFile/webhook delivery unverified.
+- **Learnings for future iterations:**
+  - A Next route handler must read the request body BEFORE responding: reading it inside after() returned nothing (unit tests with a mocked after() did not catch it; only the real dev server did). Always do the manual POST check.
+  - Not done here: answerCallbackQuery (the tap spinner stays until Telegram times out): belongs to the outbound side (US-049) or a hook. Mirror failure for Telegram media leaves media_url null (no fallback URL exists that is safe to store). Callback events use "now" as `at` (Telegram sends no date on the query).
+  - Telegram messages sent by the bot itself never arrive as updates, so outbound rows must be persisted by the send path (US-049).
+---
+
+## 2026-09-21 - US-049
+- Telegram outbound in providers/telegram/outbound.ts (index.ts wires it): resolveTarget (telegram:chat_id), send (text -> sendMessage; image/video/document/audio -> sendPhoto/Video/Document/Audio by URL, caption <= 1024; buttons -> sendMessage + inline_keyboard, one row per button, callback_data = button id, > 64 BYTES -> ChannelError invalid; list/template -> unsupported defensively; reaction message type -> setMessageReaction), react (setMessageReaction, one emoji, '' clears), typing (sendChatAction typing). replyTo -> reply_parameters {message_id, allow_sending_without_reply:true}; a ref that is a button tap (`chat:cb:id`) sends without quoting. Returned externalId = `${chat.id}:${message_id}` (matches inbound).
+- errors.ts: 400 "chat not found" / "bot was blocked" / "user is deactivated" also map to recipient_unreachable (403 already did). 429 -> rate_limited with retry_after, 401/404 auth, other 400 invalid.
+- Contract (additive): optional `acknowledgeInteraction(conn, event)`; generic webhook route calls it inside after() BEFORE ingest for every event, failures swallowed. Telegram: answerCallbackQuery with the id in `chat:cb:<id>`.
+- sendOutbound works generically for telegram unchanged: provider by channel_type, capability validation (template refused before any fetch), resolveTarget over contact_identities, persistence with the returned externalId, actor mapping. Only the ConnectionNotConfigured message text is WhatsApp-worded (pre-existing).
+- Tests: outbound.test.ts (each send type + URL/params, reply, reaction, typing, ack, error mappings, token never in errors, sendOutbound integration with fake db), route.test.ts (ack + swallowed failure). Real Telegram NOT reachable: mocked fetch only; docs (Context7) confirm sendMessage/sendPhoto params, callback_data 1-64 bytes, caption 1024, reaction array, sendChatAction, answerCallbackQuery; the exact 403/'chat not found' description strings are NOT in the snippets (matched by regex on description and by 403).
+- Checks: typecheck clean, lint 0 errors/40 warnings, TZ=UTC tests 141 files/1736 green. Build not run (no routing/config change). No browser criteria.
+- **Learnings:** media by URL requires the URL to be publicly fetchable by Telegram; uploading multipart is the fallback if that bites for private storage URLs (US later).
+---
+
+## 2026-09-21 - US-050
+- Telegram in the UI. Descriptor moved to client-safe telegram/descriptor.ts (bot_token secret, required, pattern ^\d+:[A-Za-z0-9_-]{30,}$), used by the provider AND the ui-registry (`kind:'form'`, fields + docsUrl). validateValues now applies `pattern` to `secret` too. i18n x4: Channels.providers.telegram.{connectHint,docsLabel,fix.auth,fix.invalid} + help reworded, Settings.channels.credentials.* (panel). Wizard: provider-specific fix hint overrides (`Channels.providers.<type>.fix.<hint>` when present), invalid_credentials from create shown as that channel's fix.auth text, DescriptorForm shows connectHint + docs link.
+- Existing connection: new components/channels/credentials-panel.tsx rendered by connection-detail for registry `form` entries: secret "informado" + Substituir -> PATCH credentials then POST connect (PATCH replaces the WHOLE credentials blob, dropping secret_token, so reconnect is mandatory to regenerate it).
+- docs/telegram.md (BotFather, connection model, cloudflared/ngrok, NEXT_PUBLIC_SITE_URL rebuild, fixtures + curl, limitations incl. "started the bot" NOT confirmed, security); linked from README and docs/docker.md.
+- Tests: telegram/descriptor.test.ts (pattern, payload, chips). Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC 142 files/1740 tests. Build not run (no routing/config change).
+- **Learnings:** dev-browser scripts time out at 30s: split them and use short click timeouts. Wizard buttons are "Continuar" (not Avançar). The QA account's stores must use the profile account_id (52762fb0...), not the one in older seed scripts. A fake token never reaches wizard step 4 (getMe fails at create with 400 invalid_credentials); the https guard message was seen via Reconectar/Substituir in the detail. Screenshots land in ~/.dev-browser/tmp.
+---
+
+## 2026-09-21 - US-079
+- PATCH /api/channels/connections/[id] with `credentials` now MERGES: saveConnectionCredentials(id, acct, creds, { merge: true }) reads the stored blob (getConnectionCredentials, so wa_token_v0 maps to {access_token}) and shallow-merges; no row = insert. Default (no option) still replaces (connect POST, telegram lifecycle rely on it/own merge).
+- Providers with deriveExternalId (Telegram): the PATCH derives the external id from the merged credentials (resolveExternalIdFor) BEFORE writing anything; different from the connection's external_id -> 409 `credentials_mismatch` (a different bot needs a new connection); rejected token -> 400 invalid_credentials; unreachable -> 502. WhatsApp untouched.
+- ChannelErrorInfo gained optional `reason`; the Telegram https guard sets reason 'public_https_required'. ui.ts reasonFixKey maps it to `Channels.providers.<type>.fix.publicHttps` (new key x4, plus Settings.channels.credentials.credentialsMismatch x4). Used by wizard (hint), connection-detail (reconnect failure, state reason, last-error box) and credentials-panel (replace flow; mismatch/auth on PATCH shown translated). The guard runs before any write, so a failed reconnect leaves the old secret_token and webhook intact (text says the configured webhook was not changed).
+- Tests: connections.test (merge x4, mock got upsert), route.test (WhatsApp merge keeps keys, Telegram bot_token-only keeps secret_token, mismatch 409 with getMe mocked, 401 -> 400; canary in responses), ui.test, telegram.test (reason).
+- Checks: typecheck, lint 0 errors/40 warnings, TZ=UTC 142 files/1749 tests, build ok. Browser check not done.
+- **Learnings:** existing route.test.ts/connections.test.ts were prettier-formatted (reformat noise in the diff). Remaining risk: if setWebhook itself fails AFTER connect persisted a new secret_token, the old webhook's secret is stale (pre-existing ordering "persist before register"); not addressed here.
+---
+
+## 2026-09-21 - US-080
+- Telegram connect now registers the webhook BEFORE persisting the new secret: https guard -> read creds -> generate secret -> setWebhook -> saveConnectionCredentials({merge:true}). setWebhook failure writes nothing (old secret stays valid). Save failure after setWebhook returns ok:false with error {code:'invalid', reason:'secret_persist_failed'}; the connect route already maps code invalid -> needs_action and stores last_error (no route change).
+- Files changed: providers/telegram/lifecycle.ts, telegram.test.ts, api/channels/connections/[id]/lifecycle.test.ts, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - The 'secret_persist_failed' reason has no translated fix key yet (reasonFixKey in lib/channels/ui.ts maps only public_https_required); the English message is the fallback.
+  - Test order is asserted via a shared h.order array between the fetch mock and the credentials mock; don't queue an extra ok() before it.
+---
+
+## 2026-09-21 - US-051
+- Activation warning (informational, never blocks): pure client-safe src/lib/channels/step-capabilities.ts (`stepRequirements` maps flow nodes / automation steps, recursing into branches, to send_template->templates, send_buttons->interactiveButtons, send_list->interactiveList, send_media->media kind; `channelWarnings(requirements, providers, activeChannelTypes)` returns which steps fail on which channel types; empty with <2 active connections, providers not loaded, or all supporting). UI: components/channels/step-warnings.tsx (+ hooks/use-active-channel-types.ts reading GET /api/channels/connections, enabled ones only; providers via use-channel-providers) mounted under the flow validation panel (flows/flow-step-warnings.tsx) and under the automation builder header. Shown live while editing, so it is visible when activating. Flow issue codes/messages untouched. Keys Channels.stepWarnings.* x4.
+- Runtime: no engine change needed; tests with REAL telegram capabilities: flow send_list on a telegram conversation -> run failed (send_list_failed) with the "list" unsupported detail in flow_run_events; automation send_template on telegram -> step failed with the template unsupported message + error_message. NOTE flows have no template node (only list/buttons/media).
+- US-028 resolution now EXCLUDES conversations on connections with disabled_at (tests: skips to the older enabled conversation; all disabled -> ignored). Ignored reason says "an enabled connection" when a disabled one was skipped.
+- Logs page: skipped step now a neutral icon (Minus) instead of red X; pure lib/automations/log-step.ts (`logStepView`) maps the engine's ignored reason to translatable Automations.logs.ignoredUnsupported.
+- Browser (pt :3100, seeded WA+TG connections, automation with send_template): warning "O passo “Enviar template” só funciona em conexões que suportam templates: as conversas de Telegram falharão." shown; with only WhatsApp nothing; logs page seeded skipped step shows neutral icon + translated reason, failed step red. Flow editor warning not exercised in browser (same component, unit-tested). Seeds removed.
+- Files: step-capabilities(+test), log-step(+test), step-warnings.tsx, flow-step-warnings.tsx, use-active-channel-types.ts, automation-builder.tsx, flow-editor-shell.tsx, logs page, automations/engine.ts, engine.channel.test.ts, flows engine.characterization.test.ts, messages x4.
+- **Learnings:**
+  - sendOutbound resolves the target BEFORE validating capabilities: a telegram conversation test needs a `telegram:chat_id` contact_identities row, else the error is recipient_unreachable.
+  - engine.channel.test.ts registers a stand-in telegram; new tests there call resetRegistryForTests + registerBuiltinProviders in their own beforeEach.
+  - Checks: typecheck clean, lint 0 errors/40 warnings, TZ=UTC 144 files/1765 tests, build OK.
+---
+
+## 2026-09-21 - US-052
+- Inbox shows contacts without phone via one client-safe helper module src/lib/contacts/display-name.ts (contactDisplayName moved here, re-exported from channels/identity.ts; plus primaryIdentity, contactSubtitle, contactInitial, matchesContactSearch, sortIdentities). CONVERSATION_SELECT now embeds contact_identities(kind, external_id, handle); normalizeConversation maps them to contact.identities (camelCase, tolerant of a missing embed). Used in conversation-list (name, avatar initial, search now matches identity handles/ids), message-thread (header name + subtitle line only when non-empty, reply author label), contact-sidebar (phone row only when something to show; without phone: "@maria · Telegram" via Settings.channels.type), browser notifications title. WhatsApp contacts with a phone render as before.
+- Files changed: display-name.ts(+test), telegram-contact.test.tsx (renders ConversationItem + ContactSidebar via renderToStaticMarkup + NextIntlClientProvider), identity.ts, conversations.ts, types/index.ts, conversation-list, message-thread, contact-sidebar, use-browser-notifications, prd.json, progress.txt. No i18n keys added.
+- **Learnings for future iterations:**
+  - Component test pattern: renderToStaticMarkup + NextIntlClientProvider with messages/en.json, vi.mock supabase client/use-auth/ContactConversations (effects do not run, so props drive output).
+  - The QA account had no store/connection; conversations.connection_id is NOT NULL, so seeding needs store + channel_connection first.
+  - pickContactDisplayName (notifications/browser-notify.ts) is now unused by the hook but kept with its tests.
+  - Baseline: 146 files / 1780 tests, lint 41 warnings.
+---
+
+## 2026-09-21 - US-053
+- Display name outside the inbox. display-name.ts gained CONTACT_IDENTITIES_EMBED, identitiesFromRows/withIdentities/firstOf (hydrate the `contact_identities` embed), contactSecondaryLine (phone, else "@handle · Canal") and isWhatsAppReachable; hook use-contact-display.ts binds it to Settings.channels.type. Applied to: contacts list (name/phone column, never blank: "Sem identificador" fallback, aria-label, delete dialog; identities fetched for the page in one query), contacts detail (title, subtitle, avatar initial; phone field only when set or WhatsApp-reachable, save skips phone otherwise) and form (same rule), pipeline deal card + deal form picker (deals select embeds identities), dashboard activity feed, automation logs and flow runs contact labels, broadcast step3 preview label.
+- Broadcasts: lib/contacts/broadcast-eligibility.ts (isBroadcastEligible, partitionBroadcastAudience, fetchIneligibleContacts = contacts with phone '' filtered by predicate). Step2 shows "N contatos não elegíveis" + reason + first 5 names and removes them from the estimate; step4 reach subtracts them; use-broadcast-sending resolveAudience excludes them so they never become recipients/total_recipients.
+- Search: contacts page server-side also matches contact_identities handle/external_id (pre-lookup of ids, capped at 200 matches; the tag-filter RPC p_search still only knows name/phone/email). Deal form picker is a <select> (no search box).
+- Keys: Contacts.page.noIdentifier, Broadcasts.wizard.selectAudience.ineligible{Title,Reason,Unnamed,More} x4. Tests: broadcast-eligibility.test, secondary-line.test.
+- Remaining `.phone` (allowed): form/edit fields, phone dedupe (contact-form dupMatch is a phone match), WhatsApp/broadcast send code, broadcast recipients table (WhatsApp-only, phone column), import modal, template personalization {{phone}} field.
+- Browser (pt :3100, QA account): WA contact unchanged; TG named/nameless in list ("@maria_tg · Telegram"), handle search, detail header, deal cards (Deal TG shows "Maria Telegram", anon shows "@anon_tg"), dashboard feed "New contact: @anon_tg", broadcast audience shows 2 not eligible with reason, count 1. Seeds removed.
+- **Learnings:** prettier over touched files reformatted whole files (big diffs, e.g. dashboard/queries.ts, contacts page). Dashboard feed strings are hardcoded English (pre-existing). Checks: typecheck, lint 0 errors, TZ=UTC 148 files/1792 tests, build OK.
+---
+
+## 2026-09-21 - US-054
+- Search: migration 048 replaces filter_contacts_by_tags (same signature/return): search also matches contact_identities handle/external_id via EXISTS (leading '@' ignored for the identity match), and an empty/NULL p_tag_ids now means "no tag filter". The Contacts page uses the RPC for ANY search or tag filter (direct query only when neither), so the capped 200-id pre-lookup (IDENTITY_SEARCH_LIMIT) is gone.
+- Duplicates: dedupe.ts gained findExistingContactByPhoneIdentity, findDuplicateContact (contacts.phone first, then whatsapp:phone identities; result carries matchedPhone, used by isExactMatch) and ensurePhoneIdentity (digits-only upsert, ON CONFLICT DO NOTHING). contact-form uses them for the duplicate check ("ver existente" unchanged) and inserts the identity on create (and on edit when the phone field is shown); v1 findOrCreateContact (also used by broadcast-core) uses findDuplicateContact and inserts the identity on create. resolveOrCreateContact/findExistingContact untouched (webhook path).
+- Not done: CSV import still dedupes by contacts.phone only; editing a phone leaves the old phone identity in place.
+- verify-schema.sql asserts the function references contact_identities. Dev DB migrate + isolated replay (48 applied) pass.
+- Tests: dedupe.test (identity match, fuzzy, other kind/account, preference, ensurePhoneIdentity), contacts.test (v1 does not duplicate; creates identity). No i18n keys added.
+- Browser (pt :3100, QA): seeded contact with empty phone + whatsapp:phone identity + telegram handle + tag: "@zedseed" finds it with and without the tag filter (nomatch -> none); new-contact form with the same phone shows "Já existe um contato com este número" + "Ver Zed Seed54"; creating a new contact inserted its whatsapp:phone identity. Seeds removed.
+- **Learnings:** the RPC (SECURITY INVOKER) cannot be exercised from psql as postgres w/o JWT claims; verified through the app. Lint baseline is 43 warnings now (not 41). Checks: typecheck, lint 0 errors, TZ=UTC 148 files/1799 tests, build OK.
+---
+
+## 2026-09-21 - US-055
+- dedupe.ts: findExistingPhoneIdentityKeys (chunked `in` lookups, 100/chunk, throws on DB error), ensurePhoneIdentities (chunked upsert, ON CONFLICT DO NOTHING, never fails the import) and syncPhoneIdentity(db,{accountId,contactId,oldPhone,newPhone}) -> {ok:true}|{ok:false,conflictContactId}: refuses to take a number another contact holds, deletes this contact's whatsapp:phone identities matching the OLD phone (phonesMatch), ensures the new one; cleared phone removes it.
+- import-modal: identity keys of the whole file are looked up in batch and count as skipped (same outcome categories/messages); created contacts get their identity in one batched upsert after the inserts. Match is EXACT on digits (like the existing phone_normalized check and the unique index), not the fuzzy last-8 of findDuplicateContact, so files without identities behave exactly as before.
+- contact-form (edit) and contact-detail-view (saveDetails) call syncPhoneIdentity BEFORE updating contacts (conflict aborts with the existing form `toastConflict`, no new i18n keys) and revert the identity if the contacts update fails. API v1 PATCH does not edit phone: untouched.
+- Tests: dedupe.test (bulk lookup chunking, batch insert, sync: change, clear, no change, none before, conflict/no steal, other kinds/contacts untouched). Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 148 files/1808 tests. Build not run (no routing/config change).
+- Browser (pt :3100, QA): CSV with new / identity-only / invalid phone -> "1 importados, 1 ignorados, 1 telefone inválido"; new contact got identity 5511955500001, identity-only one got no duplicate. Detail edit of phone: DELETE of old identity + POST of new; DB showed only the new identity. Seeds removed.
+- **Learnings:** dev-browser has no fs: set a file input via page.evaluate + DataTransfer; identity seeds must have the same digits as the contact phone (last-8 match). The contacts read for import dedupe is still unpaginated (PostgREST 1000-row cap, pre-existing).
+---
+
+## 2026-09-21 - US-056
+- Flows condition on contact_field phone: '' / null already resolved to undefined (present false, absent true, equals/contains false); extracted that step as exported contactFieldSubjectValue (flows/engine.ts) so it is testable. Automations contact_field is equality-only and `'' === ''` made "phone equals ''" true for a contact without phone: new exported contactFieldMatches (automations/engine.ts) treats phone '' as not set (false), other fields unchanged.
+- {{phone}}: the only place the variable exists is broadcast template personalization (mapping type field/phone). resolveVariables already yields '' for '' / null; the step3 preview fell back to the literal placeholder for a null phone: new previewFieldValue (in use-broadcast-sending.ts) returns '' for phone only, other fields keep the placeholder fallback. Flow/automation message interpolation has NO {{phone}} (flows: only {{vars.x}}; automations: {{message.text}}/{{vars.x}}; anything else renders '') so it is empty even for contacts with a phone (pre-existing, unchanged).
+- Tests: src/lib/contacts/phone-condition.test.ts (27). Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 149 files/1835 tests. No build (no routes), no browser (no UI change beyond a preview guard).
+- **Learnings:** name has no fallback when empty in the broadcast/flow interpolation (left unchanged as instructed); a Telegram contact with phone '' is never passed through sanitize/format in these paths (broadcast excludes it earlier, US-053).
+---
+
+## 2026-09-21 - US-057
+- Migration 049: NEW pairwise SQL function merge_contacts(p_account_id, p_survivor_id, p_duplicate_id) -> jsonb (SECURITY DEFINER, EXECUTE only for service_role; anon/authenticated revoked, unlike 022/036 whose default grants leave them callable). The no-arg merge_duplicate_contacts/merge_duplicate_conversations are NOT reused (they sweep the schema); their re-point-with-guard pattern is. Conversations of the duplicate on a connection the survivor already has are folded (messages/reactions/deals/runs/notifications/ai_usage/pending executions moved, unread + ai_reply_count summed, last message re-derived, folded active flow run closed as 'contact_merged' if the target already has one); others re-pointed. contact_tags/custom_values: survivor wins. Identities moved. All other contact_id tables re-pointed. Duplicate deleted BEFORE filling survivor's empty fields (phone, name, email, company, avatar, wa_*) so phone/wa_user_id unique indexes don't collide. Errors: contact_not_found (P0002), same_contact (22023). Returns counts (conversations_moved/merged, messages_moved, deals, notes, tags, custom_values, identities, flow_runs, other).
+- POST /api/contacts/merge {survivor_id, duplicate_id}: requireRole('agent'), uuid validation, both contacts must be visible to the caller AND in their account (404 otherwise), rpc via supabaseAdmin, responds {survivor_id, moved}. 
+- Tests: route test (role, cross-account, validation, error mapping); merge-contacts.test.ts discovers every table with contact_id from the migrations DDL and fails if 049 has no `UPDATE <table> SET contact_id = p_survivor_id` for it; verify-schema.sql does the same against information_schema of the real schema (DB-level guard, runs in the replay). Functional DB check done by hand in a rolled-back transaction on the dev DB (fold of same-connection conversations: unread 1+2=3, message moved, other-connection conversation re-pointed, phone filled, note+identity moved, second call -> contact_not_found).
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 151 files/1859 tests; dev DB migrate + isolated replay (49 applied) + verify-schema pass. No build, no browser (API only).
+- **Learnings:** messages.sender_type allows 'customer' (not 'contact'); stores/channel_connections/conversations need account+user ids to seed inside a DO block; the merge is not idempotent in the "re-run is a no-op" sense: the second call raises contact_not_found because the duplicate is gone (route maps to 404). UI is US-058.
+---
+
+## 2026-09-21 - US-058
+- Contact detail sheet: "Vincular a outro contato" button (agent+, useCan send-messages) opens MergeContactDialog (src/components/contacts/merge-contact-dialog.tsx). The contact being viewed SURVIVES; the picked one is merged into it. Step 1: debounced search via filter_contacts_by_tags RPC (matches name/phone/email/identity handles), identities hydrated for display. Step 2: confirmation with counts of what moves (conversations, deals, notes, tags, identities via head-count queries) + irreversible warning; confirm calls POST /api/contacts/merge. On success the sheet refetches everything and ContactConversations is remounted (key).
+- Keys Contacts.detailView.mergeDialog.* in 4 catalogues. No new unit tests (UI-only; covered by browser check).
+- Browser (pt :3100, QA): seeded survivor + duplicate (deal, note, telegram identity); confirmation showed 1 negocio/1 nota/1 identidade; after merge Negocios and Notas tabs show the moved deal and note, duplicate gone. Seeds removed.
+- **Learnings:** dev-browser clicks on nested dialog buttons need page.evaluate(el.click()) (force clicks timed out). pt plural: 0 uses the singular form ("0 conversa").
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 151 files/1859 tests.
+---
+
+## 2026-09-21 - US-059
+- Integration test src/lib/channels/providers/telegram/crm.integration.test.ts (7 tests): a Telegram update (fixture text.json) goes through the real provider parse, ingestInbound and fanoutHook; real automations engine (new_contact_created: add_tag + update_contact_field custom) and real flows engine (keyword flow: send_message via Telegram fetch mock -> set_tag -> end) run against ONE in-memory DB. The agent's CRM writes (deal from the conversation with the deal-form payload, contact_tags, contact_notes, custom value upsert) hit the same DB; loadMetrics/loadPipelineDonut then show 1 conversation, 1 new contact, 1 open deal worth 2500. A last test asserts nothing needs a phone or wamid (phone '', no whatsapp:* identity, no whatsapp_config, message_ids all "chat:id", fetch only to api.telegram.org).
+- New shared fake src/lib/channels/crm-world.fake.ts (single store, unique indexes for identities/conversation(contact,connection)/messages/contact_tags/custom values, created_at stamping, contact:contacts and conversations( embeds, gte/lt/head count). No production code changed.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 152 files/1866 tests. No build, no browser (no UI).
+- **Learnings:** vi.mock cannot be called in a loop; share a factory through vi.hoisted. The manual CRM steps (deal/tag/note/field) are client-side supabase writes in the app, so the test replays the same writes rather than calling components. Without a phone the automations `create_deal` and tag paths need no channel at all; only the flow send touches Telegram.
+---
+
+## 2026-09-21 - US-060
+- POST /api/v1/messages accepts { conversation_id } or { connection_id?, to }. Both together -> 400 bad_request. Unknown/foreign conversation or connection -> 404 not_found.
+- Connection pick: explicit id (account-checked) else the only ENABLED connection; >=2 enabled -> 400 connection_required; none enabled but some exist -> 409 connection_disabled; none at all -> 400 whatsapp_not_configured (legacy code kept). An explicit disabled connection is refused before any contact/conversation is created.
+- whatsapp_cloud: resolveConversationByPhone (new optional 5th arg = the chosen connection). Other channels: new resolveConversationByAddress: `to` is matched against contact_identities recognised by provider.resolveTarget and the contact must already have a conversation on THIS connection, else 422 recipient_unreachable (a Telegram bot cannot open chats; no contact is created).
+- Response: external_message_id, connection_id, channel (whatsapp_message_id removed). Error mapping in the v1 route only (dashboard route untouched): ChannelError code (also via SendMessageError.channelCode, pre- or post-provider) unsupported/window_closed -> 409, recipient_unreachable -> 422; invalid stays 400/502 as before.
+- Files: src/app/api/v1/messages/{route.ts,route.test.ts}, src/lib/whatsapp/resolve-conversation.ts, docs/public-api.md, prd.json, progress.txt.
+- **Learnings for future iterations:**
+  - send-message.characterization.test.ts pins SendMessageResult with toEqual: do not add fields to it; the route derives connection_id itself (conversation.connection_id, fallback account WhatsApp connection).
+  - Telegram in route tests: registerBuiltinProviders() + vi.spyOn(getProvider('telegram'), 'send'); no fetch mock needed.
+  - Meta 131047 -> window_closed and 131026 -> recipient_unreachable now surface as 409/422 on the v1 endpoint (were 502 meta_error). Other Meta failures stay 502.
+  - docs/public-api.md was already not prettier-clean; left as is. Lint baseline is 43 warnings now (not 41), unchanged by this story. Not run: npm run build (no routing/config change), browser (API only). MCP send tool passes the body through; its README/docs (US-06x) may need the new fields.
+---
+
+## 2026-09-21 - US-061
+- New scope `connections:read` (scopes.ts + description in the 4 catalogues, docs/public-api.md table). New routes GET /api/v1/stores (id, name, address, phone, manager_name, created_at) and GET /api/v1/connections (explicit columns; channel_type exposed as `channel`, `enabled` = disabled_at is null; optional ?store_id=). `config` (holds verify_token) and credentials are never selected. Whole list, next_cursor null.
+- Tests: src/app/api/v1/stores/route.test.ts (7; real requireApiKey with a mocked key store: 403 without scope, 401, account isolation, no secrets, store_id filter). Also covers /connections.
+- Browser (pt :3100, QA): the create-key dialog lists connections:read with its description.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 153 files/1886 tests. No build.
+- **Learnings:** MCP docs/tool (US-064) still need the new send fields (external_message_id, connection_id, channel) and these two endpoints; only noted here.
+---
+
+## 2026-09-21 - US-062
+- Contacts: CONTACT_SELECT embeds contact_identities; serializeContact now returns `identities` [{kind, external_id, handle}] and `phone: null` when the DB has ''. POST /api/v1/contacts takes `phone` (WhatsApp shortcut) and/or `identities` (at least one, else 400); kinds are validated against registered providers' identityKinds (400 lists the accepted ones), whatsapp:phone must be E.164. With identities, find-or-create goes through resolveOrCreateContact (found by ANY identity, phone included); an existing contact is returned 200 without renaming it; name/email/company are applied only to a newly created contact. Phone-only bodies keep the original path (broadcast-core also uses findOrCreateContact, unchanged).
+- Conversations: serializeConversation adds connection_id, store_id, channel (from the embedded connection+store already in CONVERSATION_SELECT) and contact.identities; contact.phone null when empty.
+- Tests: src/app/api/v1/contacts/route.test.ts (10), src/app/api/v1/conversations/route.test.ts (3), over crm-world.fake (extended with contact_identities and connection:channel_connections embeds and a no-op `or`). Existing contacts.test.ts serializeContact toEqual got `identities: []` (contract change required by this story). docs/public-api.md updated.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 155 files/1899 tests. No build, no browser (API only).
+- **Learnings:** phone in responses is the stored digits (no '+'), as before. PATCH /contacts/{id} does not accept identities (not asked). ?search= still matches only name/phone (not identity handles). MCP (US-064) must expose identities on contacts. Do not run prettier on whole dirs: it reformats untouched files.
+---
+
+## 2026-09-21 - US-063
+- Outbound webhooks (message.received, conversation.created, message.status_updated) now merge connection_id, store_id, channel and contact {id, phone|null, identities[]} into `data`. New src/lib/webhooks/origin.ts (buildWebhookOrigin: two small queries, contacts.phone + contact_identities, reuses serializeIdentities/ApiIdentity; a failed lookup degrades to an empty contact block, never drops the event). Wired in fanout.ts (message.received, conversationCreatedHook) and ingest.ts (ingestStatus now takes `connection`; select adds conversations.contact_id). Also added external_message_id next to the kept whatsapp_message_id. Envelope and signature unchanged.
+- Tests: origin.test.ts (4), deliver.test.ts (payload + recomputed HMAC), fanout.test.ts and ingest.events.test.ts expectations updated (contract change required by this story). docs/public-api.md updated.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 156 files/1904 tests. No build, no browser (API only).
+- **Learnings:** the status path gets its connection from the ingest call, not from the message row; the fanout test's admin mock needed maybeSingle/then for the origin lookup. MCP (US-064) may want the new webhook fields documented.
+---
+
+## 2026-09-21 - US-064
+- MCP (mcp-server, 0.1.1 -> 0.2.0 in package.json, package-lock root, server.json, VERSION in index.ts): new read tools list_stores and list_connections (scope connections:read, optional store_id) + client methods; send_message now takes conversation_id or connection_id + to (never both) and documents external_message_id/connection_id/channel in the response; create_contact takes phone and/or identities [{kind, external_id, handle?}]; list/get contact and conversation descriptions mention identities, connection_id, store_id, channel. README tool table updated.
+- Docs: docs/mcp.md (pre-stable banner, new tools/fields), docs/public-api.md (pre-stable banner; endpoint sections were already updated by US-060..063).
+- Checks: mcp-server `npm run build` clean (no tests exist there), typecheck, lint 0 errors/43 warnings, TZ=UTC 156 files/1904 tests. No root build, no browser.
+- **Learnings:** mcp-server has no test script; src/index.ts VERSION was already stale (0.1.0 vs 0.1.1) and is now synced. Tool zod schema for identities mirrors parseIdentities server-side (kind validated by the API, not the MCP).
+---
+
+## 2026-09-21 - US-065
+- New src/lib/channels/connection-state.ts: pure transitions (inboundPatch, outboundSuccessPatch, sendErrorPatch, ingestFailurePatch) + best-effort recordConnectionEvent (logs, never throws). Wired in sendOutbound (provider ChannelError `auth` -> status needs_action + last_error{code,message} + last_error_at; success -> last_outbound_at) and ingestInbound (one write per batch: stored/duplicate message -> last_inbound_at; failure skips -> last_error code `ingest_failed`; benign skips such as "reaction target not found" / "no contact" are not failures).
+- Recovery: a message or successful send on a connection whose loaded status is needs_action sets status connected and clears last_error/last_error_at. degraded/disconnected are not touched by traffic (owned by connect/health).
+- Tests: connection-state.test.ts (transitions + recorder), send.test.ts and ingest.events.test.ts (state after send/ingest). Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 157 files/1924 tests. No build, no browser (no UI).
+- **Learnings:** broadcast sends call provider.send directly (broadcast-core.ts, api/whatsapp/broadcast/route.ts), NOT sendOutbound, so they do not update last_outbound_at / needs_action yet (not in the criteria; candidate follow-up). The state uses the connection object the caller loaded (may be slightly stale; last write wins). US-067 notification on transition to needs_action can hook into recordConnectionEvent/sendErrorPatch.
+---
+
+## 2026-09-21 - US-066
+- New GET /api/channels/cron/health (x-cron-secret vs AUTOMATION_CRON_SECRET, 503 unset, 401 wrong; timingSafeEqual like the other crons). Scans channel_connections WHERE disabled_at IS NULL with the service role, calls getProvider(type).health(conn) for each, and writes healthPatch via recordConnectionEvent (status = verdict, last_health_check_at; non-connected -> last_error {code:'health'}; connected after a bad state clears last_error). A throwing check is counted in `failed` and does not stop the sweep. Response {checked, failed}.
+- New pure healthPatch in connection-state.ts (+3 tests); route.test.ts (5: 503, 401, active-only + patches, sweep survives a throw, 500 on scan error). docs/docker.md mentions the optional endpoint.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 158 files/1932 tests. No build, no browser (no UI).
+- **Learnings:** the route is under /api/channels/cron/health; middleware only guards /api/whatsapp/, so no change needed. Health runs sequentially (fine for small tenant counts). US-067 can hook a notification on status transition into needs_action inside the cron loop (conn.status vs health.state) as well as sendErrorPatch.
+---
+
+## 2026-09-21 - US-067
+- Migration 050: notifications.connection_id (FK channel_connections ON DELETE CASCADE) + verify-schema check (type CHECK already accepted connection_down since 044). New src/lib/channels/connection-down.ts: isConnectionDownTransition (next in disconnected/needs_action AND previous status differs) + best-effort notifyConnectionDown (owners/admins via profiles.account_role, service role insert, one row each). recordConnectionEvent got an optional 4th arg `previous` (the connection as loaded); when the patch moves it into a down state it notifies. Wired in send.ts (auth error) and the health cron loop; ingest/success paths pass nothing.
+- UI: notifications page renders connection_down translated (title/body from i18n keys in 4 catalogues, name+state from the embedded connection) with PlugZap icon; click goes to /settings?tab=channels&connection=<id>; ChannelsPanel opens that connection once from the query param.
+- Tests: connection-down.test.ts (6: transition rule, one row per admin, none without admins, never throws, notifies once / not on repeat). Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 159 files/1938 tests, migrate + isolated replay + verify-schema OK. No build.
+- Browser (pt :3100, QA): seeded a needs_action connection + notification by SQL (cleaned up): list shows translated text, click opens the connection detail. Real transition not reachable (no Meta/Telegram).
+- **Learnings:** notification dedupe is transition-based on the loaded connection status (stale loads could double-notify in a race; acceptable). Realtime INSERT rows have no embed, so the page reloads on connection_down. Broadcast sends still bypass sendOutbound (no needs_action from them).
+---
+
+## 2026-09-21 - US-068
+- New src/lib/channels/log.ts: channelLog(level, ctx, message, fields?) emits ONE string `[channel:<type>] conn=<id> event=<id> <message> key=value` (`-` for unknown parts); connCtx(conn, eventId) builds the context. Fields whose key looks secret (token/secret/credential/password/authorization/api key/bearer) are redacted (also nested in objects); strings are scrubbed of Telegram bot tokens and any api.telegram.org URL (file URLs embed the bot token); errors are rendered as message only. Every console.* call in lib/channels (ingest, identity, send, media, fanout, connection-state, connection-down, whatsapp-dual-write, whatsapp-cloud and telegram providers) now goes through it. The client-only whatsapp-connection-panel.tsx keeps browser console.error (UI, no connection context).
+- Tests: log.test.ts (6: format, unknown parts, level, key redaction incl. nested, Telegram URL/bot-token scrubbing). Two existing assertions on the old two-arg console.error shape were loosened (fanout.test.ts, route.dualwrite.test.ts): contract change of this story; the token-not-in-logs tests in ingest.telegram/inbound tests pass unchanged.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 160 files/1944 tests. No build, no browser (no UI).
+- **Learnings:** new code under lib/channels must log via channelLog, never console.* directly. Helpers without a loaded connection (identity, fanout engines) log with an empty context (`[channel:-] conn=- event=-`); pass connCtx(conn, eventId) when a connection is at hand.
+---
+
+## 2026-09-21 - US-069
+- Deleted the legacy config path: src/app/api/whatsapp/config/{route.ts (GET/POST/DELETE), mirror-media, verify-registration, route.dualwrite.test.ts} and src/lib/channels/whatsapp-dual-write.ts. Nothing in the UI called them (settings use /api/channels/*). Comments/docs that pointed at the removed routes (lifecycle.ts, wizard, meta-api, meta-error-explain, troubleshooting, multi-waba) updated. ?tab=whatsapp still maps to channels via resolveSection.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 159 files/1935 tests, npm run build OK (dev server restarted afterwards). No browser (no UI change).
+- **Learnings for future iterations:**
+  - After deleting routes, `npm run typecheck` fails on stale .next/types/validator.ts until a build/dev run regenerates it.
+  - whatsapp_config table still exists (dropped in US-070); remaining textual mentions are comments and a fake-DB assertion in telegram crm.integration.test.ts.
+---
+
+## 2026-09-21 - US-070
+- Migration 051 (final contract): message_templates.connection_id and broadcasts.connection_id NOT NULL (backfill mirrors 047's pattern: existing whatsapp_cloud connection wins, else a disabled legacy connection is created); message_templates unique index moved from (user_id, name, language) to (connection_id, name, language); automation_pending_executions.conversation_id/.connection_id NOT NULL (unresolvable pending rows, i.e. contact with no conversation at all, are dropped, same rule 047 used for flow_runs); merge_contacts (049) and redeem_invitation (019) recreated without touching the dropped columns/table; DROP TABLE whatsapp_config; DROP contacts.wa_user_id/wa_parent_user_id/wa_username.
+- Code: resolveContactSendTarget (wa-identity.ts) now takes {phone, bsuid} instead of {phone, wa_user_id} (callers: whatsapp-cloud provider resolveTarget, /api/whatsapp/react); contactHandle() deleted (display-name.ts already generalised it in US-052/053); channels/identity.ts legacy-column fallback/backfill removed, and resolveOrCreateContact gained a race guard (two concurrent first messages from a contact with no phone, e.g. BSUID/Telegram, can both pass the identity-unique-index race — the loser now deletes its just-created contact row and re-reads the winner instead of leaving an orphan); channels/send.ts loadIdentities phone fallback no longer gated on "not yet dual-populated"; automations/engine.ts wait step now resolves the conversation via resolveConversationId (same helper as send steps) instead of leaving conversation_id/connection_id null, and fails the step (not silently) when the contact has no conversation at all; templates submit/sync routes conflict target and lookup moved to (connection_id, name, language), dry-run submit now 400s when there's no connection to tag the row with (previously would have inserted connection_id: null, no longer allowed).
+- New regression test src/lib/channels/no-legacy-whatsapp-contract.test.ts: scans every .ts/.tsx under src/ and mcp-server/src for literal whatsapp_config / wa_user_id / wa_parent_user_id / wa_username and fails if any file besides itself matches. Found and fixed one stale mention (a comment in broadcast-resume.test.ts explaining a fixture value — reworded, no behavior change).
+- verify-schema.sql: removed the now-impossible-to-satisfy 040/044/045 assertions that depended on whatsapp_config/wa_user_id existing, added a 051 block (table gone, columns gone, the three connection columns NOT NULL with zero leftover NULLs, old template unique index gone, new one present).
+- This picks up work from a previous iteration that was cut off before lint/the regression test/the commit; all production-code and migration changes it made were reviewed here and are unchanged (see the diff against src/lib/channels/identity.ts, types.ts, ingest.ts, send.ts, wa-identity.ts, the templates routes, and the migration itself).
+- Checks: typecheck clean, lint 0 errors/42 warnings, TZ=UTC 160 files/1935 tests, npm run build OK (dev server stopped before, restarted + AGENTS.md reverted after). Dev DB: migration 051 was already applied (from before the cut-off) — confirmed via wacrm_migrations and verify-schema.sql. Isolated replay (`-p wacrm-replay`, all 51 migrations from scratch) + verify-schema.sql both pass; replay project torn down with `down -v` (default project untouched, still up).
+- No browser check: this story is a DB-contract migration + internal refactor with no UI surface: nothing in its acceptance criteria calls for one.
+- **Learnings for future iterations:**
+  - `automation_pending_executions` (and anything else that gets a NOT NULL connection/conversation column) can no longer represent "not yet on any thread" as null; a trigger with nothing in context must resolve (or fail) through the same resolveConversationId a send step uses.
+  - The identity-unique-index race (two first messages from the same new contact landing concurrently) exists for ANY identity kind now, not just phone — resolveOrCreateContact handles it generically (delete-own-loser, re-read winner) rather than relying on a contacts-level unique constraint that doesn't exist for BSUID/Telegram anymore.
+  - grep-based "no code references X" regression tests (this one, US-057's merge-contacts.test.ts) should scan test files too, not just production code — the only stale reference left in the whole repo was inside a test file's comment.
+---
+
+## 2026-09-21 - US-071
+- CLAUDE.md: added ONE new section "## Channels" between Architecture and Conventions (no other section touched) covering the model (account=network, stores, channel_connections belong to a store, conversation keyed by (contact, connection), contact_identities), the ChannelProvider contract in lib/channels/types.ts + the process-local registry (registry.ts/providers/index.ts), "the core never imports a channel-specific module" (sendOutbound/ingestInbound are the only entry points), how to add a channel (implement ChannelProvider under providers/<type>/, register in providers/index.ts, optional descriptor for the settings UI, capabilities drive composer/step-warning gating), and a pointer to the /api/v1 pre-stable-until-first-client rule (already stated in docs/public-api.md and docs/mcp.md banners from US-060..064, not duplicated verbatim).
+- docs/multi-waba.md: fixed two stale UI paths left over from the old single-connection screen ("Settings → WhatsApp connection" -> "Settings → Channels → Connect channel → pick the store → WhatsApp" for setup, and -> "Settings → Channels → a WhatsApp connection → Verify with Meta" for the diagnostic) and noted a connection lives inside a store.
+- docs/docker.md: fixed the Attachment Storage path (the toggle moved off the deleted whatsapp_config screen onto the WhatsApp connection's own detail panel in US-013/069: "Settings → Channels → a WhatsApp connection → Attachment Storage") and added one line that stores/connections are configured post-boot from Settings → Stores / Settings → Channels, not via env vars.
+- README.md: reworded the shared-inbox bullet to say multi-store/multi-channel (WhatsApp + Telegram) instead of "one number", and the Stack section now lists Telegram Bot API next to Meta Cloud API behind the shared provider contract. Title/tagline/badges and the rest of the file left untouched (branding decision, out of scope).
+- docs/telegram.md was already accurate (written in US-050) and needed no change.
+- Checks: typecheck clean, lint 0 errors/42 warnings, TZ=UTC 160 files/1935 tests (all unchanged — docs-only story, no production code touched). No build (no routing/config change), no browser check (no UI change; not called for by the criteria).
+- **Learnings for future iterations:**
+  - The Attachment Storage / mirror-inbound toggle and the "Verify with Meta" diagnostic are per-connection now, rendered inside providers/whatsapp-cloud/ui/whatsapp-connection-panel.tsx under Settings → Channels — there is no longer a single "WhatsApp connection" settings screen (removed in US-069); any doc still saying that phrase is stale.
+  - docs/whatsapp-connection-troubleshooting.md still has an unfixed "Verify with Meta" mention (line ~180) but it wasn't in this story's acceptance criteria (only CLAUDE.md, multi-waba.md, docker.md, README were named) — left as-is; worth a follow-up pass if that doc matters.
+  - The /api/v1 pre-stable-until-first-client rule was already documented (docs/public-api.md, docs/mcp.md banners, US-060/064) before this story; the acceptance criterion is satisfied by that existing text plus the new one-line pointer in CLAUDE.md.
+---
+
+## 2026-09-21 - US-072
+- Full stack verification (last story, PRD complete): rebuilt + brought up the whole docker-compose (app+supabase) with `up --build -d --wait` against the dev project (converges Healthy in ~37s, migrate service ran with 0 to apply — all 51 already applied). A separate isolated replay (`-p wacrm-replay`, fresh volumes, `down -v` only on that project) proved migrations apply cleanly from zero: 51 applied, verify-schema.sql passed.
+- Seeded the "pizzarias" scenario directly in SQL on the qa-channels@example.com account (no UI path exists to connect a real channel here): 2 stores (Centro/Norte), 2 whatsapp_cloud connections (one per store) + 1 telegram connection (Norte), credentials encrypted with the real ENCRYPTION_KEY (GCM json_v1, same format getConnectionCredentials expects). Sent simulated inbound: 2 signed WhatsApp webhooks (HMAC with the real META_APP_SECRET) from the SAME phone to both connections, plus 1 Telegram update (X-Telegram-Bot-Api-Secret-Token matching the stored secret_token) to the generic /api/channels/telegram/webhook/<id> route — against the dockerized app on :3000.
+- Confirmed in the DB and via dev-browser (localhost:3000): all 3 messages land in the same inbox with correct store+channel badges; the same WhatsApp phone across both stores becomes ONE contact with TWO conversations (contact sidebar lists both under "CONVERSAS"); the Telegram sender is a separate contact, displayed by handle, no phone needed. Deactivating "Telegram Norte" (which had a conversation) keeps the thread fully readable (badge "Desativada") and swaps the composer for a "reconnect to reply" notice; the Delete button is hidden for any connection with conversations (`canDeleteConnection` = `!has_conversations`, src/lib/channels/ui.ts) — created a second, conversation-less Telegram connection to prove Delete works there (toast, row removed). All seeded data (stores/connections/credentials/contacts/identities/conversations/messages) deleted afterwards; dev data otherwise untouched.
+- Lint cleanup (the story's other half): fixed the one react/jsx-no-literals warning the feature had introduced (a bare `: ` between two JSX expressions in src/components/settings/connection-detail.tsx, from US-040) by wrapping it in `{': '}`. Warning total back to the pre-US-001 baseline (41; was 42).
+- Wrote .projects/channel-abstraction/verification.md: metrics 1-5 from the PRD's Success Metrics section (1 zero regression, 2 pizzarias scenario, 3 core stays channel-agnostic — grepped, only a test file mentions "telegram" outside providers/, 5 CRM parity for Telegram backed by US-059's crm.integration.test.ts + this session's manual check) marked as met; metric 4 (store connected in <10 min) flagged not verifiable here (needs a real Meta/Telegram account) per the PRD's own `[SUPOSIÇÃO NÃO VALIDADA]`.
+- Checks: typecheck clean, lint 0 errors/41 warnings, TZ=UTC 160 files/1935 tests, npm run build OK (dev server stopped before, restarted after, AGENTS.md reverted).
+- Files changed: src/components/settings/connection-detail.tsx, .projects/channel-abstraction/{verification.md (new),prd.json,progress.txt}.
+- **This was the last story (priority 80/80). Every story in prd.json now has `passes: true`; the channel-abstraction PRD is complete.**
+- **Learnings for future iterations:**
+  - There is no UI path to connect a channel in this environment (the wizard needs a real Meta/Telegram account); seeding channel_connections + channel_connection_credentials directly via SQL, with credentials encrypted using the real ENCRYPTION_KEY (AES-256-GCM, `<iv-hex>:<ct-hex>:<tag-hex>`, format in src/lib/whatsapp/encryption.ts), is the only way to exercise the real app/DB end-to-end for this kind of scenario.
+  - Dialog confirm buttons (Desativar/Apagar) need `{ force: true }` in dev-browser (a portal overlay intercepts the plain click), same note as earlier stories' "Sheet/dialog buttons may need force:true".

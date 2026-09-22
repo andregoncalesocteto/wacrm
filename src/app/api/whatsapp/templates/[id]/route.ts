@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection'
 import {
   deleteMessageTemplate,
   editMessageTemplate,
@@ -65,7 +65,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Resolve the caller's account_id so template + whatsapp_config
+    // Resolve the caller's account_id so template + connection
     // lookups work for teammates who didn't author the row.
     const { data: profile } = await supabase
       .from('profiles')
@@ -91,7 +91,7 @@ export async function PATCH(
     // meta_template_id and status — fetch explicitly.
     const { data: existing, error: lookupErr } = await supabase
       .from('message_templates')
-      .select('id, name, status, meta_template_id, language')
+      .select('id, name, status, meta_template_id, language, connection_id')
       .eq('id', id)
       .eq('account_id', accountId)
       .maybeSingle()
@@ -138,18 +138,16 @@ export async function PATCH(
     }
 
     if (!isDryRun()) {
-      const { data: config, error: configError } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', accountId)
-        .single()
-      if (configError || !config) {
+      const loaded = await loadWhatsAppSendConnection(supabase, accountId, {
+        connectionId: existing.connection_id,
+      })
+      if (!loaded) {
         return NextResponse.json(
           { error: 'WhatsApp not configured.' },
           { status: 400 },
         )
       }
-      const accessToken = decrypt(config.access_token)
+      const accessToken = loaded.accessToken
 
       // Media headers (image/video/document) need a fresh Resumable-Upload
       // handle on every edit (Meta replaces components wholesale). Derive
@@ -254,7 +252,7 @@ export async function DELETE(
 
     // Same account-scoping rationale as the PATCH handler above —
     // teammates need to be able to operate on shared templates +
-    // the shared whatsapp_config.
+    // the shared WhatsApp connection.
     const { data: profile } = await supabase
       .from('profiles')
       .select('account_id')
@@ -270,7 +268,7 @@ export async function DELETE(
 
     const { data: existing, error: lookupErr } = await supabase
       .from('message_templates')
-      .select('id, name, meta_template_id')
+      .select('id, name, meta_template_id, connection_id')
       .eq('id', id)
       .eq('account_id', accountId)
       .maybeSingle()
@@ -279,21 +277,20 @@ export async function DELETE(
     }
 
     if (existing.meta_template_id && !isDryRun()) {
-      const { data: config, error: configError } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', accountId)
-        .single()
-      if (configError || !config || !config.waba_id) {
+      const loaded = await loadWhatsAppSendConnection(supabase, accountId, {
+        connectionId: existing.connection_id,
+      })
+      const wabaId = loaded?.connection.config?.waba_id
+      if (!loaded || typeof wabaId !== 'string' || !wabaId) {
         return NextResponse.json(
           { error: 'WhatsApp not configured — cannot delete on Meta.' },
           { status: 400 },
         )
       }
-      const accessToken = decrypt(config.access_token)
+      const accessToken = loaded.accessToken
       try {
         await deleteMessageTemplate({
-          wabaId: config.waba_id,
+          wabaId,
           accessToken,
           name: existing.name,
           metaTemplateId: existing.meta_template_id,

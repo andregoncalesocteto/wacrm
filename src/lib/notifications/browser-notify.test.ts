@@ -238,21 +238,15 @@ describe("truncateBody", () => {
 });
 
 describe("pickContactDisplayName", () => {
-  it("prefers name, then @username, then phone", () => {
-    expect(
-      pickContactDisplayName({ name: "Ada", wa_username: "ada", phone: "+1" }),
-    ).toBe("Ada");
-    expect(pickContactDisplayName({ name: "", wa_username: "ada", phone: "+1" })).toBe(
-      "@ada",
-    );
-    expect(pickContactDisplayName({ name: null, wa_username: null, phone: "+1" })).toBe(
-      "+1",
-    );
+  it("prefers name, then phone", () => {
+    expect(pickContactDisplayName({ name: "Ada", phone: "+1" })).toBe("Ada");
+    expect(pickContactDisplayName({ name: "", phone: "+1" })).toBe("+1");
+    expect(pickContactDisplayName({ name: null, phone: "+1" })).toBe("+1");
   });
 
   it("returns null when nothing is usable", () => {
     expect(pickContactDisplayName(null)).toBeNull();
-    expect(pickContactDisplayName({ name: " ", wa_username: "", phone: "" })).toBeNull();
+    expect(pickContactDisplayName({ name: " ", phone: "" })).toBeNull();
   });
 });
 

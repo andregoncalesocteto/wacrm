@@ -29,6 +29,8 @@ import type { QuickReply, QuickReplyKind } from "@/types";
 interface DraftState {
   id?: string;
   title: string;
+  /** '' = network-wide. */
+  store_id: string;
   kind: QuickReplyKind;
   content_text: string;
   interactive_payload: InteractiveMessagePayload;
@@ -37,6 +39,7 @@ interface DraftState {
 function emptyDraft(): DraftState {
   return {
     title: "",
+    store_id: "",
     kind: "text",
     content_text: "",
     interactive_payload: blankButtonsPayload(),
@@ -49,6 +52,7 @@ export function QuickRepliesManager() {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,11 +69,27 @@ export function QuickRepliesManager() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/stores", { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) setStores((data.stores as { id: string; name: string }[]) ?? []);
+      } catch {
+        // Without stores the field just stays hidden.
+      }
+    })();
+  }, []);
+
+  const storeName = (id: string | null | undefined) =>
+    id ? (stores.find((s) => s.id === id)?.name ?? null) : null;
+
   const openCreate = () => setDraft(emptyDraft());
   const openEdit = (qr: QuickReply) =>
     setDraft({
       id: qr.id,
       title: qr.title,
+      store_id: qr.store_id ?? "",
       kind: qr.kind,
       content_text: qr.content_text ?? "",
       interactive_payload:
@@ -86,6 +106,7 @@ export function QuickRepliesManager() {
       draft.kind === "interactive"
         ? { title: draft.title, kind: "interactive", interactive_payload: draft.interactive_payload }
         : { title: draft.title, kind: "text", content_text: draft.content_text };
+    const store_id = draft.store_id || null;
 
     setSaving(true);
     try {
@@ -94,7 +115,7 @@ export function QuickRepliesManager() {
         {
           method: draft.id ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ ...payload, store_id }),
         },
       );
       const data = await res.json().catch(() => ({}));
@@ -159,7 +180,14 @@ export function QuickRepliesManager() {
                 <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
               )}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">{qr.title}</p>
+                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <span className="truncate">{qr.title}</span>
+                  {storeName(qr.store_id) && (
+                    <span className="shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      {t("storeChip", { name: storeName(qr.store_id) ?? "" })}
+                    </span>
+                  )}
+                </p>
                 <p className="truncate text-xs text-muted-foreground">
                   {qr.kind === "interactive" && qr.interactive_payload
                     ? interactivePayloadPreviewText(qr.interactive_payload)
@@ -200,6 +228,25 @@ export function QuickRepliesManager() {
                   className="bg-muted text-foreground"
                 />
               </div>
+              {stores.length > 1 && (
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">
+                    {t("storeLabel")}
+                  </label>
+                  <select
+                    value={draft.store_id}
+                    onChange={(e) => setDraft({ ...draft, store_id: e.target.value })}
+                    className="h-9 w-full rounded-md border border-border bg-muted px-2 text-sm text-foreground"
+                  >
+                    <option value="">{t("storeAll")}</option>
+                    {stores.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="flex gap-2">
                 <KindTab
                   active={draft.kind === "text"}

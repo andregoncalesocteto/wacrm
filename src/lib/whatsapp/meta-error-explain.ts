@@ -318,7 +318,7 @@ export function explainMetaError(
 }
 
 /**
- * The `meta` object POST /api/whatsapp/config attaches to every failed
+ * The `meta` object the channel connect endpoints attach to every failed
  * Meta call — everything a user needs to quote to support.
  */
 export function metaErrorPayload(x: MetaErrorExplanation): {

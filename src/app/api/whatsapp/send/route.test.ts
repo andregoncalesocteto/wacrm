@@ -17,6 +17,8 @@ let contactRow: Record<string, unknown> | null = null
 // The caller's role, as `requireRole` reads it off the profile. Sending
 // requires 'agent'; 'viewer' must be refused before anything reaches Meta.
 let callerRole: string = 'admin'
+// US-078: the account's WhatsApp connection is disabled.
+let connectionDisabled = false
 // A conversation created during the request becomes retrievable by id —
 // the shared send core re-loads the conversation (with its contact) from
 // just the id, so the mock must model insert-then-select-by-id.
@@ -50,14 +52,15 @@ function makeSupabaseMock() {
           // Once created this request, a by-id reload returns it (with
           // its contact); otherwise fall back to the canned existing row.
           return { data: createdConversation ?? existingConversation, error: null }
-        case 'whatsapp_config':
+        case 'channel_connections':
           return {
-            data: {
-              id: 'cfg-1',
-              account_id: 'acct-1',
-              phone_number_id: 'PNID-1',
-              access_token: 'enc-token',
-            },
+            data: [
+              whatsappConnectionRow('acct-1', 'PNID-1', {
+                disabled_at: connectionDisabled
+                  ? '2026-09-01T00:00:00Z'
+                  : null,
+              }),
+            ],
             error: null,
           }
         case 'message_templates':
@@ -145,6 +148,19 @@ vi.mock('@/lib/flows/admin-client', () => ({
   }),
 }))
 
+vi.mock('@/lib/channels/admin-client', async () => {
+  const { fakeCredentialsAdmin } = await import(
+    '@/lib/channels/credentials-admin.fake'
+  )
+  return {
+    supabaseAdmin: () =>
+      fakeCredentialsAdmin(() => ({
+        secrets_encrypted: 'enc-token',
+        secrets_format: 'wa_token_v0',
+      })),
+  }
+})
+
 vi.mock('@/lib/whatsapp/encryption', () => ({
   decrypt: vi.fn(() => 'plaintext-token'),
   encrypt: vi.fn(() => 'enc-token'),
@@ -160,6 +176,7 @@ vi.mock('@/lib/whatsapp/meta-api', () => ({
   sendMediaMessage: vi.fn(),
 }))
 
+import { whatsappConnectionRow } from '@/lib/channels/credentials-admin.fake'
 import { POST } from './route'
 
 function postContactTemplate(overrides: Record<string, unknown> = {}) {
@@ -188,6 +205,7 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     createdConversation = null
     contactRow = CONTACT
     callerRole = 'admin'
+    connectionDisabled = false
     supabaseMock = makeSupabaseMock()
     sendTemplateMessage.mockClear()
   })
@@ -229,6 +247,13 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
       template_name: 'order_update',
       sender_type: 'agent',
     })
+  })
+
+  it('stamps the account connection on a conversation it creates', async () => {
+    const res = await postContactTemplate()
+    expect(res.status).toBe(200)
+    expect(conversationInserts).toHaveLength(1)
+    expect(conversationInserts[0].connection_id).toEqual(expect.any(String))
   })
 
   it('reuses an existing conversation instead of creating a duplicate', async () => {
@@ -312,5 +337,39 @@ describe('POST /api/whatsapp/send — role enforcement', () => {
 
     expect(res.status).toBe(200)
     expect(sendTemplateMessage).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('POST /api/whatsapp/send — disabled connection (US-078)', () => {
+  beforeEach(() => {
+    messageInserts.length = 0
+    conversationInserts.length = 0
+    createdConversation = null
+    contactRow = CONTACT
+    callerRole = 'admin'
+    connectionDisabled = true
+    existingConversation = {
+      id: 'conv-existing',
+      account_id: 'acct-1',
+      contact_id: 'contact-1',
+      contact: CONTACT,
+    }
+    supabaseMock = makeSupabaseMock()
+    sendTemplateMessage.mockClear()
+  })
+
+  afterEach(() => {
+    connectionDisabled = false
+  })
+
+  it('answers 409 connection_disabled, never calls Meta and persists nothing', async () => {
+    const res = await postContactTemplate()
+    const json = await res.json()
+
+    expect(res.status).toBe(409)
+    expect(json.code).toBe('connection_disabled')
+    expect(json.error).toEqual(expect.any(String))
+    expect(sendTemplateMessage).not.toHaveBeenCalled()
+    expect(messageInserts).toHaveLength(0)
   })
 })

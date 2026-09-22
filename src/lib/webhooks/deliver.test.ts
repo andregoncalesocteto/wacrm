@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -86,6 +87,33 @@ describe('dispatchWebhookEvent', () => {
     expect(JSON.parse(opts.body).id).toMatch(/[0-9a-f-]{36}/);
     expect(calls.updates[0]).toMatchObject({ id: 'a', payload: { failure_count: 0 } });
     expect(calls.rpcs).toHaveLength(0);
+  });
+
+  it('delivers the origin payload (connection, store, channel, contact) under a verifiable signature', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    const data = {
+      conversation_id: 'cv',
+      connection_id: 'conn',
+      store_id: 'st',
+      channel: 'telegram',
+      contact: {
+        id: 'ct',
+        phone: null,
+        identities: [{ kind: 'telegram:user', external_id: '42', handle: 'ada' }],
+      },
+    };
+    await dispatchWebhookEvent(
+      makeDb([{ id: 'a', url: 'https://a.test/hook', secret: 'shh' }], emptyCalls()),
+      'acct-1',
+      'message.received',
+      data
+    );
+    const [, opts] = fetchMock.mock.calls[0];
+    expect(JSON.parse(opts.body).data).toEqual(data);
+    const [, t, v1] = opts.headers['X-Wacrm-Signature'].match(/t=(\d+),v1=([0-9a-f]+)/);
+    const expected = createHmac('sha256', 'shh').update(`${t}.${opts.body}`).digest('hex');
+    expect(v1).toBe(expected);
   });
 
   it('records an atomic failure (RPC) when the endpoint errors', async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { whatsappConnectionRow } from '@/lib/channels/credentials-admin.fake';
 
 import { BroadcastError } from './broadcast-core';
 import {
@@ -12,6 +13,21 @@ import {
 vi.mock('@/lib/whatsapp/encryption', () => ({
   decrypt: (v: string) => `decrypted:${v}`,
 }));
+
+// Credentials now come from channel_connection_credentials (US-015): serve the
+// same "tok" the removed legacy config table carried.
+vi.mock('@/lib/channels/admin-client', async () => {
+  const { fakeCredentialsAdmin } = await import(
+    '@/lib/channels/credentials-admin.fake'
+  );
+  return {
+    supabaseAdmin: () =>
+      fakeCredentialsAdmin(() => ({
+        secrets_encrypted: 'tok',
+        secrets_format: 'wa_token_v0',
+      })),
+  };
+});
 
 // ============================================================
 // Claim / release — the mutex that stops a double-send.
@@ -155,6 +171,19 @@ function planDb(fx: PlanFixture, writes: PlanWrites = {}): SupabaseClient {
           }
           if (table === 'message_templates') {
             return resolve({ data: fx.templates ?? [], error: null });
+          }
+          if (table === 'channel_connections') {
+            return resolve({
+              data: fx.config
+                ? [
+                    whatsappConnectionRow(
+                      'acct-1',
+                      String(fx.config.phone_number_id),
+                    ),
+                  ]
+                : [],
+              error: null,
+            });
           }
           return resolve({ data: [], error: null });
         },

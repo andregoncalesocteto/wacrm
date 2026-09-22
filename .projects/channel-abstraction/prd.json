@@ -1,0 +1,1370 @@
+{
+  "project": "wacrm",
+  "branchName": "ralph/channel-abstraction",
+  "description": "Abstração de canais (multiloja, multicanal): lojas, conexões por loja, contrato de provedor, WhatsApp oficial migrado sem mudar comportamento e Telegram como canal de prova; o CRM continua independente do canal. Convenções que valem para TODAS as histórias: texto de interface por `useTranslations` (sem literal), chaves nos quatro catálogos (en, pt, es, ko); datas e números por `useFormatter()` (nunca `toLocale*String` nem `new Intl.*Format` direto); testes com `TZ=UTC npm test`; migrations novas e sequenciais (próxima: 043), nunca editar uma aplicada, replay do zero passa; o comportamento observável do WhatsApp oficial não muda salvo onde a história disser; Meta e Telegram não são alcançáveis no ambiente de teste (usar fixtures e dublês). Base: SOLUTION.md, design.md e adr/ desta pasta.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Mapear a cobertura de testes do WhatsApp oficial",
+      "description": "Como desenvolvedor, quero saber o que os testes atuais cobrem no WhatsApp oficial para refatorar sem regredir.",
+      "acceptanceCriteria": [
+        "`.projects/channel-abstraction/coverage-map.md` lista, para envio, webhook (mensagem, status, reação, mídia), templates, broadcast (criar, entregar, retomar), motor de flows, motor de automações e resposta por IA, os arquivos de teste existentes e o que cada um garante",
+        "O arquivo lista as **lacunas** (comportamentos sem teste) que as US-002 a US-004 vão cobrir",
+        "Nenhum código de produção é alterado",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Testes de caracterização do recebimento do WhatsApp",
+      "description": "Como desenvolvedor, quero testes que fixem o comportamento do webhook antes da refatoração.",
+      "acceptanceCriteria": [
+        "Teste: o **reenvio** da mesma mensagem não duplica (a mesma `(conversa, id externo)` é ignorada)",
+        "Teste: mensagem de número novo cria contato (por telefone normalizado) e conversa; de contato conhecido reaproveita",
+        "Teste: mensagem identificada só por BSUID/`username` cria e reencontra o contato sem telefone",
+        "Teste: os degraus de status (`sent`, `delivered`, `read`, `failed`) só avançam, e o motivo de falha é gravado",
+        "Teste: reação e mensagem com mídia são registradas",
+        "Os testes passam **contra o código atual, sem alterá-lo**",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "51 testes em src/app/api/whatsapp/webhook/route.characterization.test.ts (fake Supabase com estado, assinatura/criptografia/identidade reais). Rota de templates fica para US-003/004."
+    },
+    {
+      "id": "US-003",
+      "title": "Testes de caracterização do envio do WhatsApp",
+      "description": "Como desenvolvedor, quero testes que fixem o comportamento do envio antes da refatoração.",
+      "acceptanceCriteria": [
+        "Teste: em erro \"destinatário não permitido\", o envio tenta as variantes de telefone e para nos demais erros",
+        "Teste: contato sem telefone válido usa o BSUID como destino; sem nenhum destino, falha com erro claro",
+        "Teste: envio de texto, mídia, template e interativo grava a mensagem e atualiza a conversa",
+        "Teste: quando um agente envia, o flow ativo do contato é pausado",
+        "Os testes passam **contra o código atual, sem alterá-lo**",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Testes de caracterização dos motores e do broadcast",
+      "description": "Como desenvolvedor, quero testes que fixem o envio feito por flows, automações, IA e broadcast.",
+      "acceptanceCriteria": [
+        "Teste: os envios do motor de flows (texto, mídia, botões, lista) gravam a mensagem e atualizam a conversa",
+        "Teste: o envio do motor de automações (texto e template) e a retomada de uma espera enviam pela conversa certa",
+        "Teste: a resposta automática por IA envia o texto gerado e respeita o limite por conversa",
+        "Teste: `deliverBroadcast` atualiza `broadcast_recipients` (enviado ou falha) e `finalizeBroadcastStatus` calcula o estado final, inclusive numa retomada",
+        "Os testes passam **contra o código atual, sem alterá-lo**",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Pinned as-is: a failed Meta send in flows/automations/AI persists nothing (no failed row; flows run -> failed/send_*_failed, automation log -> failed); AI slot is consumed before the send so a failed send still counts against the cap; a resumed wait whose send fails still closes the pending row as done (the failure is in the log); deliverBroadcast never writes count columns (DB trigger owns them). Differs from coverage-map.md speculation of a 'failed' message row."
+    },
+    {
+      "id": "US-005",
+      "title": "Criar as tabelas de loja, conexão, credenciais e identidades",
+      "description": "Como desenvolvedor, preciso das tabelas do novo modelo para começar a migrar os dados.",
+      "acceptanceCriteria": [
+        "Migration `043` cria `stores`, `channel_connections` (com `disabled_at`, estado, saúde, `UNIQUE (channel_type, external_id)`), `channel_connection_credentials` (com `secrets_encrypted` e `secrets_format`) e `contact_identities` (`UNIQUE (account_id, kind, external_id)`), com os índices do Design Doc",
+        "Políticas de acesso: `stores` e `channel_connections` com leitura para membros e escrita para `admin`+; `contact_identities` segue as regras de `contacts`; `channel_connection_credentials` com RLS ligado e **sem nenhuma política**",
+        "`supabase/ci/verify-schema.sql` verifica que as quatro tabelas existem e que `channel_connection_credentials` não tem política",
+        "O replay das migrations do zero passa e `verify-schema.sql` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Acrescentar as colunas novas, ainda nulas",
+      "description": "Como desenvolvedor, preciso das colunas novas antes de mudar o código que as usa.",
+      "acceptanceCriteria": [
+        "Migration `044` acrescenta, **nulos**: `conversations.connection_id`, `message_templates.connection_id`, `broadcasts.connection_id`, `automation_pending_executions.conversation_id` e `.connection_id`, `quick_replies.store_id`",
+        "A restrição de `notifications.type` passa a aceitar também `'connection_down'`",
+        "Nenhum índice único existente é alterado nesta história",
+        "`verify-schema.sql` verifica as colunas novas",
+        "O replay do zero e a suíte existente passam",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Preencher os dados existentes (backfill)",
+      "description": "Como desenvolvedor, quero que as contas existentes ganhem uma loja e uma conexão para o novo modelo funcionar.",
+      "acceptanceCriteria": [
+        "Migration `045`, **idempotente**, cria por conta uma `store` (nome da conta) e uma `channel_connection` `whatsapp_cloud` a partir de `whatsapp_config` (`external_id` = `phone_number_id`, estado e `config`)",
+        "O `access_token` já cifrado é copiado **como está** para `channel_connection_credentials.secrets_encrypted` com `secrets_format = 'wa_token_v0'` (formato de token único), sem exigir a chave de cifra na migration",
+        "`conversations.connection_id`, `message_templates.connection_id`, `broadcasts.connection_id` e `automation_pending_executions.conversation_id`/`connection_id` são preenchidos",
+        "`contact_identities` recebe uma linha por `phone_normalized` (`whatsapp:phone`), `wa_user_id` (`whatsapp:bsuid`) e `wa_username` (`whatsapp:username`) de cada contato",
+        "`verify-schema.sql` afirma que não sobra `connection_id` nulo em conversas de contas que tinham `whatsapp_config`",
+        "Rodar a migration duas vezes não duplica nenhuma linha",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Migration 045 (pure SQL, idempotent). Accounts without whatsapp_config get no store/connection (their conversations stay NULL; verify-schema excludes them). Proven on dev DB with seed + rerun (identical row snapshot) + isolated replay."
+    },
+    {
+      "id": "US-008",
+      "title": "Criar o acesso a conexões e credenciais",
+      "description": "Como desenvolvedor, quero um único lugar para ler conexões e credenciais.",
+      "acceptanceCriteria": [
+        "`src/lib/channels/connections.ts` expõe: buscar por id, por `(canal, external_id)`, listar por conta e por loja, e obter credenciais decifradas (só com o cliente de serviço)",
+        "A leitura das credenciais entende `wa_token_v0` (token único) e o formato novo (JSON), e **regrava no formato novo** na primeira leitura, no mesmo padrão do upgrade de CBC para GCM já existente",
+        "Nenhuma função devolve credenciais para um cliente de usuário (teste que garante isso)",
+        "Testes de unidade cobrem os dois formatos, o upgrade e a ausência de conexão",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Definir o contrato de provedor e o registro",
+      "description": "Como desenvolvedor, quero o contrato que todo canal implementa.",
+      "acceptanceCriteria": [
+        "`src/lib/channels/types.ts` define `ChannelType`, `Capabilities`, `ChannelProvider`, `InboundEvent`, `OutboundMessage`, `SendResult`, `Target`, `Health` e `ChannelError` (com os códigos `auth`, `rate_limited`, `recipient_unreachable`, `unsupported`, `window_closed`, `invalid`, `unknown`), como no Design Doc",
+        "`src/lib/channels/registry.ts` registra e busca provedores por `channel_type`; um tipo desconhecido lança erro claro",
+        "Testes de unidade do registro",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Provedor WhatsApp — capacidades, envio e destino",
+      "description": "Como desenvolvedor, quero o WhatsApp oficial como o primeiro provedor, no lado do envio.",
+      "acceptanceCriteria": [
+        "`src/lib/channels/providers/whatsapp-cloud/` declara as capacidades (templates, botões, lista, reações, \"digitando\", entregue, lido, iniciar por template, janela de 24 h, mídia e limites) e os esquemas de configuração e credenciais",
+        "`resolveTarget` usa `resolveContactSendTarget` (telefone, com BSUID como reserva)",
+        "`send` envia texto, mídia, template e interativo pelas funções atuais de `lib/whatsapp/meta-api.ts`, com a **retentativa de variantes de telefone dentro do provedor**",
+        "Erros da Meta são convertidos em `ChannelError` tipado, preservando o código original",
+        "O adaptador **usa** os arquivos atuais de `lib/whatsapp/*`, sem movê-los",
+        "Testes de unidade cobrem envio, variantes, destino e mapeamento de erros; o registro conhece `whatsapp_cloud`",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Provedor WhatsApp — entrada: conexão, verificação, status e reação",
+      "description": "Como desenvolvedor, quero o WhatsApp identificando a conexão, verificando a assinatura e entendendo status e reações em formato normalizado.",
+      "acceptanceCriteria": [
+        "`resolveConnection` acha a conexão pelo `phone_number_id` do payload",
+        "`verify` valida o HMAC com `META_APP_SECRET` (aceitando a lista separada por vírgulas), em tempo constante",
+        "`parse` converte os eventos de **status** (`sent`, `delivered`, `read`, `failed`, com o motivo da falha) e de **reação** do payload em `InboundEvent`",
+        "Os testes usam os payloads de fixtures do webhook atual e produzem eventos equivalentes ao que o código atual grava",
+        "O webhook atual **ainda não usa** este código",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-073",
+      "title": "Provedor WhatsApp — entrada: mensagens e candidatos de identidade",
+      "description": "Como desenvolvedor, quero o WhatsApp convertendo as mensagens recebidas em eventos normalizados, com os candidatos de identidade do remetente.",
+      "acceptanceCriteria": [
+        "`parse` converte as **mensagens** do payload em `InboundEvent` com todo o conteúdo suportado hoje (texto, imagem, vídeo, documento, áudio, botão, lista, localização e resposta a outra mensagem)",
+        "Cada evento traz os **candidatos de identidade** do remetente (`whatsapp:phone`, `whatsapp:bsuid`, `whatsapp:username`) e o nome informado pelo perfil",
+        "Os testes usam as fixtures do webhook atual (inclusive remetente só com BSUID) e produzem eventos equivalentes ao que o código atual grava",
+        "O webhook atual **ainda não usa** este código",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Provedor WhatsApp — ciclo de vida e operações opcionais",
+      "description": "Como desenvolvedor, quero conectar, desconectar e checar o WhatsApp pelo contrato.",
+      "acceptanceCriteria": [
+        "`connect` reaproveita a lógica atual de registro e inscrição do app (de `config/route.ts` e `verify-registration`)",
+        "`disconnect` e `health` são implementados (o estado sai da sondagem de registro existente)",
+        "`downloadMedia`, `react` e `typing` chamam as funções atuais da Meta e são declarados como capacidades",
+        "Testes de unidade com a Meta simulada cobrem sucesso e erro de cada operação",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "Após a US-010: `typing` não foi implementado porque o contrato não carrega o id da mensagem recebida (wamid), que a chamada de \"digitando\" da Meta exige. Nesta história, estender de forma aditiva a assinatura (ex.: `typing(conn, target, { inboundExternalId })`) em types.ts e implementar `typing` no provedor do WhatsApp; a US-029 (IA) passa o id da mensagem recebida."
+    },
+    {
+      "id": "US-013",
+      "title": "Gravar também em `channel_connections` ao salvar a configuração",
+      "description": "Como desenvolvedor, quero que a tela atual continue funcionando enquanto migramos os leitores.",
+      "acceptanceCriteria": [
+        "`POST` e `DELETE /api/whatsapp/config`, o botão de espelhamento de mídia e a verificação de registro passam a gravar também em `channel_connections` e `channel_connection_credentials` (**escrita dupla**)",
+        "Salvar cria a loja padrão e a conexão da conta se ainda não existirem",
+        "`whatsapp_config` continua sendo gravada exatamente como hoje",
+        "Testes de rota cobrem criar, atualizar e apagar nas duas tabelas",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "Dual write via src/lib/channels/whatsapp-dual-write.ts (syncWhatsappConnection/removeWhatsappConnection, service role, non-fatal, always rebuilt FROM whatsapp_config). verify-registration is a read-only diagnostic that never writes registered_at/last_registration_error (POST config does), so it has nothing to mirror and was not changed. Toggle: new POST /api/whatsapp/config/mirror-media called after the browser update. Not verified in browser/with real Meta."
+    },
+    {
+      "id": "US-014",
+      "title": "Migrar os leitores de envio para `connections.ts`",
+      "description": "Como desenvolvedor, quero que o envio leia a conexão nova.",
+      "acceptanceCriteria": [
+        "`send-message.ts`, `flows/meta-send.ts`, `automations/meta-send.ts`, `ai/auto-reply.ts` e `whatsapp/resolve-conversation.ts` deixam de ler `whatsapp_config` e usam `connections.ts`",
+        "Nenhum teste existente é alterado além de caminhos e dublês",
+        "Nenhuma leitura de `whatsapp_config` sobra nesses arquivos (busca no código)",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": "Orientação do orquestrador: (a) qual conexão usar — a `connection_id` da conversa quando existir; senão a conexão de WhatsApp ativa da conta (fallback, porque conversas criadas pelo código antigo depois da migration 045 ainda têm `connection_id` nulo); (b) `resolve-conversation.ts` deve gravar `connection_id` ao criar uma conversa; (c) os testes de caracterização não podem ter asserções alteradas; só os dublês/dados de origem (whatsapp_config → conexões e credenciais) podem mudar. | Feito: helper src/lib/channels/whatsapp-connection.ts (connection_id da conversa, senao conexao whatsapp_cloud ativa da conta; status NAO e consultado, como antes). auto-reply.ts nao lia whatsapp_config diretamente (usa loadAccountMetaCredentials, chamada com 2 args por causa da asserção de auto-reply.test.ts -> so fallback). resolveAuditUserId (api/v1/contacts.ts) ainda le whatsapp_config: fora do escopo."
+    },
+    {
+      "id": "US-015",
+      "title": "Migrar os leitores de broadcast",
+      "description": "Como desenvolvedor, quero que o broadcast leia a conexão nova.",
+      "acceptanceCriteria": [
+        "`broadcast-core.ts`, `broadcast-resume.ts` e `app/api/whatsapp/broadcast/route.ts` deixam de ler `whatsapp_config`",
+        "Um broadcast passa a gravar o `connection_id` da conexão de WhatsApp que envia",
+        "Os testes de broadcast e de retomada passam sem alteração de comportamento",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": "Migration 046 adds p_connection_id to create_broadcast_with_recipients (8-arg overload dropped). Dashboard hook inserts broadcasts.connection_id directly. Not browser-verified (no criterion requires it; Meta unreachable)."
+    },
+    {
+      "id": "US-016",
+      "title": "Migrar os leitores de templates, mídia e reação",
+      "description": "Como desenvolvedor, quero que templates, mídia e reações leiam a conexão nova.",
+      "acceptanceCriteria": [
+        "`templates/submit`, `templates/[id]`, `templates/sync`, `template-webhook.ts`, `media/[mediaId]` e `react` deixam de ler `whatsapp_config`",
+        "Templates novos gravam `connection_id`",
+        "Os testes existentes passam sem alteração de comportamento",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Migrar o webhook, a API v1 e a página do inbox",
+      "description": "Como desenvolvedor, quero que o webhook e o restante dos leitores usem a conexão nova.",
+      "acceptanceCriteria": [
+        "A busca da conta por `phone_number_id` e a verificação `hub.verify_token` do `GET` do webhook usam `channel_connections`",
+        "`lib/api/v1/contacts.ts` e `app/(dashboard)/inbox/page.tsx` deixam de ler `whatsapp_config`",
+        "Uma busca no código por `whatsapp_config` só acha as telas de configuração (`settings-overview.tsx`, `whatsapp-config.tsx`) e a rota de escrita dupla",
+        "`route.test.ts` do webhook passa sem alteração de comportamento",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": "Orientação do orquestrador: além dos leitores, o `findOrCreateConversation` do webhook antigo deve passar a gravar `connection_id` (a conexão que recebeu a mensagem) ao criar conversas, para não acumular conversas com `connection_id` nulo até a US-032. Asserções dos testes de caracterização não mudam. Após a US-014: `resolveAuditUserId` em `lib/api/v1/contacts.ts` ainda lê `whatsapp_config` (chamada por `resolve-conversation.ts`), e o dublê de `resolve-conversation.test.ts` ainda serve `whatsapp_config` para ela — migrar aqui."
+    },
+    {
+      "id": "US-018",
+      "title": "Resolver o contato por identidades",
+      "description": "Como desenvolvedor, quero um único caminho para achar ou criar o contato a partir do que o provedor entrega.",
+      "acceptanceCriteria": [
+        "`src/lib/channels/identity.ts` recebe candidatos de identidade e devolve o contato existente (por qualquer candidato) ou cria um contato com todas as identidades",
+        "Encontrar por um candidato e trazer candidatos novos acrescenta as identidades novas ao mesmo contato",
+        "`contactDisplayName` devolve nome, ou a identidade principal (`@username`, telefone, BSUID, id do canal), nunca vazio",
+        "Os casos de `wa-identity.ts` (telefone, BSUID, `username`, duplicata por unicidade) têm teste equivalente",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Ingerir mensagens recebidas",
+      "description": "Como desenvolvedor, quero um núcleo que grave a mensagem recebida de qualquer canal.",
+      "acceptanceCriteria": [
+        "`src/lib/channels/ingest.ts` (`ingestInbound`) trata eventos `message`: resolve o contato, acha ou cria a conversa por `(contato, conexão)`, grava a mensagem com `ON CONFLICT (conversation_id, message_id) DO NOTHING` e atualiza a conversa (último texto, horário, não lidas)",
+        "O reenvio do mesmo evento não duplica nada (teste)",
+        "A função só depende dos dados que recebe, sem depender de rota ou de `after()`",
+        "Testes de unidade com provedor simulado",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": "Após a US-018: o `parse` do WhatsApp não emite candidato para o BSUID do pai (`wa_parent_user_id`), então `resolveOrCreateContact` não o preenche; o `contactIdentityPatch` do webhook antigo ainda o faz. Ao ligar a ingestão, manter esse preenchimento (ou acrescentar a identidade `whatsapp:parent_bsuid`), decidindo junto com a US-070, que remove a coluna. | Feito: parent BSUID preenchido no ingest via campo aditivo parentExternalId do evento (backfill de contacts.wa_parent_user_id, remover na US-070); os 3 casos de borda da US-021/022 estao cobertos no nucleo por hints aditivos do parse (content.stored, emptyPreview) com testes. Fan-out, midia, status e reacao ficam nos ganchos de IngestHooks (US-020/074/021)."
+    },
+    {
+      "id": "US-020",
+      "title": "Ingestão — distribuição para automações, flows e IA",
+      "description": "Como desenvolvedor, quero que a mensagem recebida dispare automações, flows e a resposta por IA como hoje.",
+      "acceptanceCriteria": [
+        "Depois de gravar a mensagem, a ingestão dispara automações, flows e a resposta por IA, com as mesmas regras do código atual",
+        "Uma falha num desses motores não impede os outros nem desfaz a mensagem gravada (teste)",
+        "Testes de unidade cobrem cada disparo com dublês",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 21,
+      "passes": true,
+      "notes": "Após a US-019: `flagBroadcastReplyIfAny` e o fan-out (automações, flows, IA) entram pelo hook `onMessageStored` de `ingestInbound`; `isFirstInbound` e `contactCreated` já vêm no resultado `stored`. Feito: src/lib/channels/fanout.ts (fanOutInbound / fanoutHook). flagBroadcastReplyIfAny, webhook message.received e notificacoes ficam para a US-074 (marcados como SEAM no arquivo)."
+    },
+    {
+      "id": "US-074",
+      "title": "Ingestão — webhooks de saída, notificações e resposta de broadcast",
+      "description": "Como desenvolvedor, quero que a mensagem recebida também dispare os webhooks de saída, as notificações e a marcação de resposta de broadcast.",
+      "acceptanceCriteria": [
+        "Depois de gravar a mensagem, a ingestão dispara os webhooks de saída (`message.received`), as notificações e a sinalização da resposta de um broadcast, com as mesmas regras do código atual",
+        "Uma falha aqui não impede os motores da US-020 nem desfaz a mensagem gravada (teste)",
+        "Testes de unidade cobrem cada disparo com dublês",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 22,
+      "passes": true,
+      "notes": "fanout.ts now also flags broadcast replies (before flows) and dispatches message.received (after AI). The route creates NO server-side notifications on inbound (lib/notifications is browser-only), so none added. conversation.created is emitted by conversationCreatedHook (IngestHooks.onConversationCreated), not by the fan-out."
+    },
+    {
+      "id": "US-021",
+      "title": "Ingestão — mídia, status e reação",
+      "description": "Como desenvolvedor, quero a ingestão tratando mídia, status e reações.",
+      "acceptanceCriteria": [
+        "O espelhamento de mídia recebida usa `provider.downloadMedia` e o armazenamento atual, respeitando a opção da conexão",
+        "Eventos `status` atualizam o estado da mensagem **exatamente como o código atual**: sem trava de ordem, porque o teste de caracterização da US-002 fixa que a espelhada em `messages` aceita qualquer status recebido; a escada só-para-frente existe apenas para `broadcast_recipients` e continua valendo lá. Grava o motivo de falha, e provedores sem recibo simplesmente não geram esse evento",
+        "Eventos `reaction` gravam ou removem a reação",
+        "Testes de unidade para cada tipo de evento",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 23,
+      "passes": true,
+      "notes": "Critério de status ajustado pelo orquestrador após a US-002: a espelhada de messages não tem trava de ordem hoje (fixado por teste de caracterização); manter o comportamento (RNF-01). Após a US-073: três casos de borda do `parse` do WhatsApp diferem do que o webhook atual grava quando mapeados 1:1 — (1) interativo sem opção: a rota grava `content_type` \"interactive\", o parse emite `unsupported` (texto); (2) mídia sem id: a rota grava `content_type` image com mídia nula; (3) botão sem payload nem texto: `id` e `title` vazios. Ao ligar a ingestão (US-019/US-021) e trocar a rota (US-022), reproduzir exatamente o que a rota grava hoje (ajustando o mapeamento no núcleo ou enriquecendo o evento de forma aditiva) e cobrir os três casos com testes. Após a US-019: sem o hook `resolveMedia`, a ingestão grava `media_url` nulo, enquanto a rota grava o fallback `/api/whatsapp/media/<id>`; o hook desta história deve reproduzir esse fallback. A ingestão já trata os 3 casos de borda (via `content.stored`). Após a US-021: hook `createMediaResolver` (media.ts) implementado; com o espelho DESLIGADO a rota ainda consultava a Meta (getMediaUrl) e gravava null se falhasse, o hook grava direto o proxy (sem chamada provider-neutra de verificação). US-022 deve ligar hooks.resolveMedia = createMediaResolver({provider, storage: supabaseAdmin().storage}) e remover as cópias privadas da escada/handleStatusUpdate/handleReaction da rota."
+    },
+    {
+      "id": "US-022",
+      "title": "Reduzir o webhook do WhatsApp a uma casca fina",
+      "description": "Como desenvolvedor, quero o webhook do WhatsApp delegando ao provedor e ao núcleo.",
+      "acceptanceCriteria": [
+        "`POST /api/whatsapp/webhook` faz `resolveConnection` → `verify` → `parse`, responde `200` e processa com `ingestInbound` dentro de `after()` (mantendo `maxDuration = 60`)",
+        "O código antigo de processamento de mensagens do arquivo é removido",
+        "`GET` (verificação de inscrição da Meta) e a rota continuam no mesmo caminho",
+        "Todos os testes da rota e os de caracterização da US-002 passam **sem alteração**",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 24,
+      "passes": true,
+      "notes": "Após a US-073: três casos de borda do `parse` do WhatsApp diferem do que o webhook atual grava quando mapeados 1:1 — (1) interativo sem opção: a rota grava `content_type` \"interactive\", o parse emite `unsupported` (texto); (2) mídia sem id: a rota grava `content_type` image com mídia nula; (3) botão sem payload nem texto: `id` e `title` vazios. Ao ligar a ingestão (US-019/US-021) e trocar a rota (US-022), reproduzir exatamente o que a rota grava hoje (ajustando o mapeamento no núcleo ou enriquecendo o evento de forma aditiva) e cobrir os três casos com testes. Após a US-019: passar `auditUserId = accounts.owner_user_id` à ingestão; o preview da conversa é `contentText || emptyPreview || description || [content_type]`; `wa_parent_user_id` é preenchido pela ingestão a partir de `parentExternalId` (removido junto com a coluna na US-070). Após a US-074: ligar `hooks.onMessageStored = fanoutHook({configOwnerUserId})` e `hooks.onConversationCreated = conversationCreatedHook` (esta última emite `conversation.created`; ainda não está ligada em lugar nenhum). A rota não cria notificações em mensagens recebidas, então não há o que portar. | Feito: POST = readRawBody -> resolveConnection -> verify (401) -> JSON (400) -> after(): template-lifecycle fields (route) + provider.parse + ingestInbound com hooks; connection/credenciais ausentes = log e ignora. Deltas aceitos: (a) uma conexao por payload (primeiro phone_number_id; a Meta manda um numero por entrega); (b) statuses de numero sem conexao sao ignorados (antes eram aplicados sem escopo); (c) com espelho DESLIGADO a rota nao consulta mais a Meta (grava o proxy direto). Restaurados: pre-checagem de file_size (MediaTransferError no provider) e proxy quando a transferencia falha (lookup que falha continua null); wa_parent_user_id agora vai no INSERT/UPDATE unico do contato (identity parentExternalId). Testes: so os fakes de route.test.ts (contact_identities, conversations update/is, MetaApiError real, channel_type na conexao) e `.is` no fake da caracterizacao; nenhuma assercao alterada."
+    },
+    {
+      "id": "US-023",
+      "title": "Núcleo de envio — texto e mídia",
+      "description": "Como desenvolvedor, quero um único caminho para enviar mensagens.",
+      "acceptanceCriteria": [
+        "`src/lib/channels/send.ts` (`sendOutbound`) carrega conversa, conexão, contato e identidades, pede o destino ao provedor, valida a mensagem contra as capacidades, chama `provider.send`, grava a mensagem e atualiza a conversa",
+        "Capacidade ausente ou destino inexistente lança `ChannelError` tipado (`unsupported`, `recipient_unreachable`) **sem chamar o provedor**",
+        "Quando o ator é um agente, o flow ativo da conversa é pausado",
+        "Erro do provedor (a Meta recusou o envio) lança `ChannelError` tipado e **não grava mensagem nem altera a conversa**, exatamente como o código atual (fixado pela US-003: hoje uma falha síncrona de envio não persiste linha `failed`). As colunas `error_code`/`error_title`/`error_details` continuam sendo preenchidas só pelo evento de status de falha recebido depois (ingestão, US-021)",
+        "Testes de unidade com provedor simulado; os testes de caracterização de envio (US-003) têm equivalente aqui",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 25,
+      "passes": true,
+      "notes": "Critério de falha ajustado pelo orquestrador após a US-003: o código atual não persiste linha failed quando a Meta recusa o envio; manter (RNF-01)."
+    },
+    {
+      "id": "US-024",
+      "title": "Núcleo de envio — template e interativo",
+      "description": "Como desenvolvedor, quero o núcleo cobrindo templates e mensagens interativas.",
+      "acceptanceCriteria": [
+        "`sendOutbound` aceita `template` e `interactive`, validando `templates`, botões e lista pelas capacidades",
+        "O conteúdo gravado para template e interativo é idêntico ao que o envio atual grava",
+        "Testes de unidade para template, botões e lista, inclusive o erro `unsupported` num provedor sem a capacidade",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 26,
+      "passes": true,
+      "notes": "Template row resolved in the core (resolveTemplateRow), passed to the provider via template.provider; interactive persisted in legacy button_label shape. Migration of callers is US-025+."
+    },
+    {
+      "id": "US-025",
+      "title": "Rota de envio do dashboard usa o núcleo",
+      "description": "Como agente, quero que o envio pelo inbox continue funcionando.",
+      "acceptanceCriteria": [
+        "`POST /api/whatsapp/send` chama `sendOutbound` e mapeia `ChannelError` para as mesmas respostas HTTP de hoje",
+        "O teste da rota (`route.test.ts`) passa sem alteração de comportamento",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 27,
+      "passes": true,
+      "notes": "Após a US-014: a rota `api/whatsapp/send` cria conversa própria sem gravar `connection_id`; ao migrar para `sendOutbound`, toda conversa criada deve receber `connection_id`."
+    },
+    {
+      "id": "US-026",
+      "title": "API pública de mensagens e criação de conversa usam o núcleo",
+      "description": "Como integrador, quero o envio pela API pública passando pelo núcleo, sem mudar o contrato ainda.",
+      "acceptanceCriteria": [
+        "`POST /api/v1/messages` e `resolve-conversation.ts` usam `sendOutbound`; toda conversa criada recebe `connection_id` (a conexão de WhatsApp ativa da conta)",
+        "O contrato atual da API (campos, códigos de erro) fica inalterado nesta história",
+        "Os testes de rota e de `send-message` passam sem alteração de comportamento",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 28,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Motor de flows usa o núcleo",
+      "description": "Como operador, quero que os flows continuem enviando.",
+      "acceptanceCriteria": [
+        "Os passos de envio de flows (texto, mídia, botões, lista) chamam `sendOutbound` com ator `flow`",
+        "`flows/meta-send.ts` deixa de ser usado pelos flows",
+        "Os testes do motor de flows passam sem alteração de comportamento",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 29,
+      "passes": true,
+      "notes": "Flows engine imports src/lib/flows/send.ts (adapters over sendOutbound, actor flow, service-role db). flows/meta-send.ts engineSend* now unused by flows (kept for US-031; loadAccountMetaCredentials and engineSendText/aiGenerated still used by ai/auto-reply and automations)."
+    },
+    {
+      "id": "US-028",
+      "title": "Motor de automações usa o núcleo e guarda a conversa nas esperas",
+      "description": "Como operador, quero que as automações, inclusive as esperas, enviem pela conversa certa.",
+      "acceptanceCriteria": [
+        "Os passos de envio de automações chamam `sendOutbound` com ator `automation`",
+        "Ao agendar uma espera, `automation_pending_executions` grava `conversation_id` e `connection_id`, e a retomada envia por essa conversa",
+        "Gatilhos sem conversa (por tempo ou etiqueta) resolvem a **conversa mais recente do contato** numa conexão que suporta o passo; se não houver, a execução é registrada como **ignorada, com o motivo**",
+        "Os testes do motor de automações passam, e há testes novos para a espera e para o caso \"ignorada\"",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 30,
+      "passes": true,
+      "notes": "Log status for an ignored run stays success with a skipped step (detail \"ignored: <reason>\"); no new status/migration. A contact with NO conversation at all still fails the step (pinned by existing tests). Real Meta not verified (unreachable)."
+    },
+    {
+      "id": "US-029",
+      "title": "Resposta por IA usa o núcleo",
+      "description": "Como operador, quero que a resposta por IA continue funcionando.",
+      "acceptanceCriteria": [
+        "`ai/auto-reply.ts` envia com `sendOutbound` (ator `ai`) e usa `provider.typing` quando a capacidade existe",
+        "Os testes de IA passam sem alteração de comportamento",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 31,
+      "passes": true,
+      "notes": "Após a US-010: o \"digitando\" precisa do id externo da mensagem recebida; passar `inboundExternalId` a `provider.typing` (assinatura estendida na US-012). Após a US-014: `auto-reply.test.ts` asserta `loadAccountMetaCredentials(_, \"acct-1\")` com 2 argumentos, então o \"digitando\" da IA usa só a conexão de fallback da conta; ao migrar, passar a conexão da conversa (atualizar essa asserção de forma justificada). Feito: auto-reply envia por sendOutbound (ator ai) e o digitando vai por showTyping (src/lib/channels/send.ts) -> provider.typing({inboundExternalId}) com a conexao da conversa (fallback da conta), so se capabilities.typingIndicator. auto-reply.test.ts: mocks apontados para channels/send (a asserção loadAccountMetaCredentials(_, 'acct-1') deixou de existir porque o carregamento de credenciais agora e do provider)."
+    },
+    {
+      "id": "US-030",
+      "title": "Broadcast usa o provedor",
+      "description": "Como operador, quero que o broadcast continue igual.",
+      "acceptanceCriteria": [
+        "`deliverBroadcast` envia por `provider.send` da conexão do broadcast e exige a capacidade `templates`",
+        "O broadcast **não** cria conversa nem mensagem, e o rastreio em `broadcast_recipients` fica idêntico",
+        "Os testes de broadcast e de retomada passam sem alteração de comportamento",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 32,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-076",
+      "title": "Broadcast: credenciais uma vez por envio e rota do dashboard pelo provedor",
+      "description": "Como operador, quero que todo envio de broadcast passe pelo provedor e não faça uma consulta de credenciais por destinatário.",
+      "acceptanceCriteria": [
+        "As credenciais da conexão são obtidas **uma vez por broadcast** (ou reaproveitadas dentro de uma mesma entrega), e não uma consulta com decifragem por destinatário; um teste garante que enviar N destinatários faz uma única leitura de credenciais",
+        "`POST /api/whatsapp/broadcast` (rota do dashboard) deixa de chamar `meta-api` diretamente e envia por `provider.send` da conexão, exigindo a capacidade `templates`, com as mesmas respostas HTTP e o mesmo comportamento por destinatário de hoje",
+        "Uma busca no código não acha `sendTemplateMessage` fora do provedor do WhatsApp e das rotas de gestão de templates",
+        "Os testes de broadcast existentes (`broadcast-deliver.characterization.test.ts`, `broadcast-core.test.ts`, `broadcast-resume.test.ts`) passam com as asserções inalteradas; só mocks e dados de origem podem mudar",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "notes": "Adicionada pelo orquestrador após a US-030: o subagente notou que a US-030 lê as credenciais por destinatário (o provider as carrega a cada `send`) e que a rota `/api/whatsapp/broadcast` ainda envia direto pela Meta. Ambos precisam ser fechados antes da US-031 (limpeza). Concluída: SendOptions{credentials?} aditivo no contrato send; deliverBroadcast lê credenciais uma vez; rota do dashboard envia por provider.send (templates exigido, 400 se ausente). Restante: src/lib/automations/meta-send.ts ainda importa sendTemplateMessage (arquivo órfão, nada em produção o importa; remover na US-031).",
+      "passes": true,
+      "priority": 33
+    },
+    {
+      "id": "US-031",
+      "title": "Remover o envio antigo",
+      "description": "Como desenvolvedor, quero apagar as cópias de envio que ficaram sem uso.",
+      "acceptanceCriteria": [
+        "`engineSendText`, `engineSendMedia`, `engineSendTemplate`, `engineSendInteractive*` e o código morto de envio em `send-message.ts` são removidos",
+        "Uma busca no código não acha chamadas diretas a `meta-api` fora do provedor do WhatsApp, das rotas de templates e de mídia e das telas de configuração",
+        "A suíte completa passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 34,
+      "passes": true,
+      "notes": "Removed flows/meta-send.ts and automations/meta-send.ts (only orphans; loadAccountMetaCredentials had no remaining users). send-message.ts was already a thin wrapper (no dead sender code). Removed 15 direct-sender tests from flows/engine.characterization.test.ts, covered by channels/send.test.ts, flows/send.test.ts and the engine runs."
+    },
+    {
+      "id": "US-032",
+      "title": "Trocar os índices únicos para o novo modelo",
+      "description": "Como desenvolvedor, quero que o banco garanta a regra \"uma conversa por contato e conexão\".",
+      "acceptanceCriteria": [
+        "Migration `046` torna `conversations.connection_id` `NOT NULL`, troca `idx_conversations_account_contact` por `UNIQUE (contact_id, connection_id)` e cria o índice `(connection_id, last_message_at DESC)`",
+        "Antes do `NOT NULL`, contas que têm conversas mas **não têm mais `whatsapp_config`** (a configuração foi apagada depois) recebem uma conexão **desativada de legado** (`external_id` sintético `legacy-<account_id>`, `disabled_at` preenchido, sem credenciais, numa loja padrão da conta), e suas conversas são ligadas a ela, para o histórico não se perder. `verify-schema.sql` afirma que nenhuma conversa fica sem `connection_id`",
+        "Troca `idx_one_active_run_per_contact` por unicidade da execução ativa **por conversa**",
+        "`verify-schema.sql` verifica os índices novos e a ausência de `connection_id` nulo",
+        "O replay do zero, `verify-schema.sql` e a suíte passam",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 35,
+      "passes": true,
+      "notes": "Adicionado pelo orquestrador após a US-007: o backfill deixa connection_id nulo em contas sem whatsapp_config; o NOT NULL exige tratar conversas órfãs (config apagada) com uma conexão desativada de legado. Também: a migration 046 repete, de forma idempotente, o preenchimento de `conversations.connection_id` nulo (conversas criadas pelo código antigo depois da 045) a partir da conexão de WhatsApp da conta, ANTES de aplicar o NOT NULL. O número \"046\" do critério já foi usado pela US-015 (`046_broadcast_connection_id.sql`): use o próximo número livre (047 ou o seguinte). | Implementado como migration 047 (046 estava ocupada). Provado com dados semeados no banco de dev (conta com conexao e conversas NULL, duas contas orfas, run ativa sem conversa) + replay isolado com verify-schema. Ver progress.txt."
+    },
+    {
+      "id": "US-077",
+      "title": "Execuções de flow escopadas por conversa",
+      "description": "Como operador, quero que um flow ativo, uma resposta a ele e a pausa quando um agente responde afetem só a conversa certa, mesmo quando o contato fala por mais de uma conexão.",
+      "acceptanceCriteria": [
+        "As buscas de execução ativa (`loadActiveRunForContact` e equivalentes no motor de flows e na rota de cron) passam a receber a **conversa** e filtram por `conversation_id`, em vez de só por contato",
+        "Ao tratar a resposta de um contato a um flow (`handleReplyForActiveRun`), só a execução **da conversa em que a mensagem chegou** é considerada",
+        "Quando um agente responde, a pausa de flow feita em `channels/send.ts` pausa **apenas a execução ativa da conversa** em que o agente respondeu, e não a de outra conversa do mesmo contato",
+        "Um teste com um contato que tem **duas conversas em duas conexões** e uma execução ativa em cada prova: a resposta numa conversa avança só a execução dela; a resposta de um agente numa conversa pausa só a execução dela",
+        "Os testes existentes do motor de flows (inclusive `engine.characterization.test.ts`) passam com as asserções inalteradas; só dublês e dados de origem podem mudar",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "notes": "Adicionada pelo orquestrador após a US-032: o subagente notou que `flows/engine.ts` (loadActiveRunForContact) e `channels/send.ts` (pausa ao agente responder) ainda buscam execuções por contato; com duas conversas por contato (duas conexões) podem atingir a execução da outra conversa. Deve sair antes do Telegram (F6) e do inbox multiloja (F5b). Feito: engine.ts loadActiveRunForConversation (filtra conversation_id) e send.ts pausa por conversation_id; cron opera por id de run (sem mudanca).",
+      "passes": true,
+      "priority": 36
+    },
+    {
+      "id": "US-033",
+      "title": "Rotas de lojas",
+      "description": "Como administrador, quero gerenciar lojas pela interface.",
+      "acceptanceCriteria": [
+        "`GET|POST /api/stores` e `PATCH|DELETE /api/stores/{id}`, com nome obrigatório e endereço, telefone, horário e responsável opcionais",
+        "Escrita só para `admin`+; membros comuns só leem",
+        "`DELETE` numa loja com qualquer conexão (ativa ou desativada) responde `409 has_connections`",
+        "Testes de rota para papéis, validação e o `409`",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 37,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-034",
+      "title": "Rotas de conexões",
+      "description": "Como administrador, quero listar, criar, editar e apagar conexões.",
+      "acceptanceCriteria": [
+        "`GET|POST /api/channels/connections` e `PATCH|DELETE /api/channels/connections/{id}`; `PATCH` aceita nome, configuração e **mover de loja**",
+        "Criar valida a configuração e as credenciais pelo esquema do provedor e grava as credenciais na tabela separada",
+        "Nenhuma resposta traz credenciais (teste)",
+        "`DELETE` numa conexão com conversas responde `409 has_conversations`",
+        "Escrita só para `admin`+",
+        "Testes de rota para papéis, validação, mover de loja e os `409`",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 38,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-035",
+      "title": "Rotas do ciclo de vida e dos provedores",
+      "description": "Como administrador, quero conectar, testar, desativar e reativar uma conexão.",
+      "acceptanceCriteria": [
+        "`POST .../{id}/connect` chama `provider.connect`; `.../test` chama `provider.health` na hora; `.../disable` chama `provider.disconnect`, preserva as credenciais e preenche `disabled_at`; `.../enable` reativa",
+        "`GET /api/channels/providers` devolve os provedores disponíveis (nome, capacidades, descritor de campos)",
+        "Desativar avisa a contagem de conversas abertas na resposta",
+        "Testes de rota para cada ação, inclusive o efeito em `disabled_at`",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 39,
+      "passes": true,
+      "notes": "Após a US-012: `provider.connect` do WhatsApp não persiste nada; a rota `/connect` deve gravar `registered_at` e `subscribed_apps_at` em `channel_connections.config` depois de um registro bem-sucedido (o `health` lê `config.registered_at`), e nunca guardar o PIN."
+    },
+    {
+      "id": "US-036",
+      "title": "Navegação das configurações",
+      "description": "Como administrador, quero as seções de lojas e canais no menu de configurações.",
+      "acceptanceCriteria": [
+        "`settings-sections.ts` troca a seção `whatsapp` por `stores` (\"Lojas\") e `channels` (\"Canais\"), no grupo *Workspace*",
+        "`resolveSection('whatsapp')` leva a `channels`, então os links existentes continuam funcionando",
+        "Seções renderizam um espaço reservado, e as ações exigem `useCan('edit-settings')` (demais papéis: somente leitura)",
+        "Chaves de tradução novas nos quatro catálogos",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (menu de configurações e o link antigo `?tab=whatsapp`)"
+      ],
+      "priority": 40,
+      "passes": true,
+      "notes": "Após a US-035: `GET /api/channels/providers` devolve o rótulo como a chave `Channels.providers.<tipo>.name` (e o descritor do provedor), que ainda NÃO existe nos catálogos: acrescentar `Channels.providers.whatsapp_cloud.name` (e a descrição curta) nos quatro catálogos; o Telegram acrescenta as suas na US-050. Convenção: chaves `Settings.stores.*`, `Settings.channels.*`, `Channels.providers.<tipo>.*`."
+    },
+    {
+      "id": "US-037",
+      "title": "Tela de lojas",
+      "description": "Como administrador, quero cadastrar e editar as lojas.",
+      "acceptanceCriteria": [
+        "Lista com nome, endereço, telefone e as conexões da loja com seus estados",
+        "Diálogo \"Nova loja\" (nome obrigatório) e o mesmo diálogo para editar",
+        "Apagar fica **desabilitado**, com explicação, quando a loja tem conexões",
+        "Estado vazio: \"Cadastre sua primeira loja\"",
+        "Erros de validação e de API aparecem em toast traduzido",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (criar, editar, tentar apagar loja com conexão, estado vazio)"
+      ],
+      "priority": 41,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-038",
+      "title": "Tela de canais (lista)",
+      "description": "Como administrador, quero ver todas as conexões por loja.",
+      "acceptanceCriteria": [
+        "Lista agrupada por loja, com ícone e nome do canal, nome da conexão, estado (`connected`, `degraded`, `disconnected`, `needs_action` ou desativada), último recebimento e as ações",
+        "*Apagar* só aparece para conexão sem conversas",
+        "Estado vazio com \"Conectar canal\"; se não existir loja, o botão leva a criar a loja primeiro",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (lista, estados e estado vazio)"
+      ],
+      "priority": 42,
+      "passes": true,
+      "notes": "Configurar is a disabled button (detail arrives in US-040). Conectar canal with stores scrolls to the legacy WhatsApp form until US-075. GET connections now returns has_conversations."
+    },
+    {
+      "id": "US-039",
+      "title": "Painel do WhatsApp por conexão e registro de interface",
+      "description": "Como administrador, quero configurar uma conexão de WhatsApp pela tela atual, agora ligada a uma conexão.",
+      "acceptanceCriteria": [
+        "`src/lib/channels/ui-registry.tsx` mapeia `channel_type` para um descritor de formulário ou para um painel próprio do provedor",
+        "O painel do WhatsApp **reaproveita `whatsapp-config.tsx`**, recebendo a conexão como parâmetro (número, WABA, token, PIN, sondagem de registro, espelhamento de mídia, URL do webhook e token de verificação) e gravando em `channel_connections` e nas credenciais",
+        "Campos `secret` nunca são preenchidos; só se envia o valor novo",
+        "O registro na Meta e a sondagem de registro continuam funcionando na tela reaproveitada",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (a tela do WhatsApp dentro de uma conexão, com credenciais inválidas e o erro tratado)"
+      ],
+      "priority": 43,
+      "passes": true,
+      "notes": "Browser (pt): edit panel of a seeded connection masks secrets (verify token absent from DOM); create with invalid token shows the explained Meta error; /test probe works. Meta was reachable and rejected the token. Not checked: a successful registration with a real token/PIN (manual)."
+    },
+    {
+      "id": "US-075",
+      "title": "Assistente de conectar um canal",
+      "description": "Como administrador, quero conectar um canal a uma loja num assistente guiado.",
+      "acceptanceCriteria": [
+        "Assistente em quatro passos: loja, canal (cartões de `GET /api/channels/providers`), dados (formulário do provedor pelo `ui-registry`), conectar e testar",
+        "Sem nenhuma loja, o assistente leva a criar a loja primeiro",
+        "O resultado do passo 4 mostra o sucesso ou o motivo do erro e como corrigir",
+        "Salvar por aqui não usa a escrita dupla de `whatsapp_config`",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (conectar um WhatsApp com credenciais inválidas e ver o erro tratado; sem loja, ser levado a criá-la)"
+      ],
+      "priority": 44,
+      "passes": true,
+      "notes": "Browser (pt, :3100, QA account): no store -> list empty state links to ?tab=stores (wizard itself also shows the no-store guidance; not reachable with 0 stores from the list button); with one store: steps 1-4 for WhatsApp with invalid credentials -> explained Meta error + fix hint + Try again + close keeps the connection in the list as 'Ação necessária'; whatsapp_config stayed empty (no dual-write). Providers endpoint registers only whatsapp_cloud today, so only that card appears (Telegram after US-050). Generic DescriptorForm (text/secret/select/switch) is unit-tested but not exercised in the browser (no form provider registered yet). Real Meta success not reachable here."
+    },
+    {
+      "id": "US-040",
+      "title": "Detalhe da conexão",
+      "description": "Como administrador, quero ver o estado de uma conexão e agir sobre ela.",
+      "acceptanceCriteria": [
+        "Mostra estado e motivo, último erro (código, mensagem e ação sugerida por tipo de erro) e as contagens das últimas 24 h (mensagens recebidas, enviadas e falhas, calculadas de `messages`)",
+        "Ações: *Testar conexão*, *Reconectar*, *Mover de loja* (confirmação com a contagem de conversas), *Desativar* (aviso com a contagem de conversas abertas) e *Apagar* (só sem conversas)",
+        "Segredos aparecem como \"informado\" com o botão *Substituir*; o valor antigo nunca é exibido",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (cada ação, o aviso ao desativar e o segredo mascarado)"
+      ],
+      "priority": 45,
+      "passes": true,
+      "notes": "Browser (pt, :3100) verified with a seeded connection: 24h counts 2/1/1, last error + suggestion, test/reconnect (explained error), move with conversation count, disable warning with open count, enable, Apagar hidden with conversations. Masked secret comes from the US-039 WhatsApp panel rendered below (not re-checked here). Stats route also returns total/open conversation counts (2 extra count queries)."
+    },
+    {
+      "id": "US-041",
+      "title": "Visão geral, templates e respostas rápidas",
+      "description": "Como administrador, quero as telas vizinhas cientes de lojas e conexões.",
+      "acceptanceCriteria": [
+        "`settings-overview.tsx` troca o cartão de WhatsApp por \"Lojas: N\" e \"Canais: X conectados de Y\" (pior estado destacado) e lê `GET /api/channels/connections`",
+        "`template-manager.tsx` ganha um seletor de **conexão de WhatsApp**, oculto quando há uma só, e lista e envia por `connection_id`",
+        "Respostas rápidas ganham o campo opcional **Loja** (vazio = da rede)",
+        "`settings-overview.tsx` e `whatsapp-config.tsx` deixam de ler `whatsapp_config`",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (visão geral, seletor de conexão em templates, campo Loja)"
+      ],
+      "priority": 46,
+      "passes": true,
+      "notes": "Browser (pt, :3100): overview tiles 'Lojas: 2' / 'Canais: 1 conectado de 2 + Ação necessária'; template selector shown with 2 WhatsApp connections (list switches per connection), hidden with 1; quick reply saved with store shows chip. Inbox quick-reply picker still lists all replies: Conversation has no connection->store data yet, filtering arrives with US-042/043. Disabled connections are excluded from Y and shown separately."
+    },
+    {
+      "id": "US-042",
+      "title": "Consultas e filtros do inbox por loja, conexão e canal",
+      "description": "Como agente, quero filtrar as conversas por loja, conexão e canal.",
+      "acceptanceCriteria": [
+        "`CONVERSATION_SELECT` traz a conexão (com loja e canal) de cada conversa, e os tipos de `Conversation` refletem isso",
+        "Uma função de filtro (ao lado de `matchesContactFilters`) filtra por loja, conexão e canal, combinada com status e atribuição",
+        "Testes de unidade dos filtros e da normalização",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 47,
+      "passes": true,
+      "notes": "CONVERSATION_SELECT embeds connection+store (verified against dev DB in browser). Pure matchesConversationScope/deriveScopeOptions in lib/inbox/conversations.ts; scope state wired in conversation-list at default (no UI: US-043)."
+    },
+    {
+      "id": "US-043",
+      "title": "Selos e filtros no inbox",
+      "description": "Como agente, quero ver de qual loja e canal é cada conversa.",
+      "acceptanceCriteria": [
+        "Cada conversa na lista e no cabeçalho mostra um selo com o nome da loja e o canal",
+        "Filtros de loja, conexão e canal na lista, combinados com os existentes; a visão padrão mistura tudo, pela última mensagem",
+        "Com **uma conexão só**, selos e filtros de loja não aparecem e a tela fica idêntica à atual",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (uma conexão, depois duas lojas com duas conexões)"
+      ],
+      "priority": 48,
+      "passes": true,
+      "notes": "Após a US-041: o seletor de respostas rápidas do inbox ainda lista TODAS as respostas; nesta história (com a loja da conversa disponível pela conexão) filtrar para `store_id` nulo ou igual à loja da conversa, com teste. | Feito: seletor filtrado por filterQuickRepliesForStore (lib/inbox/conversations.ts)."
+    },
+    {
+      "id": "US-044",
+      "title": "Não lidas por loja, aviso de conexão caída e conexão desativada",
+      "description": "Como agente, quero saber quando uma loja não está recebendo e quais conversas estão sem resposta.",
+      "acceptanceCriteria": [
+        "Contagem de não lidas total e por loja (só com mais de uma loja)",
+        "Aviso no inbox quando uma conexão está `disconnected` ou `needs_action` (\"a loja X está desconectada\")",
+        "Conversas de conexão **desativada** ficam visíveis, com selo \"desativada\" e **compositor desabilitado** com uma explicação",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (aviso, contagens por loja e conexão desativada)"
+      ],
+      "priority": 49,
+      "passes": true,
+      "notes": "Unread per store = conversations with unread (same unit as sidebar total). Down banner only with >1 connection; with one connection the old whatsappNotConnected banner is unchanged. Reactions/other non-composer send paths are not gated (out of scope)."
+    },
+    {
+      "id": "US-078",
+      "title": "Envio recusa conexões desativadas no servidor",
+      "description": "Como operador, quero que nenhuma mensagem saia por uma conexão desativada, seja pela interface, pela API, por flows, automações, IA, broadcast ou reação.",
+      "acceptanceCriteria": [
+        "`sendOutbound` lança `ChannelError` tipado (código estável `connection_disabled`, categoria `unsupported`) quando a conexão da conversa tem `disabled_at` preenchido, **antes** de chamar o provedor e sem gravar mensagem nem alterar a conversa",
+        "A rota de envio do dashboard e `POST /api/v1/messages` respondem `409` com o código `connection_disabled` e uma mensagem clara; o contrato existente para os demais erros não muda",
+        "Flows, automações e resposta por IA que tentarem enviar por uma conexão desativada falham de forma **visível** (execução `failed` ou passo registrado com o motivo), nunca em silêncio",
+        "`POST /api/whatsapp/react` (reação) e `deliverBroadcast`/a rota de broadcast do dashboard recusam uma conexão desativada com o mesmo código",
+        "Testes: um por caminho (núcleo, rota do dashboard, API v1, reação, broadcast, motor de automações) provando que o provedor **não** é chamado e que nada é gravado",
+        "O texto do aviso do inbox \"A loja {store}\" é revisado para não repetir a palavra quando o nome da loja já começa com \"Loja\" (ex.: usar \"{store} está desconectada\" com o nome entre aspas ou destacado), nos quatro catálogos",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "notes": "Adicionada pelo orquestrador após a US-044: a US-044 bloqueou o compositor e os manipuladores de envio na interface, mas o servidor ainda aceitaria envio por uma conexão desativada (API v1, flows, automações, IA, broadcast) e a reação não é bloqueada. O banner também lê 'A loja Loja Norte'.",
+      "passes": true,
+      "priority": 50
+    },
+    {
+      "id": "US-045",
+      "title": "Conversas do contato em outras lojas",
+      "description": "Como agente, quero ver se o mesmo cliente também falou com outra loja.",
+      "acceptanceCriteria": [
+        "O perfil do contato lista todas as conversas dele, com loja, canal e último contato, cada uma com um link",
+        "Sem outras conversas, a seção não aparece",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (um contato com conversas em duas conexões)"
+      ],
+      "priority": 51,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-046",
+      "title": "Compositor por capacidades",
+      "description": "Como agente, quero que o compositor mostre só o que o canal da conversa faz.",
+      "acceptanceCriteria": [
+        "Botões de template, mídia, interativo e reação aparecem, ou ficam desabilitados com explicação, conforme as capacidades da conexão da conversa",
+        "Um `ChannelError` do envio aparece como mensagem traduzida (por exemplo, \"esta conversa não aceita templates\")",
+        "Para uma conexão de WhatsApp o compositor fica idêntico ao atual",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (compositor numa conversa de WhatsApp)"
+      ],
+      "priority": 52,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-047",
+      "title": "Provedor Telegram — capacidades e ciclo de vida",
+      "description": "Como desenvolvedor, quero o Telegram como o segundo provedor.",
+      "acceptanceCriteria": [
+        "`providers/telegram/` declara as capacidades (texto, mídia até 50 MB, legenda de 1024 caracteres, botões, reações, \"digitando\"; sem templates, lista, entregue e lido; iniciar só depois de o contato falar) e os esquemas de configuração e credenciais",
+        "`connect` gera um `secret_token`, guarda cifrado e chama `setWebhook` com a URL da conexão; recusa com erro claro se a URL pública não for HTTPS",
+        "`disconnect` remove o webhook; `health` usa `getWebhookInfo` (erro recente e mensagens pendentes)",
+        "O registro conhece `telegram`",
+        "Testes de unidade com `fetch` simulado",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 53,
+      "passes": true,
+      "notes": "Após a US-034: a rota `POST /api/channels/connections` usa `external_id` do corpo, senão `config.phone_number_id`, senão 400 (não há gancho no provedor). O id do bot do Telegram só é conhecido com o token (`getMe`): acrescentar de forma aditiva ao contrato um método opcional `deriveExternalId(config, credentials)` que o POST chama quando o `external_id` não vem, e implementá-lo no provedor Telegram. Chaves secretas de configuração são filtradas por regex `/token|secret|password|api_?key|private/`; nomear chaves do Telegram de forma compatível. | Implementado: contrato ganhou `deriveExternalId?` (POST usa quando external_id não vem; falha de credencial = 400 invalid_credentials, rede = 502). Telegram real não testado (inalcançável): fatos da Bot API validados na doc oficial via Context7."
+    },
+    {
+      "id": "US-048",
+      "title": "Provedor Telegram — recebimento",
+      "description": "Como desenvolvedor, quero receber mensagens do Telegram.",
+      "acceptanceCriteria": [
+        "`POST /api/channels/[channel]/webhook/[connectionId]` responde `200` e processa com `ingestInbound` em `after()`",
+        "`verify` compara o `secret_token` do cabeçalho em tempo constante; um valor inválido responde `401` e não processa",
+        "`parse` converte texto, foto, documento, voz, vídeo e resposta de botão em `InboundEvent`, com candidatos `telegram:chat_id` e `telegram:username`, usando **fixtures de payload**",
+        "A mídia é espelhada **sem gravar a URL que contém o token do bot** (teste que garante isso)",
+        "O reenvio da mesma atualização não duplica (teste)",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 54,
+      "passes": true,
+      "notes": "Verified with fixtures, mocked fetch and a manual POST to the dev server (seeded telegram connection: 401 bad/missing secret, 200 + contact/identities/conversation/message rows, replay = duplicate, cleaned up). Real Telegram was NOT reachable: no real bot, no real getFile download, no real webhook delivery."
+    },
+    {
+      "id": "US-049",
+      "title": "Provedor Telegram — envio",
+      "description": "Como desenvolvedor, quero enviar mensagens pelo Telegram.",
+      "acceptanceCriteria": [
+        "`send` envia texto, mídia e botões; `react` e `typing` implementados; `resolveTarget` usa a identidade `telegram:chat_id`",
+        "Erros do Bot API viram `ChannelError` tipado, com bot bloqueado ou usuário que ainda não falou como `recipient_unreachable`",
+        "Um envio por um provedor sem a capacidade (por exemplo, template) é recusado pelo núcleo com `unsupported`",
+        "Testes de unidade com `fetch` simulado",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 55,
+      "passes": true,
+      "notes": "Real Telegram unreachable: verified with mocked fetch only. Media is sent by URL: Telegram must be able to fetch it (a local supabase.localtest.me URL is not reachable from Telegram). Error strings for blocked bot / chat not found taken from the task brief, not confirmed verbatim by the docs snippets."
+    },
+    {
+      "id": "US-050",
+      "title": "Telegram na interface e documentação do túnel",
+      "description": "Como administrador, quero conectar um Telegram pela interface e saber como testar localmente.",
+      "acceptanceCriteria": [
+        "O Telegram declara um **descritor** de formulário (token do bot, nome da conexão), com rótulos e ajuda por chave de tradução nos quatro catálogos, registrado no `ui-registry`",
+        "O assistente de conectar mostra o Telegram e usa o descritor",
+        "`docs/telegram.md` explica como criar o bot, o túnel público para testar localmente e as limitações do canal",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (o cartão do Telegram e o formulário; a conexão real depende de um bot e de um túnel, e fica como verificação manual)"
+      ],
+      "priority": 56,
+      "passes": true,
+      "notes": "Browser (pt, :3100): Telegram card with chips; generic form with masked token, pattern validation, hint + docs link; fake well-formed token -> POST 400 invalid_credentials shown as a translated message (Telegram was reachable). Seeded connection detail: token 'informado' + Substituir; Reconectar and replace show the https-guard reason. Wizard step 4 with the https-guard failure (Tentar de novo + fix hint) NOT reached in the browser: it needs a real bot token so getMe succeeds at creation; the code path is shared with WhatsApp. Real bot + tunnel = manual verification."
+    },
+    {
+      "id": "US-079",
+      "title": "Substituir credenciais preserva o segredo do webhook",
+      "description": "Como administrador, quero trocar o token de uma conexão sem derrubar o recebimento por causa de um segredo de webhook perdido.",
+      "acceptanceCriteria": [
+        "`PATCH /api/channels/connections/{id}` com `credentials` passa a **mesclar** com as credenciais já guardadas (chaves enviadas substituem; as demais, como `secret_token` do Telegram, são preservadas), em vez de sobrescrever o blob inteiro",
+        "`saveConnectionCredentials` ganha um modo de mesclagem (ou uma função irmã) e um teste prova que trocar só `bot_token` mantém o `secret_token` e trocar só `access_token` do WhatsApp mantém as demais chaves",
+        "A resposta do `PATCH` continua sem nenhuma credencial (teste com valor-canário)",
+        "Na tela do Telegram (`credentials-panel.tsx`), trocar o token em uma conexão que já estava conectada e cujo `reconnect` falha (por exemplo `NEXT_PUBLIC_SITE_URL` sem https) **não deixa o recebimento sem segredo**: o webhook existente continua autenticando e a mensagem explica que o webhook atual não foi alterado",
+        "A mensagem de guarda de https do provedor (hoje só em inglês) passa a ter uma chave de tradução usada tanto pelo assistente quanto pelo detalhe da conexão, nos quatro catálogos",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "notes": "Adicionada pelo orquestrador após a US-050: PATCH de credenciais sobrescrevia todo o blob e descartava o `secret_token` do Telegram; um reconnect falho deixava a conexão sem segredo, e o recebimento parava. A mensagem de guarda https do provedor é só em inglês. Implementada: PATCH mescla (saveConnectionCredentials {merge:true}); para providers com deriveExternalId a troca de credenciais é bloqueada com 409 credentials_mismatch se o getMe apontar outro bot; ChannelErrorInfo.reason='public_https_required' -> Channels.providers.telegram.fix.publicHttps (wizard, detalhe e painel). Verificação em browser NÃO feita (opcional).",
+      "passes": true,
+      "priority": 57
+    },
+    {
+      "id": "US-080",
+      "title": "Telegram: registrar o webhook antes de guardar o novo segredo",
+      "description": "Como administrador, quero que uma falha ao registrar o webhook não deixe a conexão com um segredo que o Telegram não conhece.",
+      "acceptanceCriteria": [
+        "No `connect` do provedor Telegram (`lifecycle.ts`), a ordem passa a ser: gerar o `secret_token`, chamar `setWebhook` com ele e **só depois** gravar (cifrado, mesclado com `bot_token`) o segredo; se `setWebhook` falhar, as credenciais guardadas ficam **exatamente** como estavam (o segredo antigo continua válido para o webhook antigo)",
+        "Se o `setWebhook` tiver sucesso e a gravação do segredo falhar, o erro é registrado com um motivo estável e a conexão é marcada `needs_action`, com a mensagem de que é preciso reconectar (o webhook já usa o segredo novo)",
+        "Testes com `fetch` simulado: `setWebhook` falha → nenhuma escrita de credenciais; `setWebhook` ok e escrita falha → `needs_action` com o motivo; caminho feliz grava o segredo depois de `setWebhook`",
+        "O guarda de https continua rodando antes de qualquer chamada ou escrita",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "notes": "Adicionada pelo orquestrador após a US-079: risco residual apontado pelo subagente — o `connect` gravava o novo `secret_token` antes de `setWebhook`; se `setWebhook` falhasse, o segredo guardado não correspondia ao webhook antigo. Implementada: connect = guarda https -> credenciais -> setWebhook -> saveConnectionCredentials({merge:true}); falha de gravacao devolve ok:false com error {code:'invalid', reason:'secret_persist_failed'} (a rota ja mapeia invalid -> needs_action + last_error). Sem chave i18n para esse reason (a mensagem em ingles e o fallback); verificacao em browser nao feita (exige bot real).",
+      "passes": true,
+      "priority": 58
+    },
+    {
+      "id": "US-051",
+      "title": "Capacidades em flows e automações",
+      "description": "Como operador, quero saber quando um passo não funciona no canal da conversa.",
+      "acceptanceCriteria": [
+        "Ao ativar um flow ou uma automação com passo específico de canal (template, lista), a interface **avisa** quais passos só funcionam em conexões compatíveis",
+        "Em execução, um passo incompatível com a conexão da conversa falha com `unsupported` **registrado no log da execução**, e nunca em silêncio",
+        "Um envio agendado para um contato do Telegram sem histórico é registrado como **não entregue, com o motivo**",
+        "Testes de unidade dos três casos",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (o aviso ao ativar)"
+      ],
+      "priority": 59,
+      "passes": true,
+      "notes": "Após a US-078: a resolução da conversa mais recente para gatilhos sem conversa (US-028) deve EXCLUIR conexões desativadas (`disabled_at` preenchido), para o passo não escolher uma conversa que só vai falhar no `sendOutbound`; cobrir com teste. A resposta por IA gasta uma chamada de LLM e um slot antes de o envio ser recusado (otimização futura: checar antes)."
+    },
+    {
+      "id": "US-052",
+      "title": "Nome de exibição no inbox e nas conversas",
+      "description": "Como agente, quero identificar cada contato mesmo sem telefone.",
+      "acceptanceCriteria": [
+        "Lista, cabeçalho e cartões do inbox usam `contactDisplayName` (nome, ou identidade principal do canal) em vez de `contact.phone`",
+        "Nenhum lugar do inbox mostra uma linha em branco para um contato sem telefone",
+        "Um teste percorre os componentes do inbox com um contato do Telegram",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (um contato sem telefone no inbox)"
+      ],
+      "priority": 60,
+      "passes": true,
+      "notes": "Browser check done on :3100 (pt) with seeded Telegram contacts (@username + chat_id only) and a WhatsApp contact; component test renders ConversationItem and ContactSidebar with a Telegram contact. Message-thread header covered by browser only (component too heavy to render statically)."
+    },
+    {
+      "id": "US-053",
+      "title": "Nome de exibição em contatos, pipelines e broadcasts",
+      "description": "Como operador, quero identificar contatos sem telefone no CRM.",
+      "acceptanceCriteria": [
+        "Lista de contatos, detalhe, cartões de negócio e seleção de audiência de broadcast usam `contactDisplayName`",
+        "Contatos sem identidade de WhatsApp aparecem no broadcast como **não elegíveis, com o motivo**",
+        "Uma busca no código não acha `contact.phone` sendo usado como identificador de exibição (só como atributo do contato)",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (contatos, pipelines e audiência de broadcast)"
+      ],
+      "priority": 61,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-054",
+      "title": "Busca e detecção de duplicidade por identidade",
+      "description": "Como operador, quero achar e evitar contatos duplicados por qualquer identidade.",
+      "acceptanceCriteria": [
+        "A busca de contatos considera nome, e-mail, telefone e qualquer identidade (`@username`, id do canal)",
+        "O formulário de contato detecta duplicidade pelas identidades (telefone continua valendo) e oferece \"ver existente\"",
+        "Testes de unidade da busca e da duplicidade",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (busca por `@username` e o aviso de duplicidade)"
+      ],
+      "priority": 62,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-055",
+      "title": "Importação por CSV cria identidades",
+      "description": "Como operador, quero que a importação continue funcionando.",
+      "acceptanceCriteria": [
+        "A importação cria a identidade `whatsapp:phone` de cada contato e mantém as regras atuais de duplicidade e de erro",
+        "Os testes de importação existentes passam; há um teste novo confirmando a identidade criada",
+        "A importação usa a detecção de duplicidade **consciente de identidades** (`findDuplicateContact`, que já checa `contacts.phone` e depois as identidades `whatsapp:phone`), e não só `contacts.phone`",
+        "Editar o telefone de um contato (formulário e detalhe) **atualiza a identidade `whatsapp:phone`**: a identidade antiga é removida (ou substituída) e a nova é inserida com `ON CONFLICT DO NOTHING`, para o número antigo não continuar resolvendo para esse contato; teste cobrindo a troca",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 63,
+      "passes": true,
+      "notes": "Após a US-054: a importação por CSV ainda deduplica só por contacts.phone e editar o telefone deixa a identidade antiga no lugar; ambos entram aqui. Feito: CSV usa lookup em lote de identidades (match exato, como o índice único) e cria identidades em lote; syncPhoneIdentity no formulário e no detalhe. A API v1 PATCH não edita telefone (só name/email/company), nada a fazer lá."
+    },
+    {
+      "id": "US-056",
+      "title": "Condição `phone` e `{{phone}}` para contatos sem telefone",
+      "description": "Como operador, quero flows e automações previsíveis com contatos sem telefone.",
+      "acceptanceCriteria": [
+        "A condição sobre o campo `phone` se comporta como \"não definido\" para um contato sem telefone",
+        "A variável `{{phone}}` (personalização) sai vazia, sem erro",
+        "Testes de unidade de ambos os casos, inclusive contato com telefone (comportamento inalterado)",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 64,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-057",
+      "title": "Merge manual de contatos — API",
+      "description": "Como agente, quero juntar dois contatos do mesmo cliente.",
+      "acceptanceCriteria": [
+        "`POST /api/contacts/merge` `{ survivor_id, duplicate_id }` reaponta conversas, negócios, notas, etiquetas, valores de campos, identidades, execuções e demais tabelas com `contact_id` para o contato sobrevivente, reaproveitando `merge_duplicate_contacts`",
+        "Um **teste lista todas as tabelas com `contact_id` no schema e falha se alguma não for tratada** pelo merge",
+        "Duas conversas do mesmo contato na mesma conexão são unidas (`merge_duplicate_conversations`)",
+        "Exige `agent`+ e contatos da mesma conta; responde com as contagens movidas",
+        "Testes de rota e de banco",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 65,
+      "passes": true,
+      "notes": "Orientação do orquestrador (verificada no banco): `merge_duplicate_contacts()` (migration 022) e `merge_duplicate_conversations()` (036) NÃO recebem argumentos — varrem duplicatas por telefone/contato. Não servem para um merge par-a-par pedido pelo atendente. Escrever uma função SQL NOVA e idempotente `merge_contacts(p_account_id, p_survivor_id, p_duplicate_id)` (migration com o próximo número livre, 049) reaproveitando o PADRÃO de reapontamento com guarda de conflito da 022/036. Tabelas com FK para contacts hoje: automation_logs, automation_pending_executions, broadcast_recipients, contact_custom_values, contact_identities, contact_notes, contact_tags, conversations, deals, flow_runs, notifications. Atenção às unicidades: contact_tags (contact_id, tag_id), contact_custom_values (contact_id, custom_field_id), contact_identities (account_id, kind, external_id), conversations (contact_id, connection_id) — conversas do duplicado na MESMA conexão do sobrevivente devem ser fundidas (mensagens movidas, contadores somados), flow_runs ativo único por conversa."
+    },
+    {
+      "id": "US-058",
+      "title": "Merge manual de contatos — interface",
+      "description": "Como agente, quero juntar contatos pelo perfil do cliente.",
+      "acceptanceCriteria": [
+        "No perfil do contato, a ação \"Vincular a outro contato\" abre um diálogo com busca e a **confirmação** do que será movido",
+        "Depois do merge, a tela mostra o contato sobrevivente com todas as conversas e o histórico",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (juntar dois contatos com negócio e nota e conferir o resultado)"
+      ],
+      "priority": 66,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-059",
+      "title": "O CRM funciona com um contato do Telegram",
+      "description": "Como operador, quero confirmar que o CRM não depende do canal.",
+      "acceptanceCriteria": [
+        "Um teste de integração, com um contato do Telegram criado por uma mensagem simulada, cobre: criar negócio a partir da conversa, etiquetar, anotar, preencher campo personalizado, disparar uma automação e um flow, e aparecer nos totais do painel",
+        "Nada nesse fluxo exige telefone nem `wamid`",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 67,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-060",
+      "title": "Novo endereçamento em `POST /api/v1/messages`",
+      "description": "Como integrador, quero enviar por conversa ou por conexão.",
+      "acceptanceCriteria": [
+        "Aceita `{ conversation_id }` ou `{ connection_id, to }`; `connection_id` é **opcional só quando a conta tem exatamente uma conexão ativa**, e senão responde `400 connection_required`",
+        "A resposta traz `external_message_id`, `connection_id` e `channel` (e não traz mais `whatsapp_message_id`)",
+        "Códigos novos: `409 unsupported`, `422 recipient_unreachable`, `409 window_closed`",
+        "Testes de rota para cada forma, a regra de conexão única e cada erro",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 68,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-061",
+      "title": "Lojas e conexões na API pública",
+      "description": "Como integrador, quero descobrir os ids de loja e de conexão.",
+      "acceptanceCriteria": [
+        "`GET /api/v1/stores` e `GET /api/v1/connections`, só leitura, sem credenciais, com o escopo novo `connections:read` criado no cadastro de chaves de API",
+        "Um teste confirma que uma chave sem o escopo recebe `403`",
+        "Testes de rota",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (o escopo `connections:read` disponível ao criar uma chave de API)"
+      ],
+      "priority": 69,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-062",
+      "title": "Contatos e conversas na API pública",
+      "description": "Como integrador, quero ver identidades, loja, conexão e canal.",
+      "acceptanceCriteria": [
+        "Contatos trazem `identities` e `phone: null` quando não há telefone; criar contato aceita `identities` e mantém `phone` como atalho de WhatsApp",
+        "Conversas trazem `connection_id`, `store_id` e `channel`",
+        "Testes de rota",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 70,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-063",
+      "title": "Webhooks de saída com loja, conexão e canal",
+      "description": "Como integrador, quero saber de onde veio cada evento.",
+      "acceptanceCriteria": [
+        "`message.received` e os demais eventos incluem `connection_id`, `store_id`, `channel` e `contact.identities`",
+        "O `phone` do contato é `null` quando não existe",
+        "Testes de entrega verificam o payload e a assinatura",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 71,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-064",
+      "title": "MCP e documentação da API",
+      "description": "Como integrador, quero o MCP e a documentação atualizados.",
+      "acceptanceCriteria": [
+        "O MCP tem ferramentas para lojas e conexões, envio com `connection_id`/`conversation_id` e contatos com identidades, e o pacote sobe de versão",
+        "`docs/public-api.md` e `docs/mcp.md` descrevem o contrato novo, marcado como **pré-estável até o primeiro cliente**",
+        "O MCP compila (`npm run build` dentro de `mcp-server/`) e seus testes passam, se existirem",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 72,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-065",
+      "title": "Estado da conexão por evento",
+      "description": "Como administrador, quero que o estado da conexão reflita o que acontece.",
+      "acceptanceCriteria": [
+        "Erro de envio de tipo `auth` marca a conexão como `needs_action`; mensagem recebida atualiza `last_inbound_at`; envio atualiza `last_outbound_at`",
+        "Falha de ingestão grava `last_error` (código e mensagem) na conexão",
+        "Voltar a funcionar (mensagem recebida ou envio com sucesso) limpa o estado `needs_action`",
+        "Testes de unidade das transições",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 73,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-066",
+      "title": "Verificação periódica de saúde",
+      "description": "Como administrador, quero detectar uma conexão parada mesmo sem tráfego.",
+      "acceptanceCriteria": [
+        "`GET /api/channels/cron/health`, protegida por `x-cron-secret` (`503` sem a variável configurada, como as outras rotas de cron), chama `provider.health` de cada conexão **ativa** e atualiza estado e `last_health_check_at`",
+        "Conexões desativadas são ignoradas",
+        "Sem o cron configurado, o sistema continua funcionando só por evento",
+        "Testes de rota",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 74,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-067",
+      "title": "Notificação `connection_down`",
+      "description": "Como administrador, quero ser avisado quando uma conexão cai.",
+      "acceptanceCriteria": [
+        "A transição para `disconnected` ou `needs_action` cria **uma** notificação `connection_down` para cada administrador, sem repetir enquanto continuar no mesmo estado",
+        "A notificação aparece na lista de notificações, traduzida, com link para a conexão",
+        "Testes de unidade da criação e da não repetição",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill (a notificação na lista, com o link)"
+      ],
+      "priority": 75,
+      "passes": true,
+      "notes": "Browser: notificacao semeada por SQL (needs_action) na lista pt e link abre o detalhe da conexao; a transicao real (Meta/Telegram) e coberta por testes com dubles, nao verificada em canal real."
+    },
+    {
+      "id": "US-068",
+      "title": "Logs estruturados",
+      "description": "Como desenvolvedor, quero logs padronizados e sem segredos.",
+      "acceptanceCriteria": [
+        "Um utilitário de log em `lib/channels/` emite `[channel:<tipo>] conn=<id> event=<id> …` e é usado em todo o código de `lib/channels/`",
+        "Um teste confirma que credenciais, `secret_token` e URLs de arquivo do Telegram nunca aparecem na saída do utilitário",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 76,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-069",
+      "title": "Parar a escrita dupla e retirar a tela antiga",
+      "description": "Como desenvolvedor, quero remover o caminho legado da configuração.",
+      "acceptanceCriteria": [
+        "`POST|DELETE /api/whatsapp/config` deixam de gravar em `whatsapp_config`, ou são removidas se nada mais as usa",
+        "Uma busca no código não acha nenhuma leitura ou escrita de `whatsapp_config`",
+        "Os links para `?tab=whatsapp` continuam levando a `channels`",
+        "A suíte completa passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 77,
+      "passes": true,
+      "notes": "Removed src/app/api/whatsapp/config (POST/DELETE/GET, mirror-media, verify-registration; no UI caller used them) and lib/channels/whatsapp-dual-write.ts with their dual-write test. No code reads or writes whatsapp_config anymore (only stale comments in encryption.ts/meta-api.ts, a fake-DB assertion in telegram crm.integration.test.ts and a comment in broadcast-resume.test.ts remain). ?tab=whatsapp still resolves to channels (resolveSection). The table itself is dropped in US-070. npm run build OK."
+    },
+    {
+      "id": "US-070",
+      "title": "Migration final de contração",
+      "description": "Como desenvolvedor, quero o banco só com o modelo novo.",
+      "acceptanceCriteria": [
+        "Migration `047` torna `connection_id` `NOT NULL` em `message_templates` e `broadcasts`, troca a unicidade de templates para `(connection_id, name, language)`, remove `whatsapp_config` e as colunas `wa_user_id`, `wa_parent_user_id` e `wa_username` de `contacts`",
+        "`automation_pending_executions.conversation_id` e `.connection_id` viram `NOT NULL`",
+        "`verify-schema.sql` reflete o schema final",
+        "Um teste confirma que nenhum código referencia as colunas e a tabela removidas",
+        "O replay do zero e a suíte passam",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)"
+      ],
+      "priority": 78,
+      "passes": true,
+      "notes": "O número \"047\" do critério é indicativo: use o próximo número livre depois das migrations já existentes. Antes de remover `wa_parent_user_id`, confirmar que nenhum código o lê; se algum caminho usar o BSUID do pai, migrá-lo para uma identidade `whatsapp:parent_bsuid` (backfill incluso). Após a US-041: `message_templates` mantém UNIQUE (user_id, name, language), então o mesmo nome de template em duas conexões do mesmo usuário colide até esta migration trocar para (connection_id, name, language); a troca precisa cobrir o código que depende da unicidade antiga (upserts/lookup por user_id,name,language). Migration numbered 051 (next free after 050). Grep regression test: src/lib/channels/no-legacy-whatsapp-contract.test.ts scans src/ and mcp-server/src for whatsapp_config/wa_user_id/wa_parent_user_id/wa_username. wa_parent_user_id confirmed read by no production code (only parsed as a reference-only field in wa-identity.ts, never consumed downstream); dropped without a whatsapp:parent_bsuid identity migration, per the story notes contingency."
+    },
+    {
+      "id": "US-071",
+      "title": "Documentação e convenções",
+      "description": "Como mantenedor, quero que o repositório descreva o novo modelo.",
+      "acceptanceCriteria": [
+        "`CLAUDE.md` descreve o modelo (rede, loja, conexão), o contrato do provedor em `lib/channels/`, como acrescentar um canal e a regra de que o núcleo não conhece nenhum canal",
+        "`docs/multi-waba.md`, `docs/docker.md` e o README refletem lojas, conexões e o Telegram",
+        "A regra \"o `/api/v1` está pré-estável e congela no primeiro cliente\" está documentada",
+        "Nenhuma outra seção do `CLAUDE.md` é alterada",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 79,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-072",
+      "title": "Verificar tudo na stack Docker",
+      "description": "Como dono do produto, quero confirmar o caso das pizzarias no ambiente real.",
+      "acceptanceCriteria": [
+        "A stack sobe com `docker compose -f docker-compose.yml -f docker-compose.supabase.yml --env-file .env.local up --build -d --wait` e as migrations aplicam do zero",
+        "Com uma conta de teste: duas lojas, uma conexão de WhatsApp em cada e um Telegram numa delas; mensagens de entrada **simuladas** (payload do WhatsApp assinado com o `META_APP_SECRET` local e atualização do Telegram com o `secret_token`) aparecem todas no mesmo inbox, com o selo certo",
+        "O mesmo cliente escrevendo às duas lojas aparece como um contato só, com duas conversas",
+        "Desativar uma conexão mantém as conversas legíveis e desabilita o compositor; apagar só é possível para uma conexão sem conversas",
+        "O resultado por tela e por métrica está em `.projects/channel-abstraction/verification.md`, com as **métricas 1 a 5** marcadas como atendidas ou não, e o que exigiria um bot real ou uma conta da Meta real indicado como verificação manual",
+        "`npm run lint`, `npm run typecheck`, `TZ=UTC npm test` e `npm run build` passam",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass (`TZ=UTC npm test`)",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 80,
+      "passes": true,
+      "notes": "Verificado com a stack Docker completa (up --build --wait + migrations do zero, replay isolado 51/51). Cenário das duas lojas + Telegram simulado via webhooks assinados/autenticados, checado no banco e via dev-browser em localhost:3000: mesmo cliente = um contato, duas conversas; desativar mantém a conversa legível e desabilita o compositor; apagar só é possível sem conversas. Resultado completo em verification.md. Lint: corrigido o único aviso react/jsx-no-literals que a feature havia introduzido (connection-detail.tsx); total de avisos de volta à base (41). Métrica 4 (loja conectada em <10min) não é verificável neste ambiente (sem Meta/Telegram reais) e fica registrada como verificação manual pendente."
+    }
+  ]
+}

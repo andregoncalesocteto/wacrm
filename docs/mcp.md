@@ -14,6 +14,10 @@ it's a thin wrapper over the [public API](./public-api.md), so every
 request is authenticated and scoped by your instance exactly like any
 other API call.
 
+> **Status: pre-stable until the first client.** The multi-store,
+> multi-channel contract (stores, connections, identities, the new send
+> fields) may still change; the MCP package is at `0.2.0` accordingly.
+
 ## Quick start
 
 1. Create an API key in the dashboard: **Settings → API keys**. Grant
@@ -42,9 +46,17 @@ data or send messages, add `"WACRM_ENABLE_WRITES": "true"` (and
 
 ## What it exposes
 
-- **Reads (always on):** `whoami`, contacts (list/get), conversations
-  (list/get), messages (list), broadcast status.
+- **Reads (always on):** `whoami`, stores and channel connections
+  (`list_stores`, `list_connections`, scope `connections:read`), contacts
+  (list/get, each with its channel `identities`), conversations (list/get,
+  with `connection_id`, `store_id` and `channel`), messages (list), broadcast
+  status.
 - **Writes (opt-in):** send a message, create/update a contact.
+  `send_message` takes either `conversation_id` (reply in a conversation) or
+  `to` plus an optional `connection_id` (never both), and answers with
+  `external_message_id`, `connection_id` and `channel` (`whatsapp_message_id`
+  is gone). `create_contact` takes `phone` and/or `identities`
+  (`{kind, external_id, handle?}`).
 - **Broadcasts (opt-in):** launch a template broadcast — requires an
   explicit `confirm` and is marked destructive.
 

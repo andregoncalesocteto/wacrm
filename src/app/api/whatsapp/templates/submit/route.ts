@@ -6,7 +6,11 @@ import {
   requireRole,
   toErrorResponse,
 } from '@/lib/auth/account'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import {
+  findAccountWhatsAppConnection,
+  isAccountWhatsAppConnection,
+  loadWhatsAppSendConnection,
+} from '@/lib/channels/whatsapp-connection'
 import { submitMessageTemplate } from '@/lib/whatsapp/meta-api'
 import {
   validateTemplatePayload,
@@ -24,6 +28,7 @@ import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
 function buildUpsertRow(
   accountId: string,
   userId: string,
+  connectionId: string | null,
   payload: TemplatePayload,
   extras: {
     status: 'DRAFT' | string
@@ -36,10 +41,11 @@ function buildUpsertRow(
     // of migration 017. Without this an INSERT throws on the
     // not-null constraint.
     account_id: accountId,
-    // Original author — kept as audit only. The unique index is
-    // still on (user_id, name, language) — see the upsert helper
-    // for the cross-teammate dedup follow-up.
+    // Original author — audit only; the unique index is on
+    // (connection_id, name, language), not user_id.
     user_id: userId,
+    // Channel connection this template belongs to (US-016).
+    connection_id: connectionId,
     name: payload.name,
     category: payload.category,
     language: payload.language,
@@ -65,14 +71,12 @@ async function upsertTemplateRow(
   supabase: SupabaseClient,
   row: ReturnType<typeof buildUpsertRow>,
 ) {
-  // TODO(account-sharing): conflict target is still scoped to
-  // user_id. Once a follow-up migration drops the legacy unique
-  // index on (user_id, name, language) and adds (account_id,
-  // name, language), switch `onConflict` here so two teammates
-  // can't shadow each other's same-named template.
+  // Conflict target is (connection_id, name, language) as of US-070: two
+  // connections of the same account (or two teammates on the same
+  // connection) can no longer shadow each other's same-named template.
   return supabase
     .from('message_templates')
-    .upsert(row, { onConflict: 'user_id,name,language' })
+    .upsert(row, { onConflict: 'connection_id,name,language' })
     .select()
     .single()
 }
@@ -80,8 +84,8 @@ async function upsertTemplateRow(
 /**
  * Submit a template to Meta for approval AND persist it locally.
  *
- * Auth → fetch whatsapp_config → validate → (DRY_RUN short-circuit) →
- * POST to Meta → upsert local row by (user_id, name, language) with
+ * Auth → resolve the WhatsApp connection → validate → (DRY_RUN short-circuit) →
+ * POST to Meta → upsert local row by (connection_id, name, language) with
  * status, meta_template_id, sample_values, last_submitted_at.
  *
  * When WHATSAPP_TEMPLATES_DRY_RUN=true, we skip the network call and
@@ -106,6 +110,26 @@ export async function POST(request: Request) {
       payload = (await request.json()) as TemplatePayload
     } catch {
       return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+    }
+
+    // Optional connection_id: submit through that WhatsApp connection instead
+    // of the account's default one. Not part of the Meta payload.
+    const requestedId =
+      (payload as { connection_id?: unknown } | null)?.connection_id ?? null
+    if (requestedId !== null && typeof requestedId !== 'string') {
+      return NextResponse.json(
+        { error: 'connection_id must be a string.' },
+        { status: 400 },
+      )
+    }
+    if (
+      requestedId &&
+      !(await isAccountWhatsAppConnection(supabase, accountId, requestedId))
+    ) {
+      return NextResponse.json(
+        { error: 'WhatsApp connection not found.' },
+        { status: 404 },
+      )
     }
 
     if (payload.category === 'Authentication') {
@@ -133,17 +157,24 @@ export async function POST(request: Request) {
 
     let metaTemplateId: string
     let metaStatus: string
+    let connectionId: string | null = null
 
     if (dryRun) {
       metaTemplateId = `dry-run-${crypto.randomUUID()}`
       metaStatus = 'PENDING'
-    } else {
-      const { data: config, error: configError } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', accountId)
-        .single()
-      if (configError || !config) {
+      // No Meta call, so no config is required — but still tag the row
+      // with the account's connection when there is one.
+      try {
+        connectionId =
+          requestedId ??
+          (await findAccountWhatsAppConnection(supabase, accountId))?.id ??
+          null
+      } catch {
+        connectionId = null
+      }
+      // message_templates.connection_id is NOT NULL (US-070): no connection
+      // at all means nothing to tag the dry-run row with.
+      if (!connectionId) {
         return NextResponse.json(
           {
             error:
@@ -152,7 +183,21 @@ export async function POST(request: Request) {
           { status: 400 },
         )
       }
-      if (!config.waba_id) {
+    } else {
+      const loaded = await loadWhatsAppSendConnection(supabase, accountId, {
+        connectionId: requestedId,
+      })
+      if (!loaded) {
+        return NextResponse.json(
+          {
+            error:
+              'WhatsApp not configured. Connect your WhatsApp Business account in Settings first.',
+          },
+          { status: 400 },
+        )
+      }
+      const wabaId = loaded.connection.config?.waba_id
+      if (typeof wabaId !== 'string' || !wabaId) {
         return NextResponse.json(
           {
             error:
@@ -162,7 +207,8 @@ export async function POST(request: Request) {
         )
       }
 
-      const accessToken = decrypt(config.access_token)
+      const accessToken = loaded.accessToken
+      connectionId = loaded.connection.id
 
       // Media headers (image/video/document) need a Resumable-Upload
       // handle (Meta rejects a plain URL at creation). Derive it from
@@ -181,7 +227,7 @@ export async function POST(request: Request) {
       const metaPayload = buildMetaTemplatePayload(payload)
       try {
         const meta = await submitMessageTemplate({
-          wabaId: config.waba_id,
+          wabaId,
           accessToken,
           payload: metaPayload,
         })
@@ -193,7 +239,7 @@ export async function POST(request: Request) {
         // until they fix and re-submit.
         await upsertTemplateRow(
           supabase,
-          buildUpsertRow(accountId, userId, payload, {
+          buildUpsertRow(accountId, userId, connectionId, payload, {
             status: 'DRAFT',
             metaTemplateId: null,
             submissionError: message,
@@ -213,7 +259,7 @@ export async function POST(request: Request) {
 
     const { data: row, error: upsertErr } = await upsertTemplateRow(
       supabase,
-      buildUpsertRow(accountId, userId, payload, {
+      buildUpsertRow(accountId, userId, connectionId, payload, {
         status: normalizeStatus(metaStatus),
         metaTemplateId,
         submissionError: null,

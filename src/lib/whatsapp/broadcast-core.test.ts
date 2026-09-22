@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { whatsappConnectionRow } from '@/lib/channels/credentials-admin.fake';
 import {
   createBroadcast,
   finalizeBroadcastStatus,
@@ -11,6 +12,18 @@ import {
 vi.mock('@/lib/whatsapp/encryption', () => ({
   decrypt: () => 'plain-access-token',
 }));
+vi.mock('@/lib/channels/admin-client', async () => {
+  const { fakeCredentialsAdmin } = await import(
+    '@/lib/channels/credentials-admin.fake'
+  );
+  return {
+    supabaseAdmin: () =>
+      fakeCredentialsAdmin(() => ({
+        secrets_encrypted: 'enc',
+        secrets_format: 'wa_token_v0',
+      })),
+  };
+});
 vi.mock('@/lib/api/v1/contacts', () => ({
   findOrCreateContact: vi.fn(async () => ({ id: 'c1' })),
 }));
@@ -60,18 +73,17 @@ function makeDb(rpcResult: { data: unknown; error: unknown }) {
   };
   const database = {
     from(table: string) {
-      if (table === 'whatsapp_config') {
-        return {
-          select: () => ({
-            eq: () => ({
-              single: () =>
-                Promise.resolve({
-                  data: { phone_number_id: 'pn-1', access_token: 'enc' },
-                  error: null,
-                }),
+      if (table === 'channel_connections') {
+        const chain: Record<string, unknown> = {
+          select: () => chain,
+          eq: () => chain,
+          order: () =>
+            Promise.resolve({
+              data: [whatsappConnectionRow('acc', 'pn-1')],
+              error: null,
             }),
-          }),
         };
+        return chain;
       }
       if (table === 'message_templates') {
         const chain: Record<string, unknown> = {
@@ -121,6 +133,22 @@ describe('createBroadcast atomicity (#370)', () => {
     expect(plan.planned).toEqual([
       { recipientRowId: 'r-1', phone: '14155550123', params: [] },
     ]);
+  });
+
+  it('persists the sending connection on the new broadcast (US-015)', async () => {
+    const { db, calls } = makeDb({
+      data: [{ broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c1' }],
+      error: null,
+    });
+
+    const plan = await createBroadcast(db, 'acc', 'user', {
+      templateName: 'promo',
+      recipients: [{ to: '+14155550123' }],
+    });
+
+    expect(calls.rpc[0].args).toMatchObject({ p_connection_id: 'conn-acc' });
+    expect(plan.phoneNumberId).toBe('pn-1');
+    expect(plan.accessToken).toBe('plain-access-token');
   });
 
   it('throws and leaves no orphaned parent when the atomic create fails', async () => {

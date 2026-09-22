@@ -1,7 +1,7 @@
 // ============================================================
 // Write tools — registered only when WACRM_ENABLE_WRITES is set.
 //
-// These change data or send a WhatsApp message. They are gated so a
+// These change data or send a message. They are gated so a
 // read-only deployment never exposes them to the model at all. (The
 // API key's scopes are still enforced server-side; a call without the
 // right scope returns a clean `forbidden` error.)
@@ -27,11 +27,24 @@ export function registerWriteTools(server: McpServer, client: WacrmClient): void
   server.registerTool(
     'send_message',
     {
-      title: 'Send WhatsApp message',
+      title: 'Send message',
       description:
-        'Send a WhatsApp message to a phone number (E.164, e.g. +14155550123). The contact and conversation are found-or-created automatically. Use type "text" for a free-form message (only valid inside the 24-hour customer-service window), or "template" to send an approved template (required to open a new conversation). Media types (image/video/document/audio) require a media_url. This sends a real message to a real person — confirm the recipient and content with the user before calling.',
+        'Send a message. Address it with conversation_id (reply in an existing conversation) OR with to (+ optional connection_id); never both. With to, WhatsApp takes an E.164 number (contact and conversation are found-or-created); other channels take their own address (e.g. a Telegram chat id that already wrote to the bot). connection_id (see list_connections) may be omitted only when the account has exactly one enabled connection. Use type "text" for free-form text (on WhatsApp only inside the 24-hour window), or "template" for an approved WhatsApp template. Media types need a media_url. The response has external_message_id, connection_id and channel. This sends a real message to a real person — confirm the recipient and content with the user before calling.',
       inputSchema: {
-        to: z.string().describe('Recipient phone number in E.164 format, e.g. +14155550123.'),
+        conversation_id: z
+          .string()
+          .optional()
+          .describe('Existing conversation to reply in. Mutually exclusive with to / connection_id.'),
+        connection_id: z
+          .string()
+          .optional()
+          .describe('Channel connection to send through (from list_connections). Used with to.'),
+        to: z
+          .string()
+          .optional()
+          .describe(
+            'Recipient address: E.164 phone (e.g. +14155550123) for WhatsApp, or the channel address for other channels.',
+          ),
         type: z
           .enum(['text', 'template', 'image', 'video', 'document', 'audio'])
           .default('text')
@@ -52,7 +65,7 @@ export function registerWriteTools(server: McpServer, client: WacrmClient): void
           .optional()
           .describe('Optional id of a message in the same conversation to reply to.'),
       },
-      annotations: { title: 'Send WhatsApp message', readOnlyHint: false, openWorldHint: true },
+      annotations: { title: 'Send message', readOnlyHint: false, openWorldHint: true },
     },
     handle(async (args) => jsonResult(await client.sendMessage(args))),
   );
@@ -62,9 +75,19 @@ export function registerWriteTools(server: McpServer, client: WacrmClient): void
     {
       title: 'Create contact',
       description:
-        'Create a contact by phone number (E.164, required). Find-or-create: if a contact with that phone already exists it is returned unchanged. Optional: name, email, company, and tags (tag names, created if missing).',
+        'Create a contact from a phone number (E.164, WhatsApp shortcut) and/or channel identities; at least one is required. Find-or-create: a contact matching ANY given identity or phone is returned unchanged (name/email/company are applied only to a new contact). Optional: name, email, company, and tags (tag names, created if missing).',
       inputSchema: {
-        phone: z.string().describe('Phone number in E.164 format, e.g. +14155550123.'),
+        phone: z.string().optional().describe('Phone number in E.164 format, e.g. +14155550123.'),
+        identities: z
+          .array(
+            z.object({
+              kind: z.string().describe('Identity kind, e.g. "whatsapp:phone" or "telegram:chat".'),
+              external_id: z.string().describe('The address in that channel.'),
+              handle: z.string().optional().describe('Optional display handle.'),
+            }),
+          )
+          .optional()
+          .describe('Channel identities of the contact.'),
         name: z.string().optional(),
         email: z.string().email().optional(),
         company: z.string().optional(),

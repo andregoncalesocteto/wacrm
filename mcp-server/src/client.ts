@@ -122,6 +122,16 @@ export class WacrmClient {
     return this.request('POST', '/messages', { body });
   }
 
+  // --- Stores and connections ---------------------------------------
+
+  listStores(): Promise<Paginated<unknown>> {
+    return this.list('/stores', {});
+  }
+
+  listConnections(query: { store_id?: string }): Promise<Paginated<unknown>> {
+    return this.list('/connections', query);
+  }
+
   // --- Contacts -----------------------------------------------------
 
   listContacts(query: {

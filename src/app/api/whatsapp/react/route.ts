@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { sendReactionMessage } from '@/lib/whatsapp/meta-api';
-import { decrypt } from '@/lib/whatsapp/encryption';
+import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection';
+import {
+  CONNECTION_DISABLED_CODE,
+  ConnectionDisabledError,
+} from '@/lib/channels/types';
 import { resolveContactSendTarget } from '@/lib/whatsapp/wa-identity';
 import {
   checkRateLimit,
@@ -66,7 +70,7 @@ export async function POST(request: Request) {
 
     const { data: conversation, error: convError } = await supabase
       .from('conversations')
-      .select('id, account_id, contact:contacts(phone, wa_user_id)')
+      .select('id, account_id, connection_id, contact:contacts(phone, contact_identities(kind, external_id))')
       .eq('id', targetMessage.conversation_id)
       .eq('account_id', accountId)
       .maybeSingle();
@@ -83,7 +87,15 @@ export async function POST(request: Request) {
       : conversation.contact;
     // Phone number, or the business-scoped user ID for a contact Meta
     // never gave us a number for (issue #519).
-    const sendTarget = resolveContactSendTarget(contact);
+    const identities =
+      (contact?.contact_identities as
+        | { kind: string; external_id: string }[]
+        | null
+        | undefined) ?? [];
+    const sendTarget = resolveContactSendTarget({
+      phone: contact?.phone,
+      bsuid: identities.find((i) => i.kind === 'whatsapp:bsuid')?.external_id,
+    });
     if (!sendTarget) {
       return NextResponse.json(
         { error: 'Contact has no phone number or WhatsApp user ID' },
@@ -91,25 +103,36 @@ export async function POST(request: Request) {
       );
     }
 
-    // WhatsApp config + access token. Account-scoped post-multi-user.
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('phone_number_id, access_token')
-      .eq('account_id', accountId)
-      .single();
+    // WhatsApp connection + access token: the conversation's connection,
+    // else the account's.
+    const loaded = await loadWhatsAppSendConnection(supabase, accountId, {
+      connectionId: conversation.connection_id as string | null,
+    });
 
-    if (configError || !config) {
+    if (!loaded) {
       return NextResponse.json(
         { error: 'WhatsApp not configured.' },
         { status: 400 },
       );
     }
 
-    const accessToken = decrypt(config.access_token);
+    // US-078: the conversation's own connection is disabled -> no reaction
+    // goes out and nothing is mirrored.
+    if (loaded.connection.disabled_at) {
+      return NextResponse.json(
+        {
+          error: new ConnectionDisabledError().message,
+          code: CONNECTION_DISABLED_CODE,
+        },
+        { status: 409 },
+      );
+    }
+
+    const { accessToken, phoneNumberId } = loaded;
 
     try {
       await sendReactionMessage({
-        phoneNumberId: config.phone_number_id,
+        phoneNumberId,
         accessToken,
         to: sendTarget.target,
         targetMessageId: targetMessage.message_id,

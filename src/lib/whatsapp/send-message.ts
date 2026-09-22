@@ -5,10 +5,10 @@
 //
 // Given a conversation and message params, this:
 //   1. validates the params for the message type,
-//   2. loads the conversation + contact + WhatsApp config,
-//   3. sends to Meta (with phone-variant retry + contact auto-fix),
-//   4. persists the message + updates the conversation,
-//   5. pauses any active Flow run for the contact (agent stepped in).
+//   2. delegates to the channel-neutral `sendOutbound` core
+//      (src/lib/channels/send.ts): conversation/connection/contact, send
+//      through the provider, persist, pause active flows,
+//   3. maps the core's errors back to `SendMessageError`.
 //
 // It is transport-agnostic: it takes a `SupabaseClient` and an
 // `accountId` and throws `SendMessageError` on failure. The callers
@@ -21,32 +21,13 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import {
-  sendTextMessage,
-  sendTemplateMessage,
-  sendMediaMessage,
-  sendInteractiveButtons,
-  sendInteractiveList,
-  type MediaKind,
-} from '@/lib/whatsapp/meta-api';
+import type { MediaKind } from '@/lib/whatsapp/meta-api';
 import {
   validateInteractivePayload,
-  interactivePayloadPreviewText,
   type InteractiveMessagePayload,
 } from '@/lib/whatsapp/interactive';
-import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
-import { supabaseAdmin } from '@/lib/flows/admin-client';
-import {
-  phoneVariants,
-  isRecipientNotAllowedError,
-} from '@/lib/whatsapp/phone-utils';
-import { resolveContactSendTarget } from '@/lib/whatsapp/wa-identity';
-import type { MessageTemplate } from '@/types';
-import {
-  resolveTemplateRow,
-  templateBodyParams,
-  templateContentText,
-} from '@/lib/whatsapp/template-body';
+import { sendOutbound, toSendMessageError } from '@/lib/channels/send';
+import type { OutboundMessage } from '@/lib/channels/types';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
 export const VALID_MESSAGE_TYPES = [
@@ -64,11 +45,19 @@ export const VALID_MESSAGE_TYPES = [
 export class SendMessageError extends Error {
   readonly code: string;
   readonly status: number;
-  constructor(code: string, message: string, status: number) {
+  /** Category of the underlying `ChannelError`, when there was one. */
+  readonly channelCode?: string;
+  constructor(
+    code: string,
+    message: string,
+    status: number,
+    channelCode?: string
+  ) {
     super(message);
     this.name = 'SendMessageError';
     this.code = code;
     this.status = status;
+    this.channelCode = channelCode;
   }
 }
 
@@ -118,8 +107,13 @@ export function validateSendMessageParams(params: {
   templateName?: string | null;
   interactivePayload?: InteractiveMessagePayload | null;
 }): void {
-  const { messageType, contentText, mediaUrl, templateName, interactivePayload } =
-    params;
+  const {
+    messageType,
+    contentText,
+    mediaUrl,
+    templateName,
+    interactivePayload,
+  } = params;
 
   if (!messageType) {
     throw new SendMessageError('bad_request', 'message_type is required', 400);
@@ -193,11 +187,7 @@ export async function sendMessageToConversation(
     messageType,
     contentText,
     mediaUrl,
-    filename,
     templateName,
-    templateLanguage,
-    templateParams,
-    templateMessageParams,
     interactivePayload,
     replyToMessageId,
   } = params;
@@ -218,324 +208,79 @@ export async function sendMessageToConversation(
     interactivePayload,
   });
 
-  const isMediaKind = (MEDIA_KINDS as readonly string[]).includes(messageType);
+  // Thin wrapper over the channel-neutral core (US-025): map the legacy
+  // params to an OutboundMessage, delegate, and translate failures back to
+  // SendMessageError so both callers keep their HTTP responses.
+  const message = toOutboundMessage(params);
 
-  // Conversation + contact, account-scoped.
-  const { data: conversation, error: convError } = await db
-    .from('conversations')
-    .select('*, contact:contacts(*)')
-    .eq('id', conversationId)
-    .eq('account_id', accountId)
-    .single();
-
-  if (convError || !conversation) {
-    throw new SendMessageError('not_found', 'Conversation not found', 404);
-  }
-
-  const contact = conversation.contact;
-
-  // A contact is addressable by phone number OR by business-scoped user
-  // ID. Meta withholds the phone number for a customer who has adopted
-  // a WhatsApp username, so those contacts carry only a BSUID and are
-  // reached through Meta's `recipient` field instead of `to` (issue
-  // #519). Phone stays preferred when we have one: only it supports the
-  // trunk-prefix variant retry below.
-  const resolvedTarget = resolveContactSendTarget(contact);
-  if (!resolvedTarget) {
-    throw new SendMessageError(
-      'bad_request',
-      contact?.phone
-        ? 'Invalid phone number format'
-        : 'Contact has no phone number or WhatsApp user ID',
-      400
-    );
-  }
-  const sendTarget = resolvedTarget.target;
-  const hasValidPhone = resolvedTarget.isPhone;
-  const sanitizedPhone = hasValidPhone ? sendTarget : '';
-
-  // WhatsApp config, account-scoped.
-  const { data: config, error: configError } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', accountId)
-    .single();
-
-  if (configError || !config) {
-    throw new SendMessageError(
-      'whatsapp_not_configured',
-      'WhatsApp not configured. Please set up your WhatsApp integration first.',
-      400
-    );
-  }
-
-  const accessToken = decrypt(config.access_token);
-
-  // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
-  if (isLegacyFormat(config.access_token)) {
-    void db
-      .from('whatsapp_config')
-      .update({ access_token: encrypt(accessToken) })
-      .eq('id', config.id)
-      .then(({ error }: { error: { message: string } | null }) => {
-        if (error) {
-          console.warn(
-            '[send-message] access_token GCM upgrade failed:',
-            error.message
-          );
-        }
-      });
-  }
-
-  // Resolve the reply target to its Meta message_id. The parent must
-  // belong to this same conversation — otherwise a caller could quote
-  // messages they can't see by guessing UUIDs.
-  let contextMessageId: string | undefined;
-  if (replyToMessageId) {
-    const { data: parent, error: parentError } = await db
-      .from('messages')
-      .select('message_id, conversation_id')
-      .eq('id', replyToMessageId)
-      .eq('conversation_id', conversationId)
-      .maybeSingle();
-
-    if (parentError || !parent) {
-      throw new SendMessageError(
-        'bad_request',
-        'reply_to_message_id not found in this conversation',
-        400
-      );
-    }
-    if (!parent.message_id) {
-      console.warn(
-        '[send-message] reply target has no Meta message_id; sending without context'
-      );
-    } else {
-      contextMessageId = parent.message_id;
-    }
-  }
-
-  // Template row — needed for the send-builder's header + button
-  // components AND for the body we persist. The lookup tolerates the
-  // en / en_US split so a caller that omits the language still resolves
-  // a row (see resolveTemplateRow).
-  let templateRow: MessageTemplate | null = null;
-  let sendLanguage = templateLanguage || 'en_US';
-  if (messageType === 'template' && templateName) {
-    const resolved = await resolveTemplateRow(
-      db,
+  try {
+    const result = await sendOutbound({
+      conversationId,
       accountId,
-      templateName,
-      templateLanguage
-    );
-    if (resolved.malformed) {
-      throw new SendMessageError(
-        'template_malformed',
-        'Template row is malformed locally — run "Sync from Meta" in Settings to repair it.',
-        500
-      );
-    }
-    templateRow = resolved.row;
-    sendLanguage = resolved.language;
-  }
-
-  const attempt = async (phone: string): Promise<string> => {
-    if (messageType === 'template') {
-      const result = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
-        to: phone,
-        templateName: templateName!,
-        language: sendLanguage,
-        template: templateRow ?? undefined,
-        messageParams: templateMessageParams ?? undefined,
-        params: templateParams || [],
-        contextMessageId,
-      });
-      return result.messageId;
-    }
-    if (isMediaKind) {
-      const result = await sendMediaMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
-        to: phone,
-        kind: messageType as MediaKind,
-        link: mediaUrl!,
-        caption: contentText || undefined,
-        filename: filename || undefined,
-        contextMessageId,
-      });
-      return result.messageId;
-    }
-    if (messageType === 'interactive') {
-      const p = interactivePayload!;
-      if (p.kind === 'buttons') {
-        const result = await sendInteractiveButtons({
-          phoneNumberId: config.phone_number_id,
-          accessToken,
-          to: phone,
-          bodyText: p.body,
-          headerText: p.header || undefined,
-          footerText: p.footer || undefined,
-          buttons: p.buttons,
-          contextMessageId,
-        });
-        return result.messageId;
-      }
-      const result = await sendInteractiveList({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
-        to: phone,
-        bodyText: p.body,
-        buttonLabel: p.button_label,
-        headerText: p.header || undefined,
-        footerText: p.footer || undefined,
-        sections: p.sections,
-        contextMessageId,
-      });
-      return result.messageId;
-    }
-    const result = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
-      to: phone,
-      text: contentText!,
-      contextMessageId,
+      message,
+      actor: { type: 'agent' },
+      replyToMessageId,
+      contentText,
+      db,
     });
-    return result.messageId;
-  };
-
-  // Send via Meta — retry across phone-number variants if Meta rejects
-  // with "recipient not in allowed list"; persist a working variant
-  // back to the contact so the next send goes straight through.
-  let waMessageId = '';
-  let workingPhone = sendTarget;
-  try {
-    // Variants only make sense for a phone number — a BSUID is opaque
-    // and has exactly one correct form, so it gets a single attempt.
-    const variants = hasValidPhone ? phoneVariants(sanitizedPhone) : [sendTarget];
-    let lastError: unknown = null;
-
-    for (const variant of variants) {
-      try {
-        waMessageId = await attempt(variant);
-        workingPhone = variant;
-        lastError = null;
-        break;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (!isRecipientNotAllowedError(message)) {
-          throw err;
-        }
-        lastError = err;
-        console.warn(
-          `[send-message] variant "${variant}" rejected by Meta, trying next…`
-        );
-      }
-    }
-
-    if (lastError) throw lastError;
+    return {
+      messageId: result.messageId,
+      whatsappMessageId: result.externalMessageId,
+    };
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : 'Unknown Meta API error';
-    console.error('[send-message] Meta send failed for all variants:', message);
-    throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
-  }
-
-  if (hasValidPhone && workingPhone !== sanitizedPhone) {
-    console.log(
-      `[send-message] Auto-corrected contact phone: ${sanitizedPhone} → ${workingPhone}`
-    );
-    await db
-      .from('contacts')
-      .update({ phone: workingPhone })
-      .eq('id', contact.id);
-  }
-
-  // Persist the sent message. Field names MUST match the messages
-  // schema (see 001_initial_schema.sql).
-  // Interactive messages persist the body as content_text (so the
-  // conversation-list preview reads sensibly) plus the full structured
-  // payload so the thread can re-render the buttons / rows.
-  //
-  // Templates persist the *substituted* body. The composer pre-renders
-  // and posts it as contentText; every other caller (the public API,
-  // most importantly) sends none, and storing null there left the
-  // Inbox rendering an empty bubble — issue #483.
-  const persistedText =
-    messageType === 'interactive'
-      ? interactivePayload!.body
-      : messageType === 'template'
-        ? templateContentText(
-            templateRow,
-            templateBodyParams(templateParams, templateMessageParams),
-            contentText
-          )
-        : (contentText ?? null);
-
-  const { data: messageRecord, error: msgError } = await db
-    .from('messages')
-    .insert({
-      conversation_id: conversationId,
-      sender_type: 'agent',
-      content_type: messageType,
-      content_text: persistedText,
-      media_url: mediaUrl || null,
-      template_name: templateName || null,
-      interactive_payload:
-        messageType === 'interactive' ? interactivePayload : null,
-      message_id: waMessageId,
-      status: 'sent',
-      reply_to_message_id: replyToMessageId || null,
-    })
-    .select()
-    .single();
-
-  if (msgError) {
-    console.error('[send-message] error inserting sent message:', msgError);
-    throw new SendMessageError(
-      'db_error',
-      `Message sent to Meta but failed to save to DB: ${msgError.message}`,
-      500
-    );
-  }
-
-  const lastMessageText =
-    messageType === 'interactive'
-      ? interactivePayloadPreviewText(interactivePayload!)
-      : persistedText || `[${messageType}]`;
-
-  await db
-    .from('conversations')
-    .update({
-      last_message_text: lastMessageText,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', conversationId);
-
-  // Pause any active Flow run for this contact — the agent stepping in
-  // is the strongest "yield, human is here" signal. Best-effort.
-  try {
-    const { error: pauseErr } = await supabaseAdmin()
-      .from('flow_runs')
-      .update({
-        status: 'paused_by_agent',
-        ended_at: new Date().toISOString(),
-        end_reason: 'agent_replied',
-      })
-      .eq('account_id', accountId)
-      .eq('contact_id', contact.id)
-      .eq('status', 'active');
-    if (pauseErr) {
-      console.error('[flows] pause-on-agent-send failed:', pauseErr.message);
+    const mapped = toSendMessageError(err);
+    if (mapped instanceof SendMessageError && mapped.code === 'meta_error') {
+      console.error('[send-message] Meta send failed:', mapped.message);
     }
-  } catch (err) {
-    console.error(
-      '[flows] pause-on-agent-send threw:',
-      err instanceof Error ? err.message : err
-    );
+    throw mapped;
   }
+}
 
-  return { messageId: messageRecord.id, whatsappMessageId: waMessageId };
+function toOutboundMessage(params: SendMessageParams): OutboundMessage {
+  const {
+    messageType,
+    contentText,
+    mediaUrl,
+    filename,
+    templateName,
+    templateLanguage,
+    templateParams,
+    templateMessageParams,
+    interactivePayload,
+  } = params;
+
+  if (messageType === 'template') {
+    return {
+      type: 'template',
+      template: {
+        name: templateName!,
+        language: templateLanguage || '',
+        provider: {
+          messageParams: templateMessageParams ?? undefined,
+          params: templateParams || [],
+        },
+      },
+    };
+  }
+  if (messageType === 'interactive') {
+    const p = interactivePayload!;
+    if (p.kind === 'buttons') {
+      return { type: 'interactive', interactive: p };
+    }
+    const { button_label, ...rest } = p;
+    return {
+      type: 'interactive',
+      interactive: { ...rest, buttonLabel: button_label },
+    };
+  }
+  if ((MEDIA_KINDS as readonly string[]).includes(messageType)) {
+    return {
+      type: 'media',
+      kind: messageType as MediaKind,
+      url: mediaUrl!,
+      caption: contentText || undefined,
+      fileName: filename || undefined,
+    };
+  }
+  return { type: 'text', text: contentText! };
 }

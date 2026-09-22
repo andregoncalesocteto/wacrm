@@ -7,8 +7,8 @@
 //   createBroadcast()  — validate, resolve contacts, insert the
 //                        `broadcasts` row + `broadcast_recipients`
 //                        rows (status 'pending'), return a plan.
-//   deliverBroadcast() — send each recipient's template via Meta
-//                        (phone-variant retry), stamp each recipient
+//   deliverBroadcast() — send each recipient's template through the
+//                        connection's provider (phone-variant retry), stamp each recipient
 //                        row + the aggregate counts, finalize status.
 //
 // Recipient rows carry `whatsapp_message_id`, so the inbound webhook's
@@ -18,14 +18,20 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { sendTemplateMessage } from '@/lib/whatsapp/meta-api';
-import { decrypt } from '@/lib/whatsapp/encryption';
+import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection';
 import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
-  isRecipientNotAllowedError,
-} from '@/lib/whatsapp/phone-utils';
+  getConnectionCredentials,
+  type ChannelConnection,
+} from '@/lib/channels/connections';
+import { getProvider } from '@/lib/channels/registry';
+import { registerBuiltinProviders } from '@/lib/channels/providers';
+import {
+  ChannelError,
+  CONNECTION_DISABLED_CODE,
+  ConnectionDisabledError,
+} from '@/lib/channels/types';
+import { WA_PHONE_KIND } from '@/lib/channels/identity';
+import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
@@ -66,6 +72,9 @@ export interface BroadcastPlan {
   broadcastId: string;
   templateName: string;
   templateLanguage: string;
+  /** The connection that sends this broadcast; the provider reads its credentials. */
+  connection: ChannelConnection;
+  /** Informational (validated at plan time); sending goes through `connection`. */
   phoneNumberId: string;
   accessToken: string;
   templateRow: MessageTemplate | null;
@@ -108,21 +117,26 @@ export async function createBroadcast(
     );
   }
 
-  // Config (fail fast + provides the audit trail owner already resolved
-  // by the caller). Meta send needs phone_number_id + decrypted token.
-  const { data: config, error: configError } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', accountId)
-    .single();
-  if (configError || !config) {
+  // Connection (fail fast + provides the audit trail owner already resolved
+  // by the caller). Meta send needs phone_number_id + decrypted token. A
+  // broadcast sends through ONE WhatsApp connection: the account's, and its
+  // id is persisted on the broadcast row below.
+  const conn = await loadWhatsAppSendConnection(db, accountId);
+  if (!conn) {
     throw new BroadcastError(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',
       400
     );
   }
-  const accessToken = decrypt(config.access_token);
+  if (conn.connection.disabled_at) {
+    throw new BroadcastError(
+      CONNECTION_DISABLED_CODE,
+      new ConnectionDisabledError().message,
+      409
+    );
+  }
+  const accessToken = conn.accessToken;
 
   // Template row (once) for header/button components; guard a
   // malformed local row rather than N identical opaque failures.
@@ -146,7 +160,9 @@ export async function createBroadcast(
   const resolved: { contactId: string; phone: string; params: string[] }[] = [];
   let rejected = 0;
   for (const r of recipients) {
-    const sanitized = sanitizePhoneForMeta(typeof r.to === 'string' ? r.to : '');
+    const sanitized = sanitizePhoneForMeta(
+      typeof r.to === 'string' ? r.to : ''
+    );
     if (!isValidE164(sanitized)) {
       rejected++;
       continue;
@@ -211,6 +227,8 @@ export async function createBroadcast(
       // Frozen per-recipient params (migration 038) — without them a
       // resume of this broadcast has no way to reconstruct {{1}}.
       p_template_params: deduped.map((r) => r.params),
+      // The connection that sends this broadcast (migration 046).
+      p_connection_id: conn.connection.id,
     }
   );
   if (createErr || !createdRows || createdRows.length === 0) {
@@ -226,7 +244,11 @@ export async function createBroadcast(
   const planned: PlannedRecipient[] = createdRows.map(
     (row: { recipient_id: string; contact_id: string }) => {
       const r = byContact.get(row.contact_id)!;
-      return { recipientRowId: row.recipient_id, phone: r.phone, params: r.params };
+      return {
+        recipientRowId: row.recipient_id,
+        phone: r.phone,
+        params: r.params,
+      };
     }
   );
 
@@ -234,7 +256,8 @@ export async function createBroadcast(
     broadcastId,
     templateName,
     templateLanguage: resolvedTemplate.language,
-    phoneNumberId: config.phone_number_id,
+    connection: conn.connection,
+    phoneNumberId: conn.phoneNumberId,
     accessToken,
     templateRow,
     planned,
@@ -259,31 +282,70 @@ export async function deliverBroadcast(
   db: SupabaseClient,
   plan: BroadcastPlan
 ): Promise<void> {
+  // Resolve the provider ONCE and require `templates` before touching any
+  // recipient: a channel without templates fails the whole broadcast up front.
+  // US-078: a disabled connection sends nothing (the broadcast is bound to it).
+  if (plan.connection.disabled_at) {
+    await db
+      .from('broadcasts')
+      .update({ status: 'failed', updated_at: new Date().toISOString() })
+      .eq('id', plan.broadcastId);
+    throw new ConnectionDisabledError();
+  }
+
+  registerBuiltinProviders();
+  const provider = getProvider(plan.connection.channel_type);
+  if (!provider.capabilities.templates) {
+    await db
+      .from('broadcasts')
+      .update({ status: 'failed', updated_at: new Date().toISOString() })
+      .eq('id', plan.broadcastId);
+    throw new ChannelError(
+      'unsupported',
+      'This channel does not support template messages'
+    );
+  }
+
+  // Credentials are read (and decrypted) ONCE for the whole delivery and
+  // handed to every send. `{}` when the connection has none: the provider then
+  // fails each recipient with its own auth error, without re-reading.
+  const credentials =
+    (await getConnectionCredentials(plan.connection.id)) ?? {};
+
   for (const recipient of plan.planned) {
-    const variants = phoneVariants(recipient.phone);
     let sentMessageId: string | null = null;
     let lastError: string | null = null;
 
-    for (const variant of variants) {
-      try {
-        const result = await sendTemplateMessage({
-          phoneNumberId: plan.phoneNumberId,
-          accessToken: plan.accessToken,
-          to: variant,
-          templateName: plan.templateName,
-          language: plan.templateLanguage,
-          template: plan.templateRow ?? undefined,
-          params: recipient.params,
-        });
-        sentMessageId = result.messageId;
-        lastError = null;
-        break;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        lastError = message;
-        // Only a "recipient not allowed" error is worth another variant.
-        if (!isRecipientNotAllowedError(message)) break;
-      }
+    // The provider owns the phone-variant retry (only "recipient not allowed"
+    // moves on to the next variant) and throws the last error.
+    try {
+      const result = await provider.send(
+        plan.connection,
+        { kind: WA_PHONE_KIND, address: recipient.phone },
+        {
+          type: 'template',
+          template: {
+            name: plan.templateName,
+            language: plan.templateLanguage,
+            provider: {
+              row: plan.templateRow ?? undefined,
+              params: recipient.params,
+            },
+          },
+        },
+        { credentials }
+      );
+      sentMessageId = result.externalId;
+    } catch (error) {
+      // A non-Error rejection was wrapped by the provider; keep the old text.
+      const wrappedNonError =
+        error instanceof ChannelError &&
+        error.cause !== undefined &&
+        !(error.cause instanceof Error);
+      lastError =
+        error instanceof Error && !wrappedNonError
+          ? error.message
+          : 'Unknown error';
     }
 
     if (sentMessageId) {

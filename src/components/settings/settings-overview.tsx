@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { SECTION_META, type SettingsSection } from './settings-sections';
 import { SettingsChip, StatusDot } from './settings-chip';
 import { ROLE_META } from './role-meta';
+import { summarizeChannels, type ChannelsSummary } from '@/lib/channels/ui';
 
 interface OverviewCounts {
   members: number | null;
@@ -26,9 +27,9 @@ interface OverviewCounts {
   customFields: number | null;
 }
 
-interface WhatsAppStatus {
-  configured: boolean;
-  connected: boolean;
+interface ChannelsOverview {
+  stores: number | null;
+  channels: ChannelsSummary | null;
 }
 
 export function SettingsOverview({
@@ -44,22 +45,20 @@ export function SettingsOverview({
   const locale = useLocale();
   const tRoles = useTranslations('Settings.roles');
   const tSections = useTranslations('Settings.sections');
+  const tChannelStatus = useTranslations('Settings.channels.status');
 
   const [counts, setCounts] = useState<OverviewCounts | null>(null);
   const [countsLoading, setCountsLoading] = useState(true);
-  // WhatsApp status is tracked separately: its health check decrypts the
-  // token and pings Meta, which is far slower than the cheap count
-  // queries. Gating it independently keeps a slow/flaky Meta round-trip
-  // from blanking the rest of the landing.
-  const [whatsapp, setWhatsapp] = useState<WhatsAppStatus | null>(null);
-  const [whatsappLoading, setWhatsappLoading] = useState(true);
+  // Stores and channel connections come from their own endpoints; gating
+  // them independently keeps a slow one from blanking the rest of the landing.
+  const [overview, setOverview] = useState<ChannelsOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
 
   useEffect(() => {
     if (!user || !accountId) return;
     let cancelled = false;
     const supabase = createClient();
     const userId = user.id;
-    const acctId = accountId;
 
     // Cheap counts — resolve fast, render immediately.
     (async () => {
@@ -119,23 +118,28 @@ export function SettingsOverview({
       setCountsLoading(false);
     })();
 
-    // WhatsApp connection status — slower, independent.
+    // Stores + channel connections (state stored by the health checks).
     (async () => {
-      setWhatsappLoading(true);
-      const [row, health] = await Promise.allSettled([
-        supabase
-          .from('whatsapp_config')
-          .select('phone_number_id')
-          .eq('account_id', acctId)
-          .maybeSingle(),
-        fetch('/api/whatsapp/config', { cache: 'no-store' }).then((r) => r.json()),
+      setOverviewLoading(true);
+      const [storesRes, connsRes] = await Promise.allSettled([
+        fetch('/api/stores', { cache: 'no-store' }).then((r) => r.json()),
+        fetch('/api/channels/connections', { cache: 'no-store' }).then((r) =>
+          r.json(),
+        ),
       ]);
       if (cancelled) return;
-      setWhatsapp({
-        configured: row.status === 'fulfilled' && !!row.value.data?.phone_number_id,
-        connected: health.status === 'fulfilled' && !!health.value?.connected,
+      setOverview({
+        stores:
+          storesRes.status === 'fulfilled' && Array.isArray(storesRes.value?.stores)
+            ? storesRes.value.stores.length
+            : null,
+        channels:
+          connsRes.status === 'fulfilled' &&
+          Array.isArray(connsRes.value?.connections)
+            ? summarizeChannels(connsRes.value.connections)
+            : null,
       });
-      setWhatsappLoading(false);
+      setOverviewLoading(false);
     })();
 
     return () => {
@@ -165,18 +169,44 @@ export function SettingsOverview({
     subtitle: ReactNode;
   }[] = [
     {
-      section: 'whatsapp',
-      loading: whatsappLoading,
-      subtitle: !whatsapp?.configured ? (
-        t('notSetup')
-      ) : whatsapp.connected ? (
-        <>
-          <StatusDot tone="ok" /> {t('connected')}
-        </>
+      section: 'stores',
+      loading: overviewLoading,
+      subtitle:
+        overview?.stores == null
+          ? t('viewStores')
+          : t('storesTile', { count: overview.stores }),
+    },
+    {
+      section: 'channels',
+      loading: overviewLoading,
+      subtitle: !overview?.channels ? (
+        t('viewChannels')
+      ) : overview.channels.total === 0 ? (
+        overview.channels.disabled > 0 ? (
+          t('channelsOnlyDisabled', { count: overview.channels.disabled })
+        ) : (
+          t('notSetup')
+        )
       ) : (
-        <>
-          <StatusDot tone="muted" /> {t('needsReconnecting')}
-        </>
+        <span className="flex flex-wrap items-center gap-x-1.5">
+          <span>
+            {t('channelsTile', {
+              connected: overview.channels.connected,
+              total: overview.channels.total,
+            })}
+          </span>
+          {overview.channels.worst && overview.channels.worst !== 'connected' ? (
+            <span className="flex items-center gap-1 font-medium text-foreground">
+              <StatusDot tone="muted" />
+              {tChannelStatus(overview.channels.worst)}
+            </span>
+          ) : (
+            <StatusDot tone="ok" />
+          )}
+          {overview.channels.disabled > 0
+            ? `· ${t('channelsDisabled', { count: overview.channels.disabled })}`
+            : null}
+        </span>
       ),
     },
     {

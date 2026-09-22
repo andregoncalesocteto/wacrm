@@ -1,0 +1,29 @@
+{
+  "update_id": 900011,
+  "message_reaction": {
+    "chat": {
+      "id": 555000111,
+      "first_name": "Maria",
+      "last_name": "Silva",
+      "username": "Maria_S",
+      "type": "private"
+    },
+    "message_id": 10,
+    "user": {
+      "id": 555000111,
+      "is_bot": false,
+      "first_name": "Maria",
+      "last_name": "Silva",
+      "username": "Maria_S",
+      "language_code": "pt-br"
+    },
+    "date": 1758450200,
+    "old_reaction": [],
+    "new_reaction": [
+      {
+        "type": "emoji",
+        "emoji": "👍"
+      }
+    ]
+  }
+}

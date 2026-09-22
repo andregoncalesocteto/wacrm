@@ -7,15 +7,11 @@ import { buildSystemPrompt } from './defaults'
 import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
-import {
-  engineSendText,
-  loadAccountMetaCredentials,
-} from '@/lib/flows/meta-send'
-import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
+import { sendOutbound, showTyping } from '@/lib/channels/send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 interface DispatchArgs {
-  /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
+  /** Tenancy key — drives config, contact, and WhatsApp connection lookups. */
   accountId: string
   conversationId: string
   contactId: string
@@ -50,13 +46,7 @@ interface DispatchArgs {
 export async function dispatchInboundToAiReply(
   args: DispatchArgs,
 ): Promise<void> {
-  const {
-    accountId,
-    conversationId,
-    contactId,
-    configOwnerUserId,
-    inboundMessageId,
-  } = args
+  const { accountId, conversationId, inboundMessageId } = args
 
   try {
     const db = supabaseAdmin()
@@ -119,7 +109,7 @@ export async function dispatchInboundToAiReply(
     // nothing to undo on the handoff / no-text path. Strictly
     // best-effort: a failed indicator must never cost us the reply.
     if (inboundMessageId) {
-      await showTypingIndicator(db, accountId, inboundMessageId)
+      await showTypingIndicator(db, accountId, conversationId, inboundMessageId)
     }
 
     // Ground the reply in the account's knowledge base (best-effort).
@@ -203,13 +193,12 @@ export async function dispatchInboundToAiReply(
     }
     if (claimed !== true) return // lost the per-conversation cap race
 
-    await engineSendText({
+    await sendOutbound({
       accountId,
-      userId: configOwnerUserId,
       conversationId,
-      contactId,
-      text,
-      aiGenerated: true,
+      message: { type: 'text', text },
+      actor: { type: 'ai' },
+      db,
     })
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
@@ -224,17 +213,15 @@ export async function dispatchInboundToAiReply(
 async function showTypingIndicator(
   db: ReturnType<typeof supabaseAdmin>,
   accountId: string,
+  conversationId: string,
   inboundMessageId: string,
 ): Promise<void> {
   try {
-    const { phoneNumberId, accessToken } = await loadAccountMetaCredentials(
-      db,
+    await showTyping({
+      conversationId,
       accountId,
-    )
-    await sendTypingIndicator({
-      phoneNumberId,
-      accessToken,
-      messageId: inboundMessageId,
+      inboundExternalId: inboundMessageId,
+      db,
     })
   } catch (err) {
     console.warn('[ai auto-reply] typing indicator failed (continuing):', err)

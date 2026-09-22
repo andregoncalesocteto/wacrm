@@ -94,7 +94,7 @@ function cleanBsuid(value: string | undefined): string | null {
   const trimmed = value?.trim()
   if (!trimmed) return null
   // Refuse anything that doesn't look like a BSUID rather than storing
-  // it — a bad value in `wa_user_id` becomes a permanent wrong contact
+  // it — a bad BSUID becomes a permanent wrong contact
   // key, and the phone fallback is still available.
   return isBusinessScopedUserId(trimmed) ? trimmed : null
 }
@@ -143,25 +143,6 @@ export function identityDisplayName(identity: WaIdentity): string {
   return identity.waUserId ?? ''
 }
 
-/**
- * What to render where a contact's phone number goes.
- *
- * A contact Meta only ever identified by BSUID has `phone = ''`, which
- * left the inbox's phone row and the contact detail's phone field
- * rendering as a blank line. Falls back to `@username`, then to the
- * BSUID itself, so the row always says something true about how to
- * recognise this person.
- */
-export function contactHandle(contact: {
-  phone?: string | null
-  wa_username?: string | null
-  wa_user_id?: string | null
-}): string {
-  if (contact.phone?.trim()) return contact.phone
-  if (contact.wa_username?.trim()) return `@${contact.wa_username.trim()}`
-  return contact.wa_user_id?.trim() ?? ''
-}
-
 export interface WaSendTarget {
   /** The value to hand a `meta-api` sender as `to`. */
   target: string
@@ -185,12 +166,12 @@ export interface WaSendTarget {
  */
 export function resolveContactSendTarget(contact: {
   phone?: string | null
-  wa_user_id?: string | null
+  bsuid?: string | null
 } | null | undefined): WaSendTarget | null {
   const sanitized = sanitizePhoneForMeta(contact?.phone ?? '')
   if (isValidE164(sanitized)) return { target: sanitized, isPhone: true }
 
-  const waUserId = contact?.wa_user_id?.trim()
+  const waUserId = contact?.bsuid?.trim()
   if (isBusinessScopedUserId(waUserId)) {
     return { target: waUserId as string, isPhone: false }
   }

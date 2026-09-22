@@ -5,7 +5,10 @@ import {
   requireRole,
   toErrorResponse,
 } from '@/lib/auth/account'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import {
+  isAccountWhatsAppConnection,
+  loadWhatsAppSendConnection,
+} from '@/lib/channels/whatsapp-connection'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
 import type { TemplateButton, TemplateSampleValues } from '@/types'
 
@@ -127,7 +130,7 @@ function extractSampleValues(
   return sv
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     // Syncing rewrites the account-wide template catalog, which is
     // settings-class data: `canEditSettings` and the message_templates
@@ -135,13 +138,33 @@ export async function POST() {
     // Resolving account_id off the profile only proved membership.
     const { supabase, accountId, userId } = await requireRole('admin')
 
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    // Optional { connection_id }: sync that WhatsApp connection instead of the
+    // account's default one. An absent/empty body keeps the old behavior.
+    const body = (await request.json().catch(() => null)) as {
+      connection_id?: unknown
+    } | null
+    const requestedId = body?.connection_id ?? null
+    if (requestedId !== null && typeof requestedId !== 'string') {
+      return NextResponse.json(
+        { error: 'connection_id must be a string.' },
+        { status: 400 },
+      )
+    }
+    if (
+      requestedId &&
+      !(await isAccountWhatsAppConnection(supabase, accountId, requestedId))
+    ) {
+      return NextResponse.json(
+        { error: 'WhatsApp connection not found.' },
+        { status: 404 },
+      )
+    }
 
-    if (configError || !config) {
+    const loaded = await loadWhatsAppSendConnection(supabase, accountId, {
+      connectionId: requestedId,
+    })
+
+    if (!loaded) {
       return NextResponse.json(
         {
           error:
@@ -151,7 +174,8 @@ export async function POST() {
       )
     }
 
-    if (!config.waba_id) {
+    const wabaId = loaded.connection.config?.waba_id
+    if (typeof wabaId !== 'string' || !wabaId) {
       return NextResponse.json(
         {
           error:
@@ -161,12 +185,13 @@ export async function POST() {
       )
     }
 
-    const accessToken = decrypt(config.access_token)
+    const accessToken = loaded.accessToken
+    const connectionId = loaded.connection.id
 
     const metaTemplates: MetaTemplate[] = []
     let nextUrl:
       | string
-      | null = `${META_API_BASE}/${config.waba_id}/message_templates?limit=100&fields=id,name,language,status,category,components,quality_score`
+      | null = `${META_API_BASE}/${wabaId}/message_templates?limit=100&fields=id,name,language,status,category,components,quality_score`
     const PAGE_CAP = 20
     let pageCount = 0
 
@@ -223,6 +248,7 @@ export async function POST() {
         // post-017, so an INSERT without it errors.
         account_id: accountId,
         user_id: userId,
+        connection_id: connectionId,
         name: t.name,
         category: normalizeCategory(t.category),
         language: t.language,
@@ -243,6 +269,7 @@ export async function POST() {
         .from('message_templates')
         .select('id')
         .eq('account_id', accountId)
+        .eq('connection_id', connectionId)
         .eq('name', t.name)
         .eq('language', t.language)
         .maybeSingle()

@@ -31,7 +31,8 @@
  * row until someone presses "Sync from Meta", so its status / quality
  * events used to match 0 rows and be dropped. Both handlers now fall
  * back to creating a stub row: the WABA id on the webhook entry
- * resolves the owning account via `whatsapp_config.waba_id`, and the
+ * resolves the owning account via the WhatsApp connection whose
+ * `config.waba_id` matches, and the
  * stub carries the identity (name / language / meta_template_id) plus
  * whatever the event told us (status, rejection reason, quality
  * score). Components are NOT known at this point — `body_text` is
@@ -303,33 +304,49 @@ async function createStubForUnknownTemplate(p: StubParams): Promise<void> {
   }
 
   const { data: configs, error: configError } = await supabase
-    .from('whatsapp_config')
-    .select('account_id, user_id')
-    .eq('waba_id', wabaId)
+    .from('channel_connections')
+    .select('id, account_id')
+    .eq('channel_type', 'whatsapp_cloud')
+    .eq('config->>waba_id', wabaId)
 
   if (configError) {
     console.error(
-      `[template-webhook] ${kind} for unknown template ${where} — whatsapp_config lookup failed:`,
+      `[template-webhook] ${kind} for unknown template ${where} — channel_connections lookup failed:`,
       configError.message,
     )
     return
   }
-  const rows = (configs ?? []) as { account_id: string; user_id: string }[]
+  const rows = (configs ?? []) as { id: string; account_id: string }[]
   if (rows.length !== 1) {
     console.warn(
-      `[template-webhook] ${kind} for unknown template ${where} — ${rows.length === 0 ? 'no' : rows.length} whatsapp_config rows match that WABA id; not creating a stub. Run "Sync from Meta" for the owning account.`,
+      `[template-webhook] ${kind} for unknown template ${where} — ${rows.length === 0 ? 'no' : rows.length} WhatsApp connections match that WABA id; not creating a stub. Run "Sync from Meta" for the owning account.`,
     )
     return
   }
 
   const config = rows[0]
   // account_id is tenancy; user_id is the NOT NULL audit FK — the
-  // config owner, same convention the webhook uses for inbound writes.
+  // account owner (connections carry no user; the legacy config owner
+  // was the account's admin who connected WhatsApp).
+  const { data: account } = await supabase
+    .from('accounts')
+    .select('owner_user_id')
+    .eq('id', config.account_id)
+    .maybeSingle()
+  const ownerUserId = (account as { owner_user_id?: string } | null)
+    ?.owner_user_id
+  if (!ownerUserId) {
+    console.error(
+      `[template-webhook] ${kind} for unknown template ${where} — account owner could not be resolved; not creating a stub.`,
+    )
+    return
+  }
   // `category` and `status` fall back to their column defaults unless
   // the event supplied them (status events do, quality events don't).
   const stub = {
     account_id: config.account_id,
-    user_id: config.user_id,
+    user_id: ownerUserId,
+    connection_id: config.id,
     meta_template_id: metaTemplateId,
     name,
     language: p.language || DEFAULT_TEMPLATE_LANGUAGE,

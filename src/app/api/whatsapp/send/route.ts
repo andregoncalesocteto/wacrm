@@ -11,6 +11,7 @@ import {
   validateSendMessageParams,
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
+import { findAccountWhatsAppConnection } from '@/lib/channels/whatsapp-connection'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -132,6 +133,15 @@ export async function POST(request: Request) {
         userId,
         contact_id
       )
+      if (resolved === 'no_connection') {
+        return NextResponse.json(
+          {
+            error:
+              'WhatsApp not configured. Please set up your WhatsApp integration first.',
+          },
+          { status: 400 }
+        )
+      }
       if (!resolved) {
         return NextResponse.json(
           { error: 'Failed to open a conversation for this contact' },
@@ -175,7 +185,12 @@ export async function POST(request: Request) {
     } catch (err) {
       if (err instanceof SendMessageError) {
         return NextResponse.json(
-          { error: err.message },
+          {
+            error: err.message,
+            ...(err.code === 'connection_disabled' && { code: err.code }),
+            ...(err.channelCode &&
+              err.code !== 'connection_disabled' && { code: err.channelCode }),
+          },
           { status: err.status }
         )
       }
@@ -203,12 +218,23 @@ async function findOrCreateConversation(
   accountId: string,
   userId: string,
   contactId: string,
-): Promise<string | null> {
+): Promise<string | null | 'no_connection'> {
+  // One conversation per (contact, connection): resolve the connection the
+  // send will use first, then look the thread up on it. An account with no
+  // connection has nothing to bind a thread to (connection_id is NOT NULL),
+  // so nothing is created and the caller answers with the same "not
+  // configured" error the send raised before.
+  const connection = await findAccountWhatsAppConnection(supabase, accountId)
+  if (!connection) return 'no_connection'
+
   const { data: existing } = await supabase
     .from('conversations')
     .select('id')
     .eq('account_id', accountId)
     .eq('contact_id', contactId)
+    .eq('connection_id', connection.id)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle()
 
   if (existing) return existing.id
@@ -219,6 +245,7 @@ async function findOrCreateConversation(
       account_id: accountId,
       user_id: userId,
       contact_id: contactId,
+      connection_id: connection.id,
     })
     .select('id')
     .single()

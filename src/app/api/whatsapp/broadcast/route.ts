@@ -1,15 +1,17 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
-import { sendTemplateMessage } from '@/lib/whatsapp/meta-api'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { getProvider } from '@/lib/channels/registry'
+import { registerBuiltinProviders } from '@/lib/channels/providers'
+import {
+  ChannelError,
+  CONNECTION_DISABLED_CODE,
+  ConnectionDisabledError,
+} from '@/lib/channels/types'
+import { WA_PHONE_KIND } from '@/lib/channels/identity'
+import { loadWhatsAppSendConnection } from '@/lib/channels/whatsapp-connection'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body'
-import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
-  isRecipientNotAllowedError,
-} from '@/lib/whatsapp/phone-utils'
+import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils'
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -64,7 +66,7 @@ export async function POST(request: Request) {
     // explicit that running broadcasts is a write operation and that
     // viewers are read-only.
     //
-    // This endpoint writes NOTHING to the database: it reads the config
+    // This endpoint writes NOTHING to the database: it reads the connection
     // and template, then calls Meta directly. So unlike the rest of the
     // app there was no RLS policy backstopping a missing role check —
     // resolving `account_id` straight off the profile (which only needs
@@ -120,13 +122,9 @@ export async function POST(request: Request) {
       )
     }
 
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    const conn = await loadWhatsAppSendConnection(supabase, accountId)
 
-    if (configError || !config) {
+    if (!conn) {
       return NextResponse.json(
         {
           error:
@@ -136,7 +134,29 @@ export async function POST(request: Request) {
       )
     }
 
-    const accessToken = decrypt(config.access_token)
+    // US-078: a broadcast is bound to one connection; refuse a disabled one
+    // before any send (409, same code as the other send paths).
+    if (conn.connection.disabled_at) {
+      return NextResponse.json(
+        {
+          error: new ConnectionDisabledError().message,
+          code: CONNECTION_DISABLED_CODE,
+        },
+        { status: 409 }
+      )
+    }
+
+    // Send through the provider of the connection. Credentials were already
+    // resolved once by loadWhatsAppSendConnection; hand them to every send.
+    registerBuiltinProviders()
+    const provider = getProvider(conn.connection.channel_type)
+    if (!provider.capabilities.templates) {
+      return NextResponse.json(
+        { error: 'This channel does not support template messages' },
+        { status: 400 }
+      )
+    }
+    const credentials = { access_token: conn.accessToken }
 
     // Load the template row once so sendTemplateMessage can build
     // header + button components on each iteration. Loading inside
@@ -177,37 +197,40 @@ export async function POST(request: Request) {
         continue
       }
 
-      // Retry with phone variants on "not in allowed list" so numbers
-      // that differ only in a trunk-prefix 0 still reach recipients.
-      const variants = phoneVariants(sanitized)
+      // The provider owns the phone-variant retry (only "recipient not
+      // allowed" moves on to the next variant) and throws the last error.
       let sentMessageId: string | null = null
       let lastError: string | null = null
 
-      for (const variant of variants) {
-        try {
-          const result = await sendTemplateMessage({
-            phoneNumberId: config.phone_number_id,
-            accessToken,
-            to: variant,
-            templateName: template_name,
-            language: resolvedTemplate.language,
-            template: templateRow ?? undefined,
-            messageParams: recipient.messageParams,
-            params: recipient.params ?? [],
-          })
-          sentMessageId = result.messageId
-          lastError = null
-          break
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : 'Unknown error'
-          if (!isRecipientNotAllowedError(errorMessage)) {
-            lastError = errorMessage
-            break
-          }
-          lastError = errorMessage
-          // retry with next variant
-        }
+      try {
+        const result = await provider.send(
+          conn.connection,
+          { kind: WA_PHONE_KIND, address: sanitized },
+          {
+            type: 'template',
+            template: {
+              name: template_name,
+              language: resolvedTemplate.language,
+              provider: {
+                row: templateRow ?? undefined,
+                messageParams: recipient.messageParams,
+                params: recipient.params ?? [],
+              },
+            },
+          },
+          { credentials }
+        )
+        sentMessageId = result.externalId
+      } catch (error) {
+        // A non-Error rejection was wrapped by the provider; keep the old text.
+        const wrappedNonError =
+          error instanceof ChannelError &&
+          error.cause !== undefined &&
+          !(error.cause instanceof Error)
+        lastError =
+          error instanceof Error && !wrappedNonError
+            ? error.message
+            : 'Unknown error'
       }
 
       if (sentMessageId) {

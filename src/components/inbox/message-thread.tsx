@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
+import { useCan } from "@/hooks/use-can";
+import { isConversationConnectionDisabled } from "@/lib/inbox/conversations";
 import { usePresence } from "@/hooks/use-presence";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
@@ -27,6 +30,7 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  PowerOff,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useFormatter, useTranslations } from "next-intl";
@@ -50,10 +54,20 @@ import {
 } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
+import { ConversationScopeBadge } from "./conversation-scope-badge";
+import { useChannelProviders } from "@/hooks/use-channel-providers";
+import {
+  composerCapabilities,
+  sendErrorMessageKey,
+} from "@/lib/channels/composer-capabilities";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { renderTemplateBody } from "@/lib/whatsapp/template-body";
-import { contactHandle } from "@/lib/whatsapp/wa-identity";
+import {
+  contactDisplayName,
+  contactInitial,
+  contactSubtitle,
+} from "@/lib/contacts/display-name";
 import { toast } from "sonner";
 
 interface ReplyDraft {
@@ -106,6 +120,8 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  /** Show the store · channel badge in the header (more than one connection). */
+  showScopeUi?: boolean;
 }
 
 function formatDateSeparator(
@@ -168,6 +184,7 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  showScopeUi = false,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const formatter = useFormatter();
@@ -175,6 +192,28 @@ export function MessageThread({
   const tQuote = useTranslations("Inbox.replyQuote");
 
   const { user } = useAuth();
+  const canEditSettings = useCan("edit-settings");
+  // A disabled connection keeps its history readable but cannot send.
+  const connectionDisabled = isConversationConnectionDisabled(conversation);
+  // What the conversation's channel can do (templates, buttons, reactions...).
+  const providers = useChannelProviders();
+  const caps = useMemo(
+    () => composerCapabilities(conversation?.connection?.channel_type, providers),
+    [conversation?.connection?.channel_type, providers],
+  );
+  // A send error with a known ChannelError code becomes a translated message;
+  // anything else keeps the server text.
+  const sendFailedMessage = useCallback(
+    (
+      payload: { code?: unknown } | null | undefined,
+      failedKey: "sendFailed" | "sendTemplateFailed",
+      reason: string,
+    ) => {
+      const key = sendErrorMessageKey(payload?.code);
+      return key ? t(`sendError.${key}`) : t(failedKey, { reason });
+    },
+    [t],
+  );
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -471,7 +510,7 @@ export function MessageThread({
 
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
-      if (!conversation) return;
+      if (!conversation || connectionDisabled) return;
 
       const tempId = `temp-${Date.now()}`;
 
@@ -506,7 +545,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send message:", reason);
-          toast.error(t("sendFailed", { reason }));
+          toast.error(sendFailedMessage(payload, "sendFailed", reason));
           // Mark the optimistic bubble as failed so the user sees what happened
           onUpdateMessage(tempId, { status: "failed" });
           return;
@@ -523,12 +562,12 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, t]
+    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t, sendFailedMessage]
   );
 
   const handleSendMedia = useCallback(
     async (payload: SendMediaPayload) => {
-      if (!conversation) return;
+      if (!conversation || connectionDisabled) return;
 
       // Documents show their filename in our own bubble (and to the
       // recipient as the Meta caption when no caption was typed); other
@@ -572,7 +611,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send media:", reason);
-          toast.error(t("sendFailed", { reason }));
+          toast.error(sendFailedMessage(data, "sendFailed", reason));
           onUpdateMessage(tempId, { status: "failed" });
           // The upload never reached the recipient — GC the orphaned
           // object rather than leaving it in the public bucket forever.
@@ -589,12 +628,12 @@ export function MessageThread({
         void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, t],
+    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t, sendFailedMessage],
   );
 
   const handleSendInteractive = useCallback(
     async (payload: InteractiveMessagePayload, replyToId?: string) => {
-      if (!conversation) return;
+      if (!conversation || connectionDisabled) return;
 
       const tempId = `temp-${Date.now()}`;
       // Optimistic bubble — renders the buttons/list immediately via the
@@ -629,7 +668,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send interactive message:", reason);
-          toast.error(t("sendFailed", { reason }));
+          toast.error(sendFailedMessage(data, "sendFailed", reason));
           onUpdateMessage(tempId, { status: "failed" });
           return;
         }
@@ -642,7 +681,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, t],
+    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t, sendFailedMessage],
   );
 
   const handleStatusChange = useCallback(
@@ -673,7 +712,7 @@ export function MessageThread({
         buttonParams?: Record<number, string>;
       },
     ) => {
-      if (!conversation) return;
+      if (!conversation || connectionDisabled) return;
 
       const renderedBody = renderTemplateBody(template.body_text, values.body);
       const tempId = `temp-${Date.now()}`;
@@ -718,7 +757,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send template:", reason);
-          toast.error(t("sendTemplateFailed", { reason }));
+          toast.error(sendFailedMessage(payload, "sendTemplateFailed", reason));
           onUpdateMessage(tempId, { status: "failed" });
           return;
         }
@@ -731,7 +770,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, t],
+    [conversation, connectionDisabled, onNewMessage, onUpdateMessage, t, sendFailedMessage],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -757,8 +796,9 @@ export function MessageThread({
     return map;
   }, [reactions]);
 
-  const contactDisplayName =
-    contact?.name || (contact ? contactHandle(contact) : "") || t("customer");
+  const contactName =
+    (contact && contactDisplayName(contact, contact.identities)) ||
+    t("customer");
 
   // Author label for a quoted message: "You" when we sent the parent,
   // contact name when the customer sent it.
@@ -766,9 +806,9 @@ export function MessageThread({
     (m: Message): string => {
       const isAgentMsg =
         m.sender_type === "agent" || m.sender_type === "bot";
-      return isAgentMsg ? "You" : contactDisplayName;
+      return isAgentMsg ? "You" : contactName;
     },
-    [contactDisplayName],
+    [contactName],
   );
 
   const handleStartReply = useCallback(
@@ -792,6 +832,7 @@ export function MessageThread({
         console.warn("[reactions] missing user or conversation");
         return;
       }
+      if (!caps.canReact || connectionDisabled) return;
       if (messageId.startsWith("temp-")) {
         toast.error(t("waitForSending"));
         return;
@@ -835,7 +876,10 @@ export function MessageThread({
         });
         if (!res.ok) {
           const payload = await res.json().catch(() => ({}));
-          throw new Error(payload?.error || `HTTP ${res.status}`);
+          const known = sendErrorMessageKey(payload?.code);
+          throw new Error(
+            known ? t(`sendError.${known}`) : payload?.error || `HTTP ${res.status}`,
+          );
         }
       } catch (err) {
         const reason = err instanceof Error ? err.message : "network error";
@@ -843,7 +887,7 @@ export function MessageThread({
         setReactions(snapshot);
       }
     },
-    [conversation, user?.id, t],
+    [conversation, user?.id, t, caps.canReact, connectionDisabled],
   );
 
   const handleAssignChange = useCallback(
@@ -886,7 +930,9 @@ export function MessageThread({
     );
   }
 
-  const displayName = contact.name || contactHandle(contact);
+  const displayName =
+    contactDisplayName(contact, contact.identities) || t("unknown");
+  const subtitle = contactSubtitle(contact, contact.identities);
   const messageGroups = groupMessagesByDate(messages);
   const currentStatus = STATUS_OPTIONS.find(
     (s) => s.value === conversation.status
@@ -924,13 +970,21 @@ export function MessageThread({
             </button>
           )}
           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-            {displayName.charAt(0).toUpperCase()}
+            {contactInitial(displayName)}
           </div>
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-            <p className="truncate text-xs text-muted-foreground">
-              {contactHandle(contact)}
-            </p>
+            {subtitle && (
+              <p className="truncate text-xs text-muted-foreground">
+                {subtitle}
+              </p>
+            )}
+            {showScopeUi && conversation.connection && (
+              <ConversationScopeBadge
+                connection={conversation.connection}
+                className="mt-0.5"
+              />
+            )}
           </div>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. */}
@@ -1122,7 +1176,7 @@ export function MessageThread({
                           authorLabel:
                             parent.sender_type === "agent" || parent.sender_type === "bot"
                               ? t("me") 
-                              : contact?.name || contact?.phone || t("unknown"),
+                              : contactName,
                           preview: buildReplyPreview(parent, tQuote),
                         }
                       : null;
@@ -1143,6 +1197,7 @@ export function MessageThread({
                         key={msg.id}
                         message={msg}
                         onReply={() => handleStartReply(msg)}
+                        canReact={caps.canReact && !connectionDisabled}
                         onReact={(emoji) => {
                           if (emoji) void postReaction(msg.id, emoji);
                         }}
@@ -1181,17 +1236,39 @@ export function MessageThread({
         }}
       />
 
-      {/* Composer */}
-      <MessageComposer
-        conversationId={conversation.id}
-        sessionExpired={sessionInfo.expired}
-        onSend={handleSend}
-        onSendMedia={handleSendMedia}
-        onSendInteractive={handleSendInteractive}
-        onOpenTemplates={handleOpenTemplates}
-        replyTo={replyTo}
-        onClearReply={() => setReplyTo(null)}
-      />
+      {/* Composer — replaced by a read-only notice when the conversation's
+          connection is disabled (history stays readable, nothing is sent). */}
+      {connectionDisabled ? (
+        <div
+          role="status"
+          data-testid="composer-connection-disabled"
+          className="flex shrink-0 flex-wrap items-center justify-center gap-x-2 gap-y-1 border-t border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+        >
+          <PowerOff className="h-4 w-4 shrink-0" />
+          <span>{t("connectionDisabled")}</span>
+          {canEditSettings && (
+            <Link
+              href="/settings?tab=channels"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              {t("connectionDisabledLink")}
+            </Link>
+          )}
+        </div>
+      ) : (
+        <MessageComposer
+          conversationId={conversation.id}
+          storeId={conversation.connection?.store_id ?? null}
+          capabilities={caps}
+          sessionExpired={sessionInfo.expired}
+          onSend={handleSend}
+          onSendMedia={handleSendMedia}
+          onSendInteractive={handleSendInteractive}
+          onOpenTemplates={handleOpenTemplates}
+          replyTo={replyTo}
+          onClearReply={() => setReplyTo(null)}
+        />
+      )}
 
       <TemplatePicker
         open={templateModalOpen}
@@ -1205,7 +1282,7 @@ export function MessageThread({
         items={mediaGallery}
         activeId={mediaMessageId}
         onActiveIdChange={handleMediaChange}
-        contactLabel={contactDisplayName}
+        contactLabel={contactName}
       />
     </div>
   );

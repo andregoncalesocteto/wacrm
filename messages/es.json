@@ -136,7 +136,23 @@
   },
   "Inbox": {
     "page": {
-      "whatsappNotConnected": "WhatsApp® no está conectado. Ve a Configuración para conectar tu cuenta."
+      "whatsappNotConnected": "WhatsApp® no está conectado. Ve a Configuración para conectar tu cuenta.",
+      "connectionDisconnected": "Conexión de la tienda “{store}” desconectada — es posible que los mensajes de esta tienda no estén llegando.",
+      "connectionNeedsAction": "La tienda {store} necesita atención en su conexión — es posible que los mensajes de esta tienda no estén llegando.",
+      "connectionWarningLink": "Ver canales"
+    },
+    "contactConversations": {
+      "title": "Conversaciones",
+      "noStore": "Sin tienda",
+      "unread": "{count, plural, one {# sin leer} other {# sin leer}}",
+      "noMessages": "Aún no hay mensajes",
+      "disabled": "Desactivada",
+      "current": "Actual",
+      "status": {
+        "open": "Abierta",
+        "pending": "Pendiente",
+        "closed": "Cerrada"
+      }
     },
     "conversationList": {
       "searchPlaceholder": "Buscar conversaciones...",
@@ -151,9 +167,26 @@
       "clearAll": "Limpiar todo",
       "noConversations": "No se encontraron conversaciones",
       "noMessagesYet": "Aún no hay mensajes",
-      "unknown": "Desconocido"
+      "unknown": "Desconocido",
+      "store": "Tienda",
+      "allStores": "Todas las tiendas",
+      "connection": "Conexión",
+      "allConnections": "Todas las conexiones",
+      "channel": "Canal",
+      "allChannels": "Todos los canales",
+      "disabled": "Desactivada",
+      "unreadByStore": "Sin leer por tienda"
     },
     "messageThread": {
+      "connectionDisabled": "Esta conexión está desactivada; reactívala en Configuración → Canales para responder",
+      "connectionDisabledLink": "Abrir Canales",
+      "sendError": {
+        "unsupported": "Esta conversación no admite este tipo de mensaje",
+        "windowClosed": "La ventana de 24 h terminó: envía una plantilla",
+        "recipientUnreachable": "Destinatario inaccesible",
+        "connectionDisabled": "Conexión desactivada",
+        "invalid": "El mensaje no es válido para este canal"
+      },
       "backToConversations": "Volver a las conversaciones",
       "hideContactPanel": "Ocultar panel del contacto",
       "showContactPanel": "Mostrar panel del contacto",
@@ -198,6 +231,12 @@
       "sessionExpiredPlaceholder": "Sesión expirada - usa una plantilla",
       "typeMessagePlaceholder": "Escribe un mensaje... (Shift+Enter para nueva línea)",
       "readOnlyTitle": "Solo lectura: tu rol no puede enviar mensajes",
+      "unsupportedTemplates": "Este canal no admite plantillas",
+      "unsupportedButtons": "Este canal no admite mensajes interactivos",
+      "unsupportedList": "Este canal no admite mensajes de lista",
+      "unsupportedReactions": "Este canal no admite reacciones",
+      "unsupportedMedia": "Este canal no admite este tipo de multimedia",
+      "captionTooLong": "El pie de foto es demasiado largo (máximo {max} caracteres)",
       "recording": "Grabando… {current} / {max}",
       "cancel": "Cancelar",
       "stopAndAttach": "Detener y adjuntar",
@@ -348,6 +387,7 @@
       "noContactsYet": "Aún no hay contactos.",
       "addFirstContact": "Agrega tu primer contacto",
       "unnamed": "Sin nombre",
+      "noIdentifier": "Sin identificador",
       "editAction": "Editar",
       "deleteAction": "Eliminar",
       "showingPagination": "Mostrando {start}-{end} de {total}",
@@ -413,6 +453,26 @@
         "edit": "Editar",
         "message": "Mensaje",
         "delete": "Eliminar"
+      },
+      "mergeDialog": {
+        "action": "Vincular a otro contacto",
+        "title": "Vincular a otro contacto",
+        "desc": "Elige el contacto que es el mismo cliente. Todo lo suyo se moverá a {name}.",
+        "search": "Buscar por nombre, teléfono o @usuario",
+        "noResults": "No se encontraron contactos",
+        "willMove": "Moviendo de {other} a {name}:",
+        "conversations": "{count, plural, one {# conversación} other {# conversaciones}}",
+        "deals": "{count, plural, one {# negocio} other {# negocios}}",
+        "notes": "{count, plural, one {# nota} other {# notas}}",
+        "tags": "{count, plural, one {# etiqueta} other {# etiquetas}}",
+        "identities": "{count, plural, one {# identidad de canal} other {# identidades de canal}}",
+        "warning": "{other} se eliminará tras la fusión. No se puede deshacer.",
+        "back": "Volver",
+        "confirm": "Unir contactos",
+        "merging": "Uniendo...",
+        "success": "Contactos unidos",
+        "failed": "No se pudieron unir los contactos",
+        "loadFailed": "No se pudo cargar el resumen del contacto"
       },
       "contactInfo": "Información del contacto",
       "unnamed": "Desconocido",
@@ -793,6 +853,10 @@
         "errorCsvMissingPhone": "El CSV debe tener una columna 'phone'.",
         "audienceSummary": "Resumen de la audiencia",
         "estimatedRecipients": "destinatarios estimados",
+        "ineligibleTitle": "{count, plural, one {# contacto no elegible} other {# contactos no elegibles}}",
+        "ineligibleReason": "Sin número de WhatsApp — este contacto no puede recibir difusiones",
+        "ineligibleUnnamed": "Contacto sin nombre",
+        "ineligibleMore": "+{count} más",
         "selectTypeForEstimate": "Selecciona un tipo de audiencia para ver la estimación.",
         "calculating": "Calculando…"
       },
@@ -923,6 +987,7 @@
       "step": "{count} paso",
       "stepPlural": "{count} pasos",
       "noSteps": "No se registraron pasos.",
+      "ignoredUnsupported": "Ignorado: el contacto no tiene conversación en una conexión que admita {capability, select, templates {plantillas} interactiveButtons {botones de respuesta} interactiveList {listas} other {este paso}}.",
       "status": {
         "success": "éxito",
         "partial": "parcial",
@@ -1420,6 +1485,12 @@
     "sectionsNav": "Secciones de configuración",
     "overview": {
       "notSetup": "Aún sin configurar",
+      "viewStores": "Gestionar tiendas",
+      "storesTile": "Tiendas: {count}",
+      "viewChannels": "Gestionar canales",
+      "channelsTile": "Canales: {connected} {connected, plural, =1 {conectado} other {conectados}} de {total}",
+      "channelsOnlyDisabled": "{count, plural, =1 {1 canal desactivado} other {# canales desactivados}}",
+      "channelsDisabled": "{count, plural, =1 {1 desactivado} other {# desactivados}}",
       "connected": "Conectado",
       "needsReconnecting": "Necesita reconectarse",
       "viewTeamMembers": "Ver miembros del equipo",
@@ -1544,6 +1615,7 @@
       "title": "Plantillas de mensaje",
       "description": "Crea plantillas y envíalas a Meta para su aprobación. Usa \"Sincronizar desde Meta\" para traer plantillas aprobadas en otro lugar.",
       "syncFromMeta": "Sincronizar desde Meta",
+      "connectionLabel": "Conexión de WhatsApp",
       "qualityScoreTitle": "Puntuación de calidad de Meta",
       "headerTextLabel": "Texto del encabezado",
       "editFailedHttp": "Error al editar (HTTP {status})",
@@ -1657,6 +1729,21 @@
       "ownerHint": "Control total de la cuenta y la facturación"
     },
     "whatsapp": {
+      "displayName": "Nombre de la conexión",
+      "displayNamePlaceholder": "p. ej. Número principal",
+      "displayNameRequired": "El nombre de la conexión es obligatorio",
+      "phoneNumberIdLocked": "El número no se puede cambiar. Para usar otro número, crea una conexión nueva.",
+      "wabaIdRequired": "El ID de la cuenta de WhatsApp Business es obligatorio",
+      "tokenProvided": "Token informado",
+      "replace": "Reemplazar",
+      "keepCurrent": "Mantener el actual",
+      "verifyTokenProvided": "Token de verificación informado",
+      "verifyTokenCopied": "Token de verificación copiado",
+      "copyVerifyToken": "Copiar token de verificación",
+      "verifyTokenGeneratedHint": "Copia este token en la configuración del webhook en Meta. Solo se muestra ahora; después de guardar puedes reemplazarlo, pero no volver a leerlo.",
+      "createConnection": "Crear conexión",
+      "saved": "Conexión guardada.",
+      "duplicateConnection": "Ya existe una conexión para este número de teléfono.",
       "title": "Conexión con WhatsApp",
       "description": "Conecta tu API de WhatsApp Business de Meta. Credenciales, webhook y pasos de configuración, todo está aquí.",
       "tokenCorrupted": "No se puede descifrar el token almacenado",
@@ -1765,13 +1852,190 @@
       "profile": "Tu perfil",
       "security": "Acceso y seguridad",
       "appearance": "Apariencia",
-      "whatsapp": "WhatsApp",
+      "stores": "Tiendas",
+      "channels": "Canales",
       "templates": "Plantillas",
       "quick-replies": "Respuestas rápidas",
       "fields": "Campos y etiquetas",
       "deals": "Negocios y moneda",
       "members": "Miembros del equipo",
       "api": "Claves de API"
+    },
+    "stores": {
+      "title": "Tiendas",
+      "description": "Registra las tiendas de tu red.",
+      "listTitle": "Registra tu primera tienda",
+      "empty": "Las tiendas que registres aquí aparecerán en esta lista.",
+      "readOnly": "Solo los propietarios y administradores pueden registrar tiendas.",
+      "newButton": "Nueva tienda",
+      "edit": "Editar tienda",
+      "delete": "Eliminar tienda",
+      "newTitle": "Nueva tienda",
+      "editTitle": "Editar tienda",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Ej.: Tienda Centro",
+      "addressLabel": "Dirección",
+      "phoneLabel": "Teléfono",
+      "hoursLabel": "Horario",
+      "hoursPlaceholder": "Ej.: Lun-Vie 9h-18h",
+      "managerLabel": "Encargado",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "noConnections": "Aún no hay conexiones",
+      "deleteDisabledHint": "Esta tienda tiene conexiones. Quítalas antes de eliminar la tienda.",
+      "deleteTitle": "Eliminar tienda",
+      "deleteConfirm": "¿Eliminar \"{name}\"? Esta acción no se puede deshacer.",
+      "deleteBlocked": "Esta tienda aún tiene conexiones y no se puede eliminar.",
+      "toastLoadFailed": "No se pudieron cargar las tiendas.",
+      "toastNameRequired": "Ingresa el nombre de la tienda.",
+      "toastNameTooLong": "El nombre debe tener como máximo {max} caracteres.",
+      "toastFieldTooLong": "Uno de los campos es demasiado largo.",
+      "toastSaveFailed": "No se pudo guardar la tienda.",
+      "toastCreated": "Tienda creada.",
+      "toastUpdated": "Tienda actualizada.",
+      "toastDeleteFailed": "No se pudo eliminar la tienda.",
+      "toastDeleted": "Tienda eliminada."
+    },
+    "channels": {
+      "wizard": {
+        "title": "Conectar un canal",
+        "description": "Conecta un canal a una tienda en cuatro pasos.",
+        "close": "Cerrar",
+        "back": "Volver",
+        "next": "Continuar",
+        "step": {
+          "store": "Tienda",
+          "channel": "Canal",
+          "data": "Datos",
+          "connect": "Conectar y probar"
+        },
+        "loadFailed": "No se pudieron cargar las tiendas y los canales.",
+        "noStoresTitle": "Crea una tienda primero",
+        "noStoresBody": "Los canales pertenecen a una tienda. Crea la tienda y vuelve para conectar el canal.",
+        "createStore": "Crear una tienda",
+        "storeLabel": "Tienda",
+        "storePlaceholder": "Elige una tienda",
+        "noProviders": "No hay ningún canal disponible en este entorno.",
+        "caps": {
+          "noTemplates": "sin plantillas",
+          "noList": "sin lista",
+          "noButtons": "sin botones",
+          "noReadReceipts": "sin confirmaciones de lectura",
+          "noReactions": "sin reacciones",
+          "afterInbound": "solo responde después de que el contacto escriba"
+        },
+        "displayName": "Nombre de la conexión",
+        "noFields": "Este canal aún no tiene campos de configuración.",
+        "errorRequired": "Campo obligatorio",
+        "errorPattern": "Valor no válido",
+        "saveContinue": "Guardar y continuar",
+        "creating": "Guardando...",
+        "duplicate": "Ya existe una conexión con ese identificador.",
+        "createFailed": "No se pudo crear la conexión.",
+        "connecting": "Conectando...",
+        "testing": "Probando la conexión...",
+        "successTitle": "Canal conectado",
+        "successBody": "La conexión está activa y superó la prueba.",
+        "failedTitle": "No se pudo conectar",
+        "reason": "Motivo: {reason}",
+        "fix": {
+          "auth": "Revisa el token de acceso y los identificadores; genera un token nuevo si expiró e inténtalo de nuevo.",
+          "invalid": "Algún dato fue rechazado. Revisa los campos e inténtalo de nuevo.",
+          "rate_limited": "Demasiados intentos en poco tiempo. Espera unos minutos e inténtalo de nuevo.",
+          "unknown": "Revisa los datos e inténtalo de nuevo. También puedes editar la conexión en la lista."
+        },
+        "keptInList": "La conexión sigue en la lista con su estado actual; puedes cerrar y continuar más tarde.",
+        "retry": "Intentar de nuevo",
+        "finish": "Finalizar",
+        "closeKeep": "Cerrar y mantener en la lista",
+        "unreachable": "No se pudo contactar con el servidor.",
+        "notHealthy": "La conexión no superó la prueba."
+      },
+      "back": "Volver a canales",
+      "storeLabel": "Tienda",
+      "title": "Canales",
+      "description": "Conecta los canales de cada tienda.",
+      "listTitle": "Canales conectados",
+      "empty": "Los canales se conectan por tienda. Por ahora, la conexión de WhatsApp de abajo es la única disponible.",
+      "readOnly": "Solo los propietarios y administradores pueden cambiar las conexiones de los canales.",
+      "emptyTitle": "Ningún canal conectado",
+      "emptyNoStores": "Los canales pertenecen a una tienda. Crea una tienda primero y luego conecta sus canales.",
+      "emptyNoConnections": "Ya tienes tiendas, pero aún no hay canales conectados.",
+      "connect": "Conectar canal",
+      "createStoreFirst": "Crear una tienda primero",
+      "lastInbound": "Última recepción {time}",
+      "neverReceived": "Aún no se ha recibido nada",
+      "configure": "Configurar",
+      "credentials": {
+        "title": "Credenciales",
+        "provided": "informado",
+        "replace": "Reemplazar",
+        "help": "El secreto no se vuelve a mostrar. Reemplazarlo guarda el nuevo valor y reconecta el canal.",
+        "saveAndReconnect": "Guardar y reconectar",
+        "cancel": "Cancelar",
+        "saveFailed": "No se pudieron guardar las credenciales.",
+        "replacedOk": "Credenciales reemplazadas y canal reconectado.",
+        "replacedNotConnected": "Credenciales reemplazadas, pero el canal no se reconectó: {reason}",
+        "credentialsMismatch": "El token pertenece a otro bot. Para usar otro bot, crea una nueva conexión."
+      },
+      "detail": {
+        "reasonDisabled": "Conexión desactivada: no envía ni recibe hasta que se active de nuevo.",
+        "lastError": "Último error",
+        "errorCode": "Código",
+        "suggestion": {
+          "auth": "Vuelve a enviar un token válido y reconecta.",
+          "rate_limited": "Espera unos minutos e inténtalo de nuevo.",
+          "generic": "Revisa los datos de la conexión e inténtalo de nuevo. Si persiste, prueba la conexión o reconecta."
+        },
+        "last24h": "Últimas 24 horas",
+        "stat": {
+          "received": "Recibidos",
+          "sent": "Enviados",
+          "failed": "Fallidos"
+        },
+        "test": "Probar conexión",
+        "reconnect": "Reconectar",
+        "move": "Mover de tienda",
+        "noOtherStore": "No hay otra tienda a la que mover esta conexión.",
+        "testOk": "La conexión respondió a la prueba.",
+        "testNotOk": "La conexión no pasó la prueba: {reason}",
+        "reconnectOk": "Conexión restablecida.",
+        "reconnectFailed": "No se pudo reconectar: {reason}",
+        "actionFailed": "No se pudo completar la acción.",
+        "moveTitle": "Mover a otra tienda",
+        "targetStore": "Tienda de destino",
+        "moveConfirm": "¿Mover \"{name}\" a \"{store}\"? {count, plural, =0 {Ninguna conversación cambia de tienda.} one {1 conversación pasará a la nueva tienda.} other {# conversaciones pasarán a la nueva tienda.}}",
+        "moveAction": "Mover",
+        "moved": "Conexión movida a \"{store}\".",
+        "disableWarning": "¿Desactivar \"{name}\"? Deja de enviar y recibir hasta que la actives de nuevo. {count, plural, =0 {No hay conversaciones abiertas.} one {1 conversación abierta dejará de recibir mensajes.} other {# conversaciones abiertas dejarán de recibir mensajes.}}"
+      },
+      "configureSoon": "El detalle de la conexión llegará pronto.",
+      "disable": "Desactivar",
+      "enable": "Activar",
+      "delete": "Eliminar",
+      "cancel": "Cancelar",
+      "disableTitle": "Desactivar conexión",
+      "disableConfirm": "¿Desactivar \"{name}\"? Deja de enviar y recibir hasta que la actives de nuevo.",
+      "deleteTitle": "Eliminar conexión",
+      "deleteConfirm": "¿Eliminar \"{name}\"? Esta acción no se puede deshacer.",
+      "toastLoadFailed": "No se pudieron cargar los canales.",
+      "toastDisabled": "Conexión desactivada. Conversaciones abiertas: {count}.",
+      "toastEnabled": "Conexión activada. Reconéctala para volver a recibir mensajes.",
+      "toastActionFailed": "No se pudo actualizar la conexión.",
+      "toastDeleted": "Conexión eliminada.",
+      "toastDeleteBlocked": "Esta conexión tiene conversaciones y no se puede eliminar. Desactívala.",
+      "toastDeleteFailed": "No se pudo eliminar la conexión.",
+      "type": {
+        "whatsapp_cloud": "WhatsApp",
+        "telegram": "Telegram"
+      },
+      "status": {
+        "connected": "Conectado",
+        "degraded": "Inestable",
+        "disconnected": "Desconectado",
+        "needs_action": "Acción necesaria",
+        "disabled": "Desactivado"
+      }
     },
     "groups": {
       "account": "Cuenta",
@@ -1890,6 +2154,7 @@
         "contacts:read": "Listar y leer contactos",
         "contacts:write": "Crear y actualizar contactos",
         "conversations:read": "Listar y leer conversaciones",
+        "connections:read": "Listar tiendas y conexiones de canal",
         "broadcasts:send": "Lanzar campañas de difusión",
         "webhooks:manage": "Registrar y administrar webhooks de eventos salientes"
       },
@@ -2010,6 +2275,9 @@
     },
     "quickReplies": {
       "title": "Respuestas rápidas",
+      "storeLabel": "Tienda",
+      "storeAll": "Toda la red",
+      "storeChip": "Tienda: {name}",
       "description": "Fragmentos reutilizables — texto simple o un mensaje interactivo guardado — que los agentes pueden insertar desde el compositor de la bandeja de entrada.",
       "newButton": "Nueva respuesta rápida",
       "empty": "Aún no hay respuestas rápidas. Crea una para reutilizarla en varias conversaciones.",
@@ -2106,7 +2374,10 @@
     "retry": "Reintentar",
     "emptyTitle": "Aún no hay notificaciones",
     "emptyDesc": "Verás una alerta aquí cuando alguien te asigne una conversación.",
-    "unread": "Sin leer"
+    "unread": "Sin leer",
+    "connectionDownTitle": "Conexión caída",
+    "connectionDownDisconnected": "{name} se desconectó. Ábrela para reconectar.",
+    "connectionDownNeedsAction": "{name} requiere tu atención. Ábrela para corregir las credenciales."
   },
   "Agents": {
     "title": "Agentes de IA",
@@ -2172,6 +2443,38 @@
   },
   "DashboardShell": {
     "loading": "Cargando..."
+  },
+  "Channels": {
+    "stepWarnings": {
+      "title": "Algunos pasos no funcionan en todas las conexiones",
+      "templates": "El paso “Enviar plantilla” solo funciona en conexiones que admiten plantillas: las conversaciones de {channels} fallarán.",
+      "interactiveButtons": "El paso “Enviar botones” solo funciona en conexiones que admiten botones de respuesta: las conversaciones de {channels} fallarán.",
+      "interactiveList": "El paso “Enviar lista” solo funciona en conexiones que admiten listas: las conversaciones de {channels} fallarán.",
+      "media": "El paso “Enviar {kind, select, image {imagen} video {video} document {documento} audio {audio} other {multimedia}}” no es compatible con {channels}: esas conversaciones fallarán."
+    },
+    "providers": {
+      "whatsapp_cloud": {
+        "name": "WhatsApp Cloud API",
+        "description": "WhatsApp Business mediante la API oficial Cloud de Meta."
+      },
+      "telegram": {
+        "name": "Telegram",
+        "description": "Bot de Telegram mediante la Bot API oficial.",
+        "fields": {
+          "bot_token": {
+            "label": "Token del bot",
+            "help": "Cree un bot con @BotFather y pegue su token (formato 123456789:AA...). Se guarda cifrado y no se vuelve a mostrar."
+          }
+        },
+        "connectHint": "Conectar registra un webhook, y Telegram solo entrega webhooks en una URL pública HTTPS. Defina antes NEXT_PUBLIC_SITE_URL con esa dirección (en desarrollo, use un túnel como cloudflared o ngrok).",
+        "docsLabel": "Cómo crear el bot y el túnel",
+        "fix": {
+          "auth": "Telegram rechazó el token. Cópielo de nuevo en @BotFather (/mybots, luego API Token) y reemplácelo en la conexión.",
+          "invalid": "Defina NEXT_PUBLIC_SITE_URL con su dirección pública https:// (en desarrollo, un túnel como cloudflared o ngrok; reconstruya la app en Docker) y pulse Intentar de nuevo.",
+          "publicHttps": "Telegram solo entrega webhooks a una URL HTTPS pública. Define NEXT_PUBLIC_SITE_URL con tu dirección pública https:// (en desarrollo, un túnel como cloudflared o ngrok; reconstruye la app en Docker) y conecta de nuevo. El webhook ya configurado no se modificó."
+        }
+      }
+    }
   },
   "Ui": {
     "close": "Cerrar",

@@ -32,6 +32,7 @@ import { FlowCanvas } from "./flow-canvas";
 import { FlowEditorProvider } from "./flow-editor-state";
 import { EditorHeader } from "./header";
 import { ValidationPanel } from "./validation-panel";
+import { FlowStepWarnings } from "./flow-step-warnings";
 import { NODE_META, nodeColors, type NodeType } from "./shared";
 import { cn } from "@/lib/utils";
 import type { FlowRow, FlowNodeRow } from "@/lib/flows/types";
@@ -153,6 +154,7 @@ export function FlowEditorShell({ initialFlow, initialNodes }: Props) {
         {/* ---- validation / activate-readiness bar ---- */}
         <div className="px-6 pb-5 pt-3">
           <ValidationPanel />
+          <FlowStepWarnings />
         </div>
       </div>
     </FlowEditorProvider>

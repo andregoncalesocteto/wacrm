@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type { Notification } from "@/types";
-import { Bell, CheckCheck, Loader2, UserPlus } from "lucide-react";
+import { Bell, CheckCheck, Loader2, PlugZap, UserPlus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,10 +13,16 @@ import { toast } from "sonner";
 import { useLocale, useTranslations } from "next-intl";
 import { getDateFnsLocale } from "@/lib/i18n/date-fns-locale";
 
-// Icon per notification type. Only one type exists today
-// (conversation_assigned) but this keeps future types a one-line add.
+// Icon per notification type; a new type is a one-line add.
 const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   conversation_assigned: UserPlus,
+  connection_down: PlugZap,
+};
+
+// `connection_down` rows are translated here (the stored title/body are only
+// an English fallback); the embedded connection supplies its name and state.
+type NotificationRow = Notification & {
+  connection?: { display_name: string; status: string } | null;
 };
 
 export default function NotificationsPage() {
@@ -24,7 +30,7 @@ export default function NotificationsPage() {
   const locale = useLocale();
   const router = useRouter();
   const { accountId } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[] | null>(
+  const [notifications, setNotifications] = useState<NotificationRow[] | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +41,7 @@ export default function NotificationsPage() {
     const supabase = createClient();
     const { data, error: fetchErr } = await supabase
       .from("notifications")
-      .select("*")
+      .select("*, connection:channel_connections(display_name, status)")
       .eq("account_id", accountId)
       .order("created_at", { ascending: false })
       .limit(100);
@@ -43,7 +49,7 @@ export default function NotificationsPage() {
       setError(fetchErr.message);
       return;
     }
-    setNotifications((data ?? []) as Notification[]);
+    setNotifications((data ?? []) as NotificationRow[]);
   }, [accountId]);
 
   useEffect(() => {
@@ -62,12 +68,15 @@ export default function NotificationsPage() {
         { event: "*", schema: "public", table: "notifications" },
         (payload) => {
           if (payload.eventType === "INSERT") {
-            const row = payload.new as Notification;
+            const row = payload.new as NotificationRow;
             setNotifications((prev) => {
               if (!prev) return [row];
               if (prev.some((n) => n.id === row.id)) return prev;
               return [row, ...prev];
             });
+            // Realtime rows carry no embed: reload so a connection_down
+            // notification gets its connection name and state.
+            if (row.type === "connection_down") load();
           } else if (payload.eventType === "UPDATE") {
             const row = payload.new as Notification;
             setNotifications((prev) =>
@@ -87,7 +96,7 @@ export default function NotificationsPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [load]);
 
   const markRead = useCallback(
     async (id: string) => {
@@ -118,12 +127,24 @@ export default function NotificationsPage() {
   const handleClick = useCallback(
     (n: Notification) => {
       if (!n.read_at) markRead(n.id);
-      if (n.conversation_id) {
+      if (n.type === "connection_down" && n.connection_id) {
+        router.push(`/settings?tab=channels&connection=${n.connection_id}`);
+      } else if (n.conversation_id) {
         router.push(`/inbox?c=${n.conversation_id}`);
       }
     },
     [markRead, router],
   );
+
+  const textFor = (n: NotificationRow) => {
+    if (n.type !== "connection_down") return { title: n.title, body: n.body };
+    const name = n.connection?.display_name ?? n.body ?? "";
+    const body =
+      n.connection?.status === "needs_action"
+        ? t("connectionDownNeedsAction", { name })
+        : t("connectionDownDisconnected", { name });
+    return { title: t("connectionDownTitle"), body };
+  };
 
   const unreadIds = notifications?.filter((n) => !n.read_at).map((n) => n.id) ?? [];
 
@@ -206,6 +227,7 @@ export default function NotificationsPage() {
           {notifications.map((n) => {
             const Icon = TYPE_ICON[n.type] ?? Bell;
             const isUnread = !n.read_at;
+            const text = textFor(n);
             return (
               <li key={n.id}>
                 <button
@@ -240,7 +262,7 @@ export default function NotificationsPage() {
                           isUnread ? "text-foreground" : "text-muted-foreground",
                         )}
                       >
-                        {n.title}
+                        {text.title}
                       </span>
                       {isUnread && (
                         <span
@@ -249,9 +271,9 @@ export default function NotificationsPage() {
                         />
                       )}
                     </div>
-                    {n.body && (
+                    {text.body && (
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {n.body}
+                        {text.body}
                       </p>
                     )}
                     <p className="mt-1 text-[11px] text-muted-foreground/70">

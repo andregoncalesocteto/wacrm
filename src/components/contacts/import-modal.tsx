@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import {
   dedupeByPhone,
+  ensurePhoneIdentities,
+  findExistingPhoneIdentityKeys,
   isUniqueViolation,
   normalizeKey,
 } from '@/lib/contacts/dedupe';
@@ -251,8 +253,18 @@ export function ImportModal({
           .filter((p): p is string => !!p)
       );
 
+      // Numbers that exist only as a whatsapp:phone identity (contact with a
+      // blank phone column) are duplicates too. One batched lookup for the
+      // whole file, not one query per row.
+      const identityKeys = await findExistingPhoneIdentityKeys(
+        supabase,
+        accountId,
+        unique.map((row) => normalizeKey(row.phone))
+      );
+
       const toInsert = unique.filter((row) => {
-        if (existing.has(normalizeKey(row.phone))) {
+        const key = normalizeKey(row.phone);
+        if (existing.has(key) || identityKeys.has(key)) {
           skipped++;
           return false;
         }
@@ -274,6 +286,8 @@ export function ImportModal({
       }
 
       const tagAssignments: ContactTagAssignment[] = [];
+      // Created contacts, to record their whatsapp:phone identity in bulk.
+      const createdPhones: { contactId: string; phone: string }[] = [];
 
       // 4) Batch insert the genuinely-new rows in chunks of 50. The DB
       //    unique index is the backstop: a 23505 (race, or a format
@@ -310,6 +324,10 @@ export function ImportModal({
 
             if (!singleErr && singleData) {
               imported++;
+              createdPhones.push({
+                contactId: singleData.id,
+                phone: row.phone,
+              });
               if (source.tagNames.length > 0) {
                 tagAssignments.push({
                   contactId: singleData.id,
@@ -346,6 +364,12 @@ export function ImportModal({
           // parallel inserts, zip by phone or returned id instead.
           for (let j = 0; j < inserted.length; j++) {
             const source = chunk[j];
+            if (source) {
+              createdPhones.push({
+                contactId: inserted[j].id,
+                phone: source.phone,
+              });
+            }
             if (!source || source.tagNames.length === 0) continue;
             tagAssignments.push({
               contactId: inserted[j].id,
@@ -354,6 +378,10 @@ export function ImportModal({
           }
         }
       }
+
+      // 4b) Record the whatsapp:phone identity of every created contact
+      //     (batched, ON CONFLICT DO NOTHING; never fails the import).
+      await ensurePhoneIdentities(supabase, accountId, createdPhones);
 
       // 5) Wire tags onto the contacts we just created. Failure here must
       //    not mask a successful contact import.

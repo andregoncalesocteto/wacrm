@@ -11,7 +11,7 @@ app secrets. This page walks through the three setups.
 
 | Value | Lives in | Scope |
 | --- | --- | --- |
-| Phone Number ID, WABA ID, access token, verify token, two-step PIN | `whatsapp_config` (one row per wacrm account, token encrypted) | per account |
+| Phone Number ID, WABA ID, access token, verify token, two-step PIN | `channel_connections` + `channel_connection_credentials` (one connection per number, token encrypted, each connection inside a store) | per account |
 | Webhook callback URL | your Meta App → WhatsApp → Configuration | per Meta App |
 | `META_APP_SECRET` | server environment | per deployment — **may list several** |
 | `META_APP_ID` | server environment | per deployment — single value |
@@ -33,10 +33,13 @@ brands. Nothing to configure beyond a single-tenant install.
 2. For each WABA, make sure the Business portfolio that owns it has
    access to the app (Business Settings → Accounts → WhatsApp accounts →
    Assigned assets, or add the WABA through the app's WhatsApp product).
-3. Each wacrm account opens Settings → WhatsApp connection and enters
-   its own Phone Number ID, WABA ID, a System User access token that
-   can manage *that* WABA, a verify token, and (for production numbers)
-   the two-step PIN.
+3. Each wacrm account creates or picks a store (Settings → Stores) and,
+   from Settings → Channels → **Connect channel** → that store →
+   **WhatsApp**, enters its own Phone Number ID, WABA ID, a System User
+   access token that can manage *that* WABA, a verify token, and (for
+   production numbers) the two-step PIN. A network with several
+   locations can give each its own store and connection, or put every
+   number under one store — the account is still one tenant either way.
 
 On save, wacrm verifies the number with the token, registers it
 (`POST /{phone_number_id}/register`, PIN required) and subscribes the
@@ -103,14 +106,14 @@ Workarounds until a per-account app id exists:
 * Create image-header templates directly in WhatsApp Manager — once
   approved, wacrm lists and sends them like any other template.
 
-A per-account `app_id` column on `whatsapp_config` would lift this; it
+A per-connection `app_id` column would lift this; it
 is not planned for the near term because the only consumer is the
 template header upload.
 
 ## Checking a multi-WABA deployment
 
-* Settings → WhatsApp connection → **Verify with Meta** runs, per
-  account, the per-check diagnostic (`phone_metadata_ok`,
+* Settings → Channels → a WhatsApp connection → **Verify with Meta**
+  runs, per connection, the per-check diagnostic (`phone_metadata_ok`,
   `waba_subscribed_to_app`, `locally_marked_registered`).
   `waba_subscribed_to_app` false means the save never managed to
   subscribe the WABA to its app — re-enter the token and save again.

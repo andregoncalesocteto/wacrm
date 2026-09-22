@@ -3,7 +3,7 @@ import { beforeEach, describe, it, expect, vi } from "vitest";
 // ============================================================
 // Fakes for the interpolation tests at the bottom of this file
 // (issue #553). Same shape as dispatch.test.ts: a minimal Supabase
-// query-builder stand-in plus a stubbed meta-send, so we can drive the
+// query-builder stand-in plus a stubbed ./send, so we can drive the
 // real `dispatchInboundToFlows` and assert on the payload that would
 // have gone to Meta. vi.mock is hoisted above the imports below, so
 // the pure-helper tests are unaffected — they never touch either.
@@ -78,7 +78,7 @@ vi.mock("./admin-client", () => {
   };
 });
 
-vi.mock("./meta-send", () => ({
+vi.mock("./send", () => ({
   engineSendText: vi.fn(async () => ({ whatsapp_message_id: "wamid.1" })),
   engineSendMedia: vi.fn(async () => ({ whatsapp_message_id: "wamid.2" })),
   engineSendInteractiveButtons: h.sendButtons,
@@ -97,7 +97,7 @@ import {
 import type {
   engineSendInteractiveButtons,
   engineSendInteractiveList,
-} from "./meta-send";
+} from "./send";
 import type { ParsedInbound } from "./types";
 
 describe("matchReplyId", () => {

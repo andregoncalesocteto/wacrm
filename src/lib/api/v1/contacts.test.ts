@@ -39,6 +39,7 @@ describe('serializeContact', () => {
     expect(serializeContact(row)).toEqual({
       id: 'c1',
       phone: '+14155550123',
+      identities: [],
       name: 'Jane',
       email: null,
       company: 'Acme',
@@ -74,6 +75,87 @@ describe('findOrCreateContact', () => {
     await expect(
       findOrCreateContact(noopDb, 'acc', 'user', { phone: 'not-a-number' })
     ).rejects.toBeInstanceOf(ContactError);
+  });
+
+  // Table-aware stub: contacts + contact_identities, records inserts/upserts.
+  function makeDb(
+    contacts: Array<Record<string, unknown>>,
+    identities: Array<Record<string, unknown>>
+  ) {
+    const inserted: Array<Record<string, unknown>> = [];
+    const upserts: Array<Record<string, unknown>> = [];
+    const db = {
+      from(table: string) {
+        let rows = table === 'contacts' ? contacts : identities;
+        const b = {
+          select: () => b,
+          eq: (c: string, v: unknown) => {
+            rows = rows.filter((r) => r[c] === v);
+            return b;
+          },
+          like: (c: string, p: string) => {
+            const suffix = p.replace(/^%/, '');
+            rows = rows.filter((r) => String(r[c] ?? '').endsWith(suffix));
+            return b;
+          },
+          maybeSingle: () =>
+            Promise.resolve({ data: rows[0] ?? null, error: null }),
+          then: (res: (v: unknown) => unknown) =>
+            res({ data: rows, error: null }),
+          insert: (row: Record<string, unknown>) => {
+            inserted.push(row);
+            return {
+              select: () => ({
+                single: () =>
+                  Promise.resolve({ data: { id: 'new-1' }, error: null }),
+              }),
+            };
+          },
+          upsert: (row: Record<string, unknown>) => {
+            upserts.push(row);
+            return Promise.resolve({ error: null });
+          },
+        };
+        return b;
+      },
+    };
+    return { db: db as unknown as SupabaseClient, inserted, upserts };
+  }
+
+  it('does not create a duplicate when the phone only exists as a whatsapp:phone identity', async () => {
+    const { db, inserted } = makeDb(
+      [{ id: 'c-tg', account_id: 'acc', phone: '' }],
+      [
+        {
+          account_id: 'acc',
+          contact_id: 'c-tg',
+          kind: 'whatsapp:phone',
+          external_id: '14155550123',
+        },
+      ]
+    );
+    const out = await findOrCreateContact(db, 'acc', 'user', {
+      phone: '+14155550123',
+    });
+    expect(out).toEqual({ id: 'c-tg', created: false });
+    expect(inserted).toHaveLength(0);
+  });
+
+  it('creates the contact and its whatsapp:phone identity when the phone is new', async () => {
+    const { db, inserted, upserts } = makeDb([], []);
+    const out = await findOrCreateContact(db, 'acc', 'user', {
+      phone: '+14155550123',
+    });
+    expect(out).toEqual({ id: 'new-1', created: true });
+    expect(inserted).toHaveLength(1);
+    expect(upserts).toEqual([
+      {
+        account_id: 'acc',
+        contact_id: 'new-1',
+        kind: 'whatsapp:phone',
+        external_id: '14155550123',
+      },
+    ]);
   });
 });
 

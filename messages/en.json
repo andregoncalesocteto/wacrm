@@ -136,7 +136,23 @@
   },
   "Inbox": {
     "page": {
-      "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account."
+      "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account.",
+      "connectionDisconnected": "Connection for store “{store}” is down — messages for this store may not be arriving.",
+      "connectionNeedsAction": "Store {store} needs attention on its connection — messages for this store may not be arriving.",
+      "connectionWarningLink": "View channels"
+    },
+    "contactConversations": {
+      "title": "Conversations",
+      "noStore": "No store",
+      "unread": "{count, plural, one {# unread} other {# unread}}",
+      "noMessages": "No messages yet",
+      "disabled": "Disabled",
+      "current": "Current",
+      "status": {
+        "open": "Open",
+        "pending": "Pending",
+        "closed": "Closed"
+      }
     },
     "conversationList": {
       "searchPlaceholder": "Search conversations...",
@@ -151,9 +167,26 @@
       "clearAll": "Clear all",
       "noConversations": "No conversations found",
       "noMessagesYet": "No messages yet",
-      "unknown": "Unknown"
+      "unknown": "Unknown",
+      "store": "Store",
+      "allStores": "All stores",
+      "connection": "Connection",
+      "allConnections": "All connections",
+      "channel": "Channel",
+      "allChannels": "All channels",
+      "disabled": "Disabled",
+      "unreadByStore": "Unread by store"
     },
     "messageThread": {
+      "connectionDisabled": "This connection is disabled; re-enable it in Settings → Channels to reply",
+      "connectionDisabledLink": "Open Channels",
+      "sendError": {
+        "unsupported": "This conversation does not accept this kind of message",
+        "windowClosed": "The 24-hour window has ended: send a template",
+        "recipientUnreachable": "Recipient unreachable",
+        "connectionDisabled": "Connection disabled",
+        "invalid": "The message is invalid for this channel"
+      },
       "backToConversations": "Back to conversations",
       "hideContactPanel": "Hide contact panel",
       "showContactPanel": "Show contact panel",
@@ -198,6 +231,12 @@
       "sessionExpiredPlaceholder": "Session expired - use a template",
       "typeMessagePlaceholder": "Type a message... (Shift+Enter for new line)",
       "readOnlyTitle": "Read-only — your role can't send messages",
+      "unsupportedTemplates": "This channel does not support templates",
+      "unsupportedButtons": "This channel does not support interactive messages",
+      "unsupportedList": "This channel does not support list messages",
+      "unsupportedReactions": "This channel does not support reactions",
+      "unsupportedMedia": "This channel does not accept this kind of media",
+      "captionTooLong": "Caption is too long (maximum {max} characters)",
       "recording": "Recording… {current} / {max}",
       "cancel": "Cancel",
       "stopAndAttach": "Stop and attach",
@@ -348,6 +387,7 @@
       "noContactsYet": "No contacts yet.",
       "addFirstContact": "Add your first contact",
       "unnamed": "Unnamed",
+      "noIdentifier": "No identifier",
       "editAction": "Edit",
       "deleteAction": "Delete",
       "showingPagination": "Showing {start}-{end} of {total}",
@@ -413,6 +453,26 @@
         "edit": "Edit",
         "message": "Message",
         "delete": "Delete"
+      },
+      "mergeDialog": {
+        "action": "Link to another contact",
+        "title": "Link to another contact",
+        "desc": "Pick the contact that is the same customer. Everything of that contact is moved into {name}.",
+        "search": "Search by name, phone or @handle",
+        "noResults": "No contacts found",
+        "willMove": "Moving from {other} into {name}:",
+        "conversations": "{count, plural, one {# conversation} other {# conversations}}",
+        "deals": "{count, plural, one {# deal} other {# deals}}",
+        "notes": "{count, plural, one {# note} other {# notes}}",
+        "tags": "{count, plural, one {# tag} other {# tags}}",
+        "identities": "{count, plural, one {# channel identity} other {# channel identities}}",
+        "warning": "{other} will be deleted after the merge. This cannot be undone.",
+        "back": "Back",
+        "confirm": "Merge contacts",
+        "merging": "Merging...",
+        "success": "Contacts merged",
+        "failed": "Could not merge contacts",
+        "loadFailed": "Could not load the contact summary"
       },
       "contactInfo": "Contact Information",
       "unnamed": "Unknown",
@@ -793,6 +853,10 @@
         "errorCsvMissingPhone": "CSV must have a 'phone' column.",
         "audienceSummary": "Audience Summary",
         "estimatedRecipients": "estimated recipients",
+        "ineligibleTitle": "{count, plural, one {# contact is not eligible} other {# contacts are not eligible}}",
+        "ineligibleReason": "No WhatsApp number — this contact cannot receive broadcasts",
+        "ineligibleUnnamed": "Unnamed contact",
+        "ineligibleMore": "+{count} more",
         "selectTypeForEstimate": "Select an audience type to see the estimate.",
         "calculating": "Calculating…"
       },
@@ -923,6 +987,7 @@
       "step": "{count} step",
       "stepPlural": "{count} steps",
       "noSteps": "No steps recorded.",
+      "ignoredUnsupported": "Ignored: the contact has no conversation on a connection that supports {capability, select, templates {templates} interactiveButtons {reply buttons} interactiveList {list messages} other {this step}}.",
       "status": {
         "success": "success",
         "partial": "partial",
@@ -1420,6 +1485,12 @@
     "sectionsNav": "Settings sections",
     "overview": {
       "notSetup": "Not set up yet",
+      "viewStores": "Manage your stores",
+      "storesTile": "Stores: {count}",
+      "viewChannels": "Manage channels",
+      "channelsTile": "Channels: {connected} connected of {total}",
+      "channelsOnlyDisabled": "{count, plural, =1 {1 disabled channel} other {# disabled channels}}",
+      "channelsDisabled": "{count, plural, =1 {1 disabled} other {# disabled}}",
       "connected": "Connected",
       "needsReconnecting": "Needs reconnecting",
       "viewTeamMembers": "View team members",
@@ -1544,6 +1615,7 @@
       "title": "Message templates",
       "description": "Create templates and submit them to Meta for approval. Use \"Sync from Meta\" to pull templates approved elsewhere.",
       "syncFromMeta": "Sync from Meta",
+      "connectionLabel": "WhatsApp connection",
       "qualityScoreTitle": "Meta quality score",
       "headerTextLabel": "Header text",
       "editFailedHttp": "Edit failed (HTTP {status})",
@@ -1667,6 +1739,21 @@
       "ownerHint": "Full control over account and billing"
     },
     "whatsapp": {
+      "displayName": "Connection name",
+      "displayNamePlaceholder": "e.g. Main number",
+      "displayNameRequired": "Connection name is required",
+      "phoneNumberIdLocked": "The number cannot be changed. To use another number, create a new connection.",
+      "wabaIdRequired": "WhatsApp Business Account ID is required",
+      "tokenProvided": "Token provided",
+      "replace": "Replace",
+      "keepCurrent": "Keep current",
+      "verifyTokenProvided": "Verify token provided",
+      "verifyTokenCopied": "Verify token copied to clipboard",
+      "copyVerifyToken": "Copy verify token",
+      "verifyTokenGeneratedHint": "Copy this token into the webhook settings in Meta. It is only shown now; after saving you can replace it but not read it again.",
+      "createConnection": "Create connection",
+      "saved": "Connection saved.",
+      "duplicateConnection": "A connection for this phone number already exists.",
       "title": "WhatsApp connection",
       "description": "Connect your Meta WhatsApp Business API. Credentials, webhook, and setup steps all live here.",
       "tokenCorrupted": "Stored token can't be decrypted",
@@ -1775,13 +1862,190 @@
       "profile": "Your profile",
       "security": "Login & security",
       "appearance": "Appearance",
-      "whatsapp": "WhatsApp",
+      "stores": "Stores",
+      "channels": "Channels",
       "templates": "Templates",
       "quick-replies": "Quick replies",
       "fields": "Fields & tags",
       "deals": "Deals & currency",
       "members": "Team members",
       "api": "API keys"
+    },
+    "stores": {
+      "title": "Stores",
+      "description": "Register the stores in your network.",
+      "listTitle": "Register your first store",
+      "empty": "Stores you register here will appear in this list.",
+      "readOnly": "Only owners and admins can register stores.",
+      "newButton": "New store",
+      "edit": "Edit store",
+      "delete": "Delete store",
+      "newTitle": "New store",
+      "editTitle": "Edit store",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Downtown store",
+      "addressLabel": "Address",
+      "phoneLabel": "Phone",
+      "hoursLabel": "Hours",
+      "hoursPlaceholder": "e.g. Mon-Fri 9am-6pm",
+      "managerLabel": "Manager",
+      "cancel": "Cancel",
+      "save": "Save",
+      "noConnections": "No connections yet",
+      "deleteDisabledHint": "This store has connections. Remove them before deleting the store.",
+      "deleteTitle": "Delete store",
+      "deleteConfirm": "Delete \"{name}\"? This cannot be undone.",
+      "deleteBlocked": "This store still has connections and cannot be deleted.",
+      "toastLoadFailed": "Could not load stores.",
+      "toastNameRequired": "Enter the store name.",
+      "toastNameTooLong": "The name must be at most {max} characters.",
+      "toastFieldTooLong": "One of the fields is too long.",
+      "toastSaveFailed": "Could not save the store.",
+      "toastCreated": "Store created.",
+      "toastUpdated": "Store updated.",
+      "toastDeleteFailed": "Could not delete the store.",
+      "toastDeleted": "Store deleted."
+    },
+    "channels": {
+      "wizard": {
+        "title": "Connect a channel",
+        "description": "Connect a channel to a store in four steps.",
+        "close": "Close",
+        "back": "Back",
+        "next": "Continue",
+        "step": {
+          "store": "Store",
+          "channel": "Channel",
+          "data": "Data",
+          "connect": "Connect and test"
+        },
+        "loadFailed": "Could not load stores and channels.",
+        "noStoresTitle": "Create a store first",
+        "noStoresBody": "Channels belong to a store. Create the store, then come back to connect the channel.",
+        "createStore": "Create a store",
+        "storeLabel": "Store",
+        "storePlaceholder": "Choose a store",
+        "noProviders": "No channel is available in this environment.",
+        "caps": {
+          "noTemplates": "no templates",
+          "noList": "no list",
+          "noButtons": "no buttons",
+          "noReadReceipts": "no read receipts",
+          "noReactions": "no reactions",
+          "afterInbound": "replies only after the contact writes"
+        },
+        "displayName": "Connection name",
+        "noFields": "This channel has no configuration fields yet.",
+        "errorRequired": "Required field",
+        "errorPattern": "Invalid value",
+        "saveContinue": "Save and continue",
+        "creating": "Saving...",
+        "duplicate": "A connection with this identifier already exists.",
+        "createFailed": "Could not create the connection.",
+        "connecting": "Connecting...",
+        "testing": "Testing the connection...",
+        "successTitle": "Channel connected",
+        "successBody": "The connection is active and passed the test.",
+        "failedTitle": "Could not connect",
+        "reason": "Reason: {reason}",
+        "fix": {
+          "auth": "Check the access token and identifiers; generate a new token if it expired and try again.",
+          "invalid": "Some data was rejected. Review the fields and try again.",
+          "rate_limited": "Too many attempts in a short time. Wait a few minutes and try again.",
+          "unknown": "Review the data and try again. You can also edit the connection in the list."
+        },
+        "keptInList": "The connection stays in the list with its current state; you can close and continue later.",
+        "retry": "Try again",
+        "finish": "Finish",
+        "closeKeep": "Close and keep in the list",
+        "unreachable": "Could not reach the server.",
+        "notHealthy": "The connection did not pass the test."
+      },
+      "back": "Back to channels",
+      "storeLabel": "Store",
+      "title": "Channels",
+      "description": "Connect the channels of each store.",
+      "listTitle": "Connected channels",
+      "empty": "Channels are connected per store. For now, the WhatsApp connection below is the only one available.",
+      "readOnly": "Only owners and admins can change channel connections.",
+      "emptyTitle": "No channels connected",
+      "emptyNoStores": "Channels belong to a store. Create a store first, then connect its channels.",
+      "emptyNoConnections": "You have stores but no connected channels yet.",
+      "connect": "Connect channel",
+      "createStoreFirst": "Create a store first",
+      "lastInbound": "Last received {time}",
+      "neverReceived": "Nothing received yet",
+      "configure": "Configure",
+      "credentials": {
+        "title": "Credentials",
+        "provided": "provided",
+        "replace": "Replace",
+        "help": "The secret is never shown again. Replacing it saves the new value and reconnects the channel.",
+        "saveAndReconnect": "Save and reconnect",
+        "cancel": "Cancel",
+        "saveFailed": "Could not save the credentials.",
+        "replacedOk": "Credentials replaced and channel reconnected.",
+        "replacedNotConnected": "Credentials replaced, but the channel did not reconnect: {reason}",
+        "credentialsMismatch": "The token belongs to a different bot. To use another bot, create a new connection instead."
+      },
+      "detail": {
+        "reasonDisabled": "Connection disabled: it neither sends nor receives until enabled again.",
+        "lastError": "Last error",
+        "errorCode": "Code",
+        "suggestion": {
+          "auth": "Send a valid token again and reconnect.",
+          "rate_limited": "Wait a few minutes and try again.",
+          "generic": "Check the connection details and try again. If it persists, test the connection or reconnect."
+        },
+        "last24h": "Last 24 hours",
+        "stat": {
+          "received": "Received",
+          "sent": "Sent",
+          "failed": "Failed"
+        },
+        "test": "Test connection",
+        "reconnect": "Reconnect",
+        "move": "Move to another store",
+        "noOtherStore": "There is no other store to move this connection to.",
+        "testOk": "The connection answered the test.",
+        "testNotOk": "The connection failed the test: {reason}",
+        "reconnectOk": "Connection re-established.",
+        "reconnectFailed": "Could not reconnect: {reason}",
+        "actionFailed": "Could not complete the action.",
+        "moveTitle": "Move to another store",
+        "targetStore": "Destination store",
+        "moveConfirm": "Move \"{name}\" to \"{store}\"? {count, plural, =0 {No conversation changes store.} one {1 conversation will belong to the new store.} other {# conversations will belong to the new store.}}",
+        "moveAction": "Move",
+        "moved": "Connection moved to \"{store}\".",
+        "disableWarning": "Disable \"{name}\"? It stops sending and receiving until you enable it again. {count, plural, =0 {There are no open conversations.} one {1 open conversation will stop receiving messages.} other {# open conversations will stop receiving messages.}}"
+      },
+      "configureSoon": "The connection detail is coming soon.",
+      "disable": "Disable",
+      "enable": "Enable",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "disableTitle": "Disable connection",
+      "disableConfirm": "Disable \"{name}\"? It stops sending and receiving until you enable it again.",
+      "deleteTitle": "Delete connection",
+      "deleteConfirm": "Delete \"{name}\"? This cannot be undone.",
+      "toastLoadFailed": "Could not load the channels.",
+      "toastDisabled": "Connection disabled. Open conversations: {count}.",
+      "toastEnabled": "Connection enabled. Reconnect it to receive messages again.",
+      "toastActionFailed": "Could not update the connection.",
+      "toastDeleted": "Connection deleted.",
+      "toastDeleteBlocked": "This connection has conversations and cannot be deleted. Disable it instead.",
+      "toastDeleteFailed": "Could not delete the connection.",
+      "type": {
+        "whatsapp_cloud": "WhatsApp",
+        "telegram": "Telegram"
+      },
+      "status": {
+        "connected": "Connected",
+        "degraded": "Degraded",
+        "disconnected": "Disconnected",
+        "needs_action": "Action needed",
+        "disabled": "Disabled"
+      }
     },
     "groups": {
       "account": "Account",
@@ -1902,6 +2166,7 @@
         "contacts:read": "List and read contacts",
         "contacts:write": "Create and update contacts",
         "conversations:read": "List and read conversations",
+        "connections:read": "List stores and channel connections",
         "broadcasts:send": "Launch broadcast campaigns",
         "webhooks:manage": "Register and manage outbound event webhooks"
       },
@@ -2022,6 +2287,9 @@
     },
     "quickReplies": {
       "title": "Quick replies",
+      "storeLabel": "Store",
+      "storeAll": "All stores (network-wide)",
+      "storeChip": "Store: {name}",
       "description": "Reusable snippets — plain text or a saved interactive message — that agents can insert from the inbox composer.",
       "newButton": "New quick reply",
       "empty": "No quick replies yet. Create one to reuse it across conversations.",
@@ -2118,7 +2386,10 @@
     "retry": "Retry",
     "emptyTitle": "No notifications yet",
     "emptyDesc": "You'll see an alert here when someone assigns you a conversation.",
-    "unread": "Unread"
+    "unread": "Unread",
+    "connectionDownTitle": "Connection down",
+    "connectionDownDisconnected": "{name} is disconnected. Open it to reconnect.",
+    "connectionDownNeedsAction": "{name} needs your attention. Open it to fix the credentials."
   },
   "Agents": {
     "title": "AI Agents",
@@ -2184,6 +2455,38 @@
   },
   "DashboardShell": {
     "loading": "Loading..."
+  },
+  "Channels": {
+    "stepWarnings": {
+      "title": "Some steps will not work on every connection",
+      "templates": "The “Send template” step only works on connections that support templates: {channels} conversations will fail.",
+      "interactiveButtons": "The “Send buttons” step only works on connections that support reply buttons: {channels} conversations will fail.",
+      "interactiveList": "The “Send list” step only works on connections that support list messages: {channels} conversations will fail.",
+      "media": "The “Send {kind, select, image {image} video {video} document {document} audio {audio} other {media}}” step is not supported on {channels}: those conversations will fail."
+    },
+    "providers": {
+      "whatsapp_cloud": {
+        "name": "WhatsApp Cloud API",
+        "description": "WhatsApp Business through the official Meta Cloud API."
+      },
+      "telegram": {
+        "name": "Telegram",
+        "description": "Telegram bot through the official Bot API.",
+        "fields": {
+          "bot_token": {
+            "label": "Bot token",
+            "help": "Create a bot with @BotFather and paste its token (format 123456789:AA...). It is stored encrypted and never shown again."
+          }
+        },
+        "connectHint": "Connecting registers a webhook, and Telegram only delivers webhooks to a public HTTPS URL. Set NEXT_PUBLIC_SITE_URL to that address first (in development, use a tunnel such as cloudflared or ngrok).",
+        "docsLabel": "How to create the bot and the tunnel",
+        "fix": {
+          "auth": "Telegram rejected the token. Copy it again from @BotFather (/mybots, then API Token) and replace it on the connection.",
+          "invalid": "Set NEXT_PUBLIC_SITE_URL to your public https:// address (a tunnel such as cloudflared or ngrok in development; rebuild the Docker app), then press Try again.",
+          "publicHttps": "Telegram only delivers webhooks to a public HTTPS URL. Set NEXT_PUBLIC_SITE_URL to your public https:// address (a tunnel such as cloudflared or ngrok in development; rebuild the Docker app) and connect again. The webhook already configured was not changed."
+        }
+      }
+    }
   },
   "Ui": {
     "close": "Close",
