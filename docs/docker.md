@@ -127,4 +127,7 @@ docker run -d --env-file .env.local -e PORT=3000 -p 3000:3000 wacrm
   `GET /api/automations/cron` and `GET /api/flows/cron` on this
   deployment, sending the shared secret in the `x-cron-secret` header
   (`AUTOMATION_CRON_SECRET`, see `.env.local.example`). Both return
-  503 until that variable is set.
+  503 until that variable is set. Optionally also point it at
+  `GET /api/channels/cron/health` (same header and secret) to detect a
+  stalled channel connection without traffic; without it, connection
+  state is updated only by events.

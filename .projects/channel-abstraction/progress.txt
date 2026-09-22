@@ -793,3 +793,10 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Tests: connection-state.test.ts (transitions + recorder), send.test.ts and ingest.events.test.ts (state after send/ingest). Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 157 files/1924 tests. No build, no browser (no UI).
 - **Learnings:** broadcast sends call provider.send directly (broadcast-core.ts, api/whatsapp/broadcast/route.ts), NOT sendOutbound, so they do not update last_outbound_at / needs_action yet (not in the criteria; candidate follow-up). The state uses the connection object the caller loaded (may be slightly stale; last write wins). US-067 notification on transition to needs_action can hook into recordConnectionEvent/sendErrorPatch.
 ---
+
+## 2026-09-21 - US-066
+- New GET /api/channels/cron/health (x-cron-secret vs AUTOMATION_CRON_SECRET, 503 unset, 401 wrong; timingSafeEqual like the other crons). Scans channel_connections WHERE disabled_at IS NULL with the service role, calls getProvider(type).health(conn) for each, and writes healthPatch via recordConnectionEvent (status = verdict, last_health_check_at; non-connected -> last_error {code:'health'}; connected after a bad state clears last_error). A throwing check is counted in `failed` and does not stop the sweep. Response {checked, failed}.
+- New pure healthPatch in connection-state.ts (+3 tests); route.test.ts (5: 503, 401, active-only + patches, sweep survives a throw, 500 on scan error). docs/docker.md mentions the optional endpoint.
+- Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 158 files/1932 tests. No build, no browser (no UI).
+- **Learnings:** the route is under /api/channels/cron/health; middleware only guards /api/whatsapp/, so no change needed. Health runs sequentially (fine for small tenant counts). US-067 can hook a notification on status transition into needs_action inside the cron loop (conn.status vs health.state) as well as sendErrorPatch.
+---

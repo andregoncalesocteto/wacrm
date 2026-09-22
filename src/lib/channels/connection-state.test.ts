@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import {
+  healthPatch,
   inboundPatch,
   ingestFailurePatch,
   outboundSuccessPatch,
@@ -103,5 +104,39 @@ describe('recordConnectionEvent', () => {
     await expect(
       recordConnectionEvent(db, 'c1', { last_inbound_at: ISO })
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('healthPatch', () => {
+  it('connected on a connected connection only stamps the check', () => {
+    expect(
+      healthPatch({ status: 'connected' }, { state: 'connected' }, NOW)
+    ).toEqual({ status: 'connected', last_health_check_at: ISO });
+  });
+
+  it('connected after a bad state clears the error', () => {
+    expect(
+      healthPatch({ status: 'degraded' }, { state: 'connected' }, NOW)
+    ).toEqual({
+      status: 'connected',
+      last_health_check_at: ISO,
+      last_error: null,
+      last_error_at: null,
+    });
+  });
+
+  it('a bad verdict sets the status and a health error', () => {
+    expect(
+      healthPatch(
+        { status: 'connected' },
+        { state: 'needs_action', reason: 'Webhook is not set' },
+        NOW
+      )
+    ).toEqual({
+      status: 'needs_action',
+      last_health_check_at: ISO,
+      last_error: { code: 'health', message: 'Webhook is not set' },
+      last_error_at: ISO,
+    });
   });
 });

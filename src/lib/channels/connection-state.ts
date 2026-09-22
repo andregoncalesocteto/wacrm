@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ChannelConnection } from './connections';
-import type { ChannelErrorCode } from './types';
+import type { ChannelErrorCode, Health } from './types';
 
 /**
  * Connection state driven by events (US-065). Pure transition functions
@@ -62,6 +62,34 @@ export function ingestFailurePatch(
     last_error: { code: failure.code, message: failure.message },
     last_error_at: now.toISOString(),
   };
+}
+
+/**
+ * Periodic health check (US-066): the provider's live verdict becomes the
+ * status. A non-connected verdict records `last_error` (code `health`); a
+ * connected one clears a previous error only when the connection was not
+ * already connected (so an ingest error stays visible until traffic recovers).
+ */
+export function healthPatch(
+  conn: StateView,
+  health: Pick<Health, 'state' | 'reason'>,
+  now: Date
+): ConnectionPatch {
+  const patch: ConnectionPatch = {
+    status: health.state,
+    last_health_check_at: now.toISOString(),
+  };
+  if (health.state !== 'connected') {
+    patch.last_error = {
+      code: 'health',
+      message: health.reason ?? `Connection is ${health.state}`,
+    };
+    patch.last_error_at = now.toISOString();
+  } else if (conn.status !== 'connected') {
+    patch.last_error = null;
+    patch.last_error_at = null;
+  }
+  return patch;
 }
 
 /** Best-effort write: a failed update is logged and never breaks the send/ingest. */
