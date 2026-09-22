@@ -97,6 +97,10 @@ deletes them).
 - Connecting a Telegram bot needs `NEXT_PUBLIC_SITE_URL` to be a public
   `https://` URL, so changing it means a rebuild. See
   [docs/telegram.md](./telegram.md).
+- Stores and channel connections (WhatsApp numbers, Telegram bots) are
+  configured after the app is up, from Settings → Stores and Settings →
+  Channels — nothing store- or channel-specific lives in env vars or
+  Compose files.
 
 ## Plain Docker (no Compose)
 
@@ -118,10 +122,10 @@ docker run -d --env-file .env.local -e PORT=3000 -p 3000:3000 wacrm
   Storage bucket, because Meta deletes media roughly 30 days after it
   arrives and the copy is the only thing that outlives that. It grows
   with inbound volume, so it's worth watching your project's storage
-  quota. Turn it off per account under Settings → WhatsApp →
-  Attachment Storage; attachments received while it's off become
-  unviewable once Meta drops them. Files over 16 MB (the bucket's
-  limit) are never copied.
+  quota. Turn it off per connection under Settings → Channels → a
+  WhatsApp connection → Attachment Storage; attachments received while
+  it's off become unviewable once Meta drops them. Files over 16 MB
+  (the bucket's limit) are never copied.
 - Nothing inside the container is scheduled. If you use automation
   Wait steps or flows, point an external scheduler at
   `GET /api/automations/cron` and `GET /api/flows/cron` on this

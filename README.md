@@ -23,9 +23,10 @@ clone or fork it to run your own CRM.
 
 ## What you get out of the box
 
-- **Shared inbox** on the official WhatsApp Business API — multiple
-  agents working one number, per-conversation assignment, status, and
-  notes.
+- **Shared inbox**, multi-store and multi-channel — the official
+  WhatsApp Business API and Telegram bots, any number of stores and
+  connections in one account, multiple agents, per-conversation
+  assignment, status, and notes.
 - **Contacts + tags + custom fields**, CSV import, deduplication.
 - **Sales pipelines** (Kanban) with deals linked to conversations.
 - **Broadcasts** with Meta-approved templates, delivery + read
@@ -177,7 +178,9 @@ Key pages:
 
 - **App** — Next.js 16 (App Router), React 19, TypeScript, Tailwind v4.
 - **Data** — Supabase (Postgres + Auth + Storage + RLS).
-- **WhatsApp** — Meta Cloud API (official WhatsApp Business API).
+- **Channels** — Meta Cloud API (official WhatsApp Business API) and
+  Telegram Bot API, behind a shared provider contract so more can be
+  added.
 
 ## Contributing
 
