@@ -3,6 +3,11 @@ import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import { buildWebhookOrigin } from '@/lib/webhooks/origin';
+import {
+  ingestFailurePatch,
+  inboundPatch,
+  recordConnectionEvent,
+} from './connection-state';
 import { resolveOrCreateContact, type ContactRow } from './identity';
 import { isValidStatusTransition } from './status-ladder';
 import type { Connection, InboundContent, InboundEvent } from './types';
@@ -660,6 +665,14 @@ async function ingestReaction(
   };
 }
 
+/** Skip reasons that mean OUR side failed (vs. benign skips such as an unknown target). */
+const FAILURE_REASONS = new Set([
+  'insert failed',
+  'no conversation',
+  'reaction delete failed',
+  'reaction upsert failed',
+]);
+
 /**
  * Ingest the events a provider parsed for one connection, in order. Returns
  * one outcome per event. Never throws for a single bad event: it is reported
@@ -672,6 +685,7 @@ export async function ingestInbound(
   opts: IngestOptions
 ): Promise<IngestOutcome[]> {
   const out: IngestOutcome[] = [];
+  let failure: { code: string; message: string } | null = null;
   for (const event of events) {
     try {
       switch (event.kind) {
@@ -694,7 +708,25 @@ export async function ingestInbound(
     } catch (err) {
       console.error('[ingest] unexpected error:', err);
       out.push({ status: 'skipped', event, reason: 'unexpected error' });
+      failure = {
+        code: 'ingest_failed',
+        message: `unexpected error: ${err instanceof Error ? err.message : String(err)}`,
+      };
     }
   }
+
+  // US-065: connection state by event (one best-effort write per batch).
+  let sawInbound = false;
+  for (const o of out) {
+    if (o.status === 'stored' || o.status === 'duplicate') sawInbound = true;
+    else if (o.status === 'skipped' && FAILURE_REASONS.has(o.reason)) {
+      failure = { code: 'ingest_failed', message: o.reason };
+    }
+  }
+  const now = new Date();
+  await recordConnectionEvent(db, connection.id, {
+    ...(sawInbound ? inboundPatch(connection, now) : {}),
+    ...(failure ? ingestFailurePatch(failure, now) : {}),
+  });
   return out;
 }

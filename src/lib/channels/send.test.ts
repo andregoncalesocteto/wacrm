@@ -557,6 +557,41 @@ describe('capability and target validation (provider never called)', () => {
   });
 });
 
+describe('connection state (US-065)', () => {
+  const conn = () => h.db.channel_connections[0];
+
+  it('a successful send stamps last_outbound_at', async () => {
+    await send();
+    expect(conn().last_outbound_at).toEqual(expect.any(String));
+  });
+
+  it('a successful send clears needs_action', async () => {
+    Object.assign(conn(), {
+      status: 'needs_action',
+      last_error: { code: 'auth', message: 'x' },
+    });
+    await send();
+    expect(conn()).toMatchObject({ status: 'connected', last_error: null });
+  });
+
+  it('an auth error marks needs_action with last_error and still throws', async () => {
+    sendMock.mockRejectedValue(new ChannelError('auth', 'token expired'));
+    await expect(send()).rejects.toMatchObject({ code: 'auth' });
+    expect(conn()).toMatchObject({
+      status: 'needs_action',
+      last_error: { code: 'auth', message: 'token expired' },
+    });
+    expect(conn().last_outbound_at).toBeUndefined();
+  });
+
+  it('other send errors leave the connection alone', async () => {
+    sendMock.mockRejectedValue(new ChannelError('rate_limited', 'slow down'));
+    const before = { ...conn() };
+    await expect(send()).rejects.toMatchObject({ code: 'rate_limited' });
+    expect(conn()).toEqual(before);
+  });
+});
+
 describe('provider outcomes', () => {
   it('a failed send persists nothing and leaves the conversation untouched', async () => {
     sendMock.mockRejectedValue(new ChannelError('unknown', 'Meta blew up'));

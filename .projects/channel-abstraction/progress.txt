@@ -786,3 +786,10 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: mcp-server `npm run build` clean (no tests exist there), typecheck, lint 0 errors/43 warnings, TZ=UTC 156 files/1904 tests. No root build, no browser.
 - **Learnings:** mcp-server has no test script; src/index.ts VERSION was already stale (0.1.0 vs 0.1.1) and is now synced. Tool zod schema for identities mirrors parseIdentities server-side (kind validated by the API, not the MCP).
 ---
+
+## 2026-09-21 - US-065
+- New src/lib/channels/connection-state.ts: pure transitions (inboundPatch, outboundSuccessPatch, sendErrorPatch, ingestFailurePatch) + best-effort recordConnectionEvent (logs, never throws). Wired in sendOutbound (provider ChannelError `auth` -> status needs_action + last_error{code,message} + last_error_at; success -> last_outbound_at) and ingestInbound (one write per batch: stored/duplicate message -> last_inbound_at; failure skips -> last_error code `ingest_failed`; benign skips such as "reaction target not found" / "no contact" are not failures).
+- Recovery: a message or successful send on a connection whose loaded status is needs_action sets status connected and clears last_error/last_error_at. degraded/disconnected are not touched by traffic (owned by connect/health).
+- Tests: connection-state.test.ts (transitions + recorder), send.test.ts and ingest.events.test.ts (state after send/ingest). Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 157 files/1924 tests. No build, no browser (no UI).
+- **Learnings:** broadcast sends call provider.send directly (broadcast-core.ts, api/whatsapp/broadcast/route.ts), NOT sendOutbound, so they do not update last_outbound_at / needs_action yet (not in the criteria; candidate follow-up). The state uses the connection object the caller loaded (may be slightly stale; last write wins). US-067 notification on transition to needs_action can hook into recordConnectionEvent/sendErrorPatch.
+---

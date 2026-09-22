@@ -13,6 +13,11 @@ import {
   templateContentText,
 } from '@/lib/whatsapp/template-body';
 import { supabaseAdmin } from './admin-client';
+import {
+  outboundSuccessPatch,
+  recordConnectionEvent,
+  sendErrorPatch,
+} from './connection-state';
 import type { ChannelConnection } from './connections';
 import { findAccountWhatsAppConnection } from './whatsapp-connection';
 import { getProvider } from './registry';
@@ -417,8 +422,21 @@ export async function sendOutbound(
     sent = await provider.send(connection, target, outbound);
   } catch (err) {
     if (typeof err === 'object' && err !== null) providerFailures.add(err);
+    if (err instanceof ChannelError) {
+      await recordConnectionEvent(
+        db,
+        connection.id,
+        sendErrorPatch(err, new Date())
+      );
+    }
     throw err;
   }
+  // The provider accepted it: the connection works, even if saving fails below.
+  await recordConnectionEvent(
+    db,
+    connection.id,
+    outboundSuccessPatch(connection, new Date())
+  );
 
   if (sent.resolvedAddress && target.kind === WA_PHONE) {
     console.log(

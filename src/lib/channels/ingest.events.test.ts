@@ -167,7 +167,11 @@ describe('ingestInbound: status events', () => {
           id: 'ct-1',
           phone: '15551230000',
           identities: [
-            { kind: 'whatsapp:phone', external_id: '15551230000', handle: null },
+            {
+              kind: 'whatsapp:phone',
+              external_id: '15551230000',
+              handle: null,
+            },
           ],
         },
       }
@@ -410,5 +414,64 @@ describe('createMediaResolver + ingestInbound: inbound media', () => {
     } as Connection;
     await run(conn);
     expect(t('messages')[0].media_url).toBeNull();
+  });
+});
+
+describe('connection state (US-065)', () => {
+  const conn = () => t('channel_connections')[0];
+  beforeEach(() => {
+    state.tables.channel_connections = [
+      { id: 'conn-1', status: 'connected', last_inbound_at: null },
+    ];
+  });
+
+  it('a stored message stamps last_inbound_at', async () => {
+    await ingestInbound(db, CONN, await inboundEvents(TEXT), OPTS);
+    expect(conn().last_inbound_at).toEqual(expect.any(String));
+  });
+
+  it('a message clears needs_action', async () => {
+    Object.assign(conn(), {
+      status: 'needs_action',
+      last_error: { code: 'auth', message: 'x' },
+    });
+    // The connection object is the one the route just loaded.
+    const loaded = { ...CONN, status: 'needs_action' } as Connection;
+    await ingestInbound(db, loaded, await inboundEvents(TEXT), OPTS);
+    expect(conn()).toMatchObject({ status: 'connected', last_error: null });
+  });
+
+  it('a status event alone does not touch the connection', async () => {
+    await ingestInbound(
+      db,
+      CONN,
+      await statusEvents({ id: 'wamid.X', status: 'sent' }),
+      OPTS
+    );
+    expect(conn().last_inbound_at).toBeNull();
+  });
+
+  it('an ingestion failure records last_error with code and message', async () => {
+    const events = await inboundEvents(TEXT);
+    const failing = {
+      ...db,
+      from: (table: string) => {
+        if (table === 'messages') throw new Error('db exploded');
+        return db.from(table);
+      },
+    };
+    const out = await ingestInbound(
+      failing as unknown as typeof db,
+      CONN,
+      events,
+      OPTS
+    );
+    expect(out[0]).toMatchObject({ status: 'skipped' });
+    expect(conn().last_error).toMatchObject({
+      code: 'ingest_failed',
+      message: expect.stringContaining('db exploded'),
+    });
+    expect(conn().last_error_at).toEqual(expect.any(String));
+    expect(conn().status).toBe('connected');
   });
 });
