@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { Loader2, MessageCircle, Plug, PlugZap, Store } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -69,6 +70,10 @@ export function ChannelsPanel() {
   const [pending, setPending] = useState<Pending>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [view, setView] = useState<View>(null);
+  // `?connection=<id>` (the connection_down notification link) opens that
+  // connection once, after the list has loaded.
+  const deepLinkId = useSearchParams().get('connection');
+  const deepLinkDone = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -99,6 +104,14 @@ export function ChannelsPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (deepLinkDone.current || !deepLinkId || loading) return;
+    deepLinkDone.current = true;
+    if (connections.some((c) => c.id === deepLinkId)) {
+      setView({ mode: 'edit', connectionId: deepLinkId });
+    }
+  }, [deepLinkId, loading, connections]);
 
   const channelLabel = (type: string) =>
     t.has(`type.${type}`) ? t(`type.${type}`) : type;

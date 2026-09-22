@@ -53,7 +53,8 @@ export async function GET(request: Request) {
       await recordConnectionEvent(
         db,
         conn.id,
-        healthPatch(conn, health, new Date())
+        healthPatch(conn, health, new Date()),
+        conn
       );
       checked += 1;
     } catch (err) {

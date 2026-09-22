@@ -800,3 +800,11 @@ Base docs: SOLUTION.md, design.md, adr/ADR-001..007, prd-channel-abstraction.md.
 - Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 158 files/1932 tests. No build, no browser (no UI).
 - **Learnings:** the route is under /api/channels/cron/health; middleware only guards /api/whatsapp/, so no change needed. Health runs sequentially (fine for small tenant counts). US-067 can hook a notification on status transition into needs_action inside the cron loop (conn.status vs health.state) as well as sendErrorPatch.
 ---
+
+## 2026-09-21 - US-067
+- Migration 050: notifications.connection_id (FK channel_connections ON DELETE CASCADE) + verify-schema check (type CHECK already accepted connection_down since 044). New src/lib/channels/connection-down.ts: isConnectionDownTransition (next in disconnected/needs_action AND previous status differs) + best-effort notifyConnectionDown (owners/admins via profiles.account_role, service role insert, one row each). recordConnectionEvent got an optional 4th arg `previous` (the connection as loaded); when the patch moves it into a down state it notifies. Wired in send.ts (auth error) and the health cron loop; ingest/success paths pass nothing.
+- UI: notifications page renders connection_down translated (title/body from i18n keys in 4 catalogues, name+state from the embedded connection) with PlugZap icon; click goes to /settings?tab=channels&connection=<id>; ChannelsPanel opens that connection once from the query param.
+- Tests: connection-down.test.ts (6: transition rule, one row per admin, none without admins, never throws, notifies once / not on repeat). Checks: typecheck, lint 0 errors/43 warnings, TZ=UTC 159 files/1938 tests, migrate + isolated replay + verify-schema OK. No build.
+- Browser (pt :3100, QA): seeded a needs_action connection + notification by SQL (cleaned up): list shows translated text, click opens the connection detail. Real transition not reachable (no Meta/Telegram).
+- **Learnings:** notification dedupe is transition-based on the loaded connection status (stale loads could double-notify in a race; acceptable). Realtime INSERT rows have no embed, so the page reloads on connection_down. Broadcast sends still bypass sendOutbound (no needs_action from them).
+---

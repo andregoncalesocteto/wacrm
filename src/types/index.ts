@@ -218,7 +218,7 @@ export interface Conversation {
 // Notifications (migration 027)
 // ============================================================
 
-export type NotificationType = 'conversation_assigned';
+export type NotificationType = 'conversation_assigned' | 'connection_down';
 
 export interface Notification {
   id: string;
@@ -228,6 +228,8 @@ export interface Notification {
   type: NotificationType;
   conversation_id?: string;
   contact_id?: string;
+  /** Set on `connection_down` (migration 050). */
+  connection_id?: string;
   /** Who triggered it. Null when an automation/system assigned it. */
   actor_user_id?: string;
   title: string;

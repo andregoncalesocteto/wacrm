@@ -2386,7 +2386,10 @@
     "retry": "다시 시도",
     "emptyTitle": "아직 알림이 없습니다",
     "emptyDesc": "누군가 대화를 배정하면 여기에 알림이 표시됩니다.",
-    "unread": "읽지 않음"
+    "unread": "읽지 않음",
+    "connectionDownTitle": "연결 끊김",
+    "connectionDownDisconnected": "{name} 연결이 끊어졌습니다. 열어서 다시 연결하세요.",
+    "connectionDownNeedsAction": "{name}에 조치가 필요합니다. 열어서 자격 증명을 확인하세요."
   },
   "Agents": {
     "title": "AI 에이전트",

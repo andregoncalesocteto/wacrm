@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ChannelConnection } from './connections';
 import type { ChannelErrorCode, Health } from './types';
+import {
+  isConnectionDownTransition,
+  notifyConnectionDown,
+} from './connection-down';
 
 /**
  * Connection state driven by events (US-065). Pure transition functions
@@ -92,11 +96,19 @@ export function healthPatch(
   return patch;
 }
 
-/** Best-effort write: a failed update is logged and never breaks the send/ingest. */
+/**
+ * Best-effort write: a failed update is logged and never breaks the send/ingest.
+ * Pass the connection as loaded (`previous`) to notify administrators
+ * (`connection_down`, US-067) when the patch moves it into a down state.
+ */
 export async function recordConnectionEvent(
   db: SupabaseClient,
   connectionId: string,
-  patch: ConnectionPatch | null
+  patch: ConnectionPatch | null,
+  previous?: Pick<
+    ChannelConnection,
+    'id' | 'account_id' | 'status' | 'display_name'
+  >
 ): Promise<void> {
   if (!patch || Object.keys(patch).length === 0) return;
   try {
@@ -106,6 +118,10 @@ export async function recordConnectionEvent(
       .eq('id', connectionId);
     if (error) {
       console.error('[connection-state] update failed:', error.message);
+      return;
+    }
+    if (previous && isConnectionDownTransition(previous.status, patch.status)) {
+      await notifyConnectionDown(previous);
     }
   } catch (err) {
     console.error(

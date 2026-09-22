@@ -2386,7 +2386,10 @@
     "retry": "Retry",
     "emptyTitle": "No notifications yet",
     "emptyDesc": "You'll see an alert here when someone assigns you a conversation.",
-    "unread": "Unread"
+    "unread": "Unread",
+    "connectionDownTitle": "Connection down",
+    "connectionDownDisconnected": "{name} is disconnected. Open it to reconnect.",
+    "connectionDownNeedsAction": "{name} needs your attention. Open it to fix the credentials."
   },
   "Agents": {
     "title": "AI Agents",

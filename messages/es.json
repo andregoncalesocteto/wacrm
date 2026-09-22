@@ -2374,7 +2374,10 @@
     "retry": "Reintentar",
     "emptyTitle": "Aún no hay notificaciones",
     "emptyDesc": "Verás una alerta aquí cuando alguien te asigne una conversación.",
-    "unread": "Sin leer"
+    "unread": "Sin leer",
+    "connectionDownTitle": "Conexión caída",
+    "connectionDownDisconnected": "{name} se desconectó. Ábrela para reconectar.",
+    "connectionDownNeedsAction": "{name} requiere tu atención. Ábrela para corregir las credenciales."
   },
   "Agents": {
     "title": "Agentes de IA",

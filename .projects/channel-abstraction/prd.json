@@ -1277,8 +1277,8 @@
         "Verify in browser using dev-browser skill (a notificação na lista, com o link)"
       ],
       "priority": 75,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser: notificacao semeada por SQL (needs_action) na lista pt e link abre o detalhe da conexao; a transicao real (Meta/Telegram) e coberta por testes com dubles, nao verificada em canal real."
     },
     {
       "id": "US-068",

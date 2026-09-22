@@ -2374,7 +2374,10 @@
     "retry": "Tentar novamente",
     "emptyTitle": "Nenhuma notificação ainda",
     "emptyDesc": "Você verá um alerta aqui quando alguém atribuir uma conversa a você.",
-    "unread": "Não lidas"
+    "unread": "Não lidas",
+    "connectionDownTitle": "Conexão fora do ar",
+    "connectionDownDisconnected": "{name} foi desconectada. Abra para reconectar.",
+    "connectionDownNeedsAction": "{name} precisa da sua atenção. Abra para corrigir as credenciais."
   },
   "Agents": {
     "title": "Agentes de IA",

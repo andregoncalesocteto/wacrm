@@ -119,6 +119,12 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'notifications.type must accept connection_down (migration 044)';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'notifications' AND column_name = 'connection_id'
+  ) THEN
+    RAISE EXCEPTION 'notifications.connection_id is missing (migration 050)';
+  END IF;
 
   -- Backfill (045): accounts that had a whatsapp_config must have a
   -- connection, and none of their conversations/templates/broadcasts may be

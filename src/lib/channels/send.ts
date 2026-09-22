@@ -426,7 +426,8 @@ export async function sendOutbound(
       await recordConnectionEvent(
         db,
         connection.id,
-        sendErrorPatch(err, new Date())
+        sendErrorPatch(err, new Date()),
+        connection
       );
     }
     throw err;
