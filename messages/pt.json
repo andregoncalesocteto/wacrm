@@ -712,6 +712,7 @@
     "page": {
       "title": "Broadcasts",
       "subtitle": "Envie mensagens em massa para seus contatos usando templates aprovados.",
+      "freeMessage": "Mensagem livre",
       "newBroadcast": "Novo broadcast",
       "noBroadcastsYet": "Nenhum broadcast ainda",
       "createFirst": "Crie seu primeiro broadcast para alcançar seus contatos em escala.",
@@ -746,6 +747,10 @@
       "backToBroadcasts": "Voltar aos broadcasts",
       "notFound": "Broadcast não encontrado",
       "template": "Template: {name}",
+      "freeMessage": "Mensagem livre",
+      "draftBannerTitle": "Isto é um rascunho",
+      "draftBannerHint": "Ainda não foi enviado — continue a edição para revisar o público e enviar.",
+      "draftBannerButton": "Continuar edição",
       "createdAt": "Criado em {date}",
       "deletePrompt": "Excluir este broadcast?",
       "cancel": "Cancelar",
@@ -807,7 +812,8 @@
       "toastNotSignedIn": "Você não está conectado.",
       "toastNotLinked": "Seu perfil não está vinculado a uma conta.",
       "toastFailedDraft": "Falha ao salvar o rascunho: {error}",
-      "toastDraftSaved": "Rascunho salvo"
+      "toastDraftSaved": "Rascunho salvo",
+      "toastDraftNotFound": "Não foi possível carregar esse rascunho."
     },
     "wizard": {
       "next": "Avançar",

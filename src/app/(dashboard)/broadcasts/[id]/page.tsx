@@ -34,6 +34,7 @@ import {
   Trash2,
   PlayCircle,
   RotateCcw,
+  Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -426,7 +427,11 @@ export default function BroadcastDetailPage() {
               </span>
             </div>
             <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
-              <span>{t('template', { name: broadcast.template_name })}</span>
+              <span>
+                {broadcast.template_name
+                  ? t('template', { name: broadcast.template_name })
+                  : t('freeMessage')}
+              </span>
               <span>{"-"}</span>
               <span>
                 {t('createdAt', { date: format.dateTime(new Date(broadcast.created_at), 'dateShort') })}
@@ -478,6 +483,24 @@ export default function BroadcastDetailPage() {
           </Button>
         )}
       </div>
+
+      {/* Draft: never sent, nothing to report on yet — point straight
+          back at the wizard instead of showing an empty stats grid. */}
+      {broadcast.status === 'draft' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+          <div className="text-sm">
+            <p className="font-medium text-foreground">{t('draftBannerTitle')}</p>
+            <p className="mt-0.5 text-muted-foreground">{t('draftBannerHint')}</p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => router.push(`/broadcasts/new?draft=${broadcast.id}`)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            {t('draftBannerButton')}
+          </Button>
+        </div>
+      )}
 
       {/* Resume / retry (issue #472). Only rendered when there is
           actually something outstanding. */}

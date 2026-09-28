@@ -712,6 +712,7 @@
     "page": {
       "title": "Broadcasts",
       "subtitle": "Send bulk messages to your contacts using approved templates.",
+      "freeMessage": "Free message",
       "newBroadcast": "New Broadcast",
       "noBroadcastsYet": "No broadcasts yet",
       "createFirst": "Create your first broadcast to reach your contacts at scale.",
@@ -746,6 +747,10 @@
       "backToBroadcasts": "Back to Broadcasts",
       "notFound": "Broadcast not found",
       "template": "Template: {name}",
+      "freeMessage": "Free message",
+      "draftBannerTitle": "This is a draft",
+      "draftBannerHint": "It hasn't been sent yet — continue editing to review the audience and send it.",
+      "draftBannerButton": "Continue editing",
       "createdAt": "Created {date}",
       "deletePrompt": "Delete this broadcast?",
       "cancel": "Cancel",
@@ -807,7 +812,8 @@
       "toastNotSignedIn": "Not signed in.",
       "toastNotLinked": "Your profile is not linked to an account.",
       "toastFailedDraft": "Failed to save draft: {error}",
-      "toastDraftSaved": "Draft saved"
+      "toastDraftSaved": "Draft saved",
+      "toastDraftNotFound": "Couldn't load that draft."
     },
     "wizard": {
       "next": "Next",

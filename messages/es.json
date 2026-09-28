@@ -712,6 +712,7 @@
     "page": {
       "title": "Difusiones",
       "subtitle": "Envía mensajes masivos a tus contactos usando plantillas aprobadas.",
+      "freeMessage": "Mensaje libre",
       "newBroadcast": "Nueva difusión",
       "noBroadcastsYet": "Aún no hay difusiones",
       "createFirst": "Crea tu primera difusión para llegar a tus contactos a gran escala.",
@@ -746,6 +747,10 @@
       "backToBroadcasts": "Volver a difusiones",
       "notFound": "Difusión no encontrada",
       "template": "Plantilla: {name}",
+      "freeMessage": "Mensaje libre",
+      "draftBannerTitle": "Esto es un borrador",
+      "draftBannerHint": "Aún no se ha enviado — continúa la edición para revisar el público y enviarlo.",
+      "draftBannerButton": "Continuar edición",
       "createdAt": "Creada el {date}",
       "deletePrompt": "¿Eliminar esta difusión?",
       "cancel": "Cancelar",
@@ -807,7 +812,8 @@
       "toastNotSignedIn": "No has iniciado sesión.",
       "toastNotLinked": "Tu perfil no está vinculado a una cuenta.",
       "toastFailedDraft": "Error al guardar el borrador: {error}",
-      "toastDraftSaved": "Borrador guardado"
+      "toastDraftSaved": "Borrador guardado",
+      "toastDraftNotFound": "No se pudo cargar ese borrador."
     },
     "wizard": {
       "next": "Siguiente",

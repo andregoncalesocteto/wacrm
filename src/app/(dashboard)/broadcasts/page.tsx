@@ -239,13 +239,19 @@ export default function BroadcastsPage() {
                   <TableRow
                     key={broadcast.id}
                     className="cursor-pointer border-border hover:bg-muted/50"
-                    onClick={() => router.push(`/broadcasts/${broadcast.id}`)}
+                    onClick={() =>
+                      router.push(
+                        broadcast.status === 'draft'
+                          ? `/broadcasts/new?draft=${broadcast.id}`
+                          : `/broadcasts/${broadcast.id}`
+                      )
+                    }
                   >
                     <TableCell className="font-medium text-foreground">
                       {broadcast.name}
                     </TableCell>
                     <TableCell className="hidden text-muted-foreground md:table-cell">
-                      {broadcast.template_name}
+                      {broadcast.template_name ?? t('freeMessage')}
                     </TableCell>
                     <TableCell className="hidden text-right text-muted-foreground tabular-nums sm:table-cell">
                       {broadcast.total_recipients}

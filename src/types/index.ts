@@ -434,9 +434,18 @@ export interface Broadcast {
   name: string;
   /** Which connection this broadcast sends through (migration 051, NOT NULL). */
   connection_id: string;
-  template_name: string;
-  template_language: string;
+  /**
+   * Exactly one of (template_name) or (message_text / message_media_url) is
+   * set, never both, never neither — enforced by the `broadcasts_content_
+   * exclusive_check` CHECK (migration 052). Nullable since that migration;
+   * a free-message broadcast (no approved-template channel) carries the
+   * other two fields instead.
+   */
+  template_name: string | null;
+  template_language: string | null;
   template_variables?: Record<string, unknown>;
+  message_text?: string | null;
+  message_media_url?: string | null;
   audience_filter?: Record<string, unknown>;
   scheduled_at?: string;
   status: BroadcastStatus;
