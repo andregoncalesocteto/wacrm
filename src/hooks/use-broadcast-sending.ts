@@ -5,7 +5,10 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { BATCH_SEND_ATTEMPTS, batchRetryDelayMs } from '@/lib/broadcast-retry';
 import { normalizeKey } from '@/lib/contacts/dedupe';
-import { fetchIneligibleContacts } from '@/lib/contacts/broadcast-eligibility';
+import {
+  fetchIneligibleContacts,
+  type BroadcastConnectionContext,
+} from '@/lib/contacts/broadcast-eligibility';
 import { Contact, MessageTemplate } from '@/types';
 
 export type CustomFieldOperator = 'is' | 'is_not' | 'contains';
@@ -39,7 +42,15 @@ export type VariableMapping =
 
 interface BroadcastPayload {
   name: string;
-  template: MessageTemplate;
+  /**
+   * Content is exactly one of `template` (approved WhatsApp template) or
+   * `messageText`/`messageMediaUrl` (free message, US-011/US-012) — never
+   * both, mirroring the `broadcasts_content_exclusive_check` CHECK
+   * (migration 052).
+   */
+  template?: MessageTemplate | null;
+  messageText?: string;
+  messageMediaUrl?: string;
   audience: AudienceConfig;
   variables: Record<string, VariableMapping>;
   /**
@@ -49,6 +60,12 @@ interface BroadcastPayload {
    * falls back to the template's stored URL only when this is empty.
    */
   headerMediaUrl?: string;
+  /**
+   * The connection this broadcast sends from — resolved once by the wizard
+   * (see Step2SelectAudience) and reused here so eligibility and the
+   * persisted `connection_id` never disagree.
+   */
+  connection: BroadcastConnectionContext;
 }
 
 interface UseBroadcastSendingReturn {
@@ -78,9 +95,10 @@ function sleep(ms: number) {
 }
 
 interface BroadcastApiResult {
+  contact_id?: string;
   phone: string;
   status: 'sent' | 'failed';
-  whatsapp_message_id?: string;
+  external_message_id?: string;
   error?: string;
 }
 
@@ -173,7 +191,10 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  async function resolveAudience(audience: AudienceConfig): Promise<Contact[]> {
+  async function resolveAudience(
+    audience: AudienceConfig,
+    connection: BroadcastConnectionContext
+  ): Promise<Contact[]> {
     const supabase = createClient();
 
     let contacts: Contact[] = [];
@@ -227,11 +248,12 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       contacts = contacts.filter((c) => !excludedIds.has(c.id));
     }
 
-    // Broadcasts are WhatsApp templates: contacts with no WhatsApp identity
-    // (e.g. Telegram-only) are not eligible and never become recipients
-    // (US-053). The wizard tells the operator who was left out and why.
+    // Contacts not reachable on `connection` (no identity of that channel for
+    // a template connection, or no conversation with THIS connection for a
+    // non-template one, US-006) are not eligible and never become recipients.
+    // The wizard tells the operator who was left out and why.
     const ineligibleIds = new Set(
-      (await fetchIneligibleContacts(supabase)).map((c) => c.id)
+      (await fetchIneligibleContacts(supabase, connection)).map((c) => c.id)
     );
     if (ineligibleIds.size > 0) {
       contacts = contacts.filter((c) => !ineligibleIds.has(c.id));
@@ -397,34 +419,34 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
       // ── Step 1: Resolve audience contacts ─────────────────────────
       setProgress(5);
-      const contacts = await resolveAudience(payload.audience);
+      const contacts = await resolveAudience(payload.audience, payload.connection);
 
       if (contacts.length === 0) {
         throw new Error('No contacts found for this audience.');
       }
 
       // ── Step 2: Create broadcast row ──────────────────────────────
+      // Content is exactly one of template OR free message (US-013) —
+      // mirrors the `broadcasts_content_exclusive_check` CHECK (migration
+      // 052): whichever shape is absent is persisted as null, never both.
       setProgress(10);
-      // The WhatsApp connection that sends this broadcast (enabled one
-      // first). Best-effort: NULL keeps the server-side account fallback.
-      const { data: sendConnection } = await supabase
-        .from('channel_connections')
-        .select('id')
-        .eq('account_id', accountId)
-        .eq('channel_type', 'whatsapp_cloud')
-        .order('disabled_at', { ascending: true, nullsFirst: true })
-        .limit(1)
-        .maybeSingle();
+      const hasTemplate = !!payload.template;
       const { data: broadcast, error: broadcastError } = await supabase
         .from('broadcasts')
         .insert({
           user_id: user.id,
-          connection_id: sendConnection?.id ?? null,
+          connection_id: payload.connection.connectionId || null,
           account_id: accountId,
           name: payload.name,
-          template_name: payload.template.name,
-          template_language: payload.template.language ?? 'en_US',
+          template_name: hasTemplate ? payload.template!.name : null,
+          template_language: hasTemplate
+            ? (payload.template!.language ?? 'en_US')
+            : null,
           template_variables: payload.variables,
+          message_text: hasTemplate ? null : (payload.messageText ?? null),
+          message_media_url: hasTemplate
+            ? null
+            : (payload.messageMediaUrl ?? null),
           audience_filter: {
             type: payload.audience.type,
             tagIds: payload.audience.tagIds,
@@ -519,28 +541,36 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       // Media-header templates (image/video/document) require a media
       // URL on every send. Collected in the personalize step and applied
       // to all recipients; falls back to the template's stored URL on the
-      // server when omitted.
-      const headerType = payload.template.header_type;
+      // server when omitted. Template path only — a free message's media
+      // (US-011/US-012) is a single broadcast-level `message_media_url`
+      // sent as-is in the request body below, not per-recipient.
+      const headerType = payload.template?.header_type;
       const isMediaHeader =
         headerType === 'image' ||
         headerType === 'video' ||
         headerType === 'document';
       const headerMediaUrl = payload.headerMediaUrl?.trim();
       const messageParams =
-        isMediaHeader && headerMediaUrl ? { headerMediaUrl } : undefined;
+        hasTemplate && isMediaHeader && headerMediaUrl
+          ? { headerMediaUrl }
+          : undefined;
 
       for (let i = 0; i < recipients.length; i += SEND_BATCH_SIZE) {
         const batch = recipients.slice(i, i + SEND_BATCH_SIZE);
 
-        const apiRecipients = batch
-          .filter((r) => r.contact?.phone)
-          .map((r) => ({
-            phone: r.contact!.phone as string,
-            // Read back off the row rather than re-resolved, so this
-            // pass and any later resume send identical params.
-            params: Array.isArray(r.template_params) ? r.template_params : [],
-            ...(messageParams ? { messageParams } : {}),
-          }));
+        // No phone filter here (US-013/US-009): a non-template channel
+        // (e.g. Telegram) resolves its target from contact_identities via
+        // contact_id, not contacts.phone — a phoneless-but-eligible
+        // contact would otherwise be silently dropped before ever
+        // reaching the route.
+        const apiRecipients = batch.map((r) => ({
+          contact_id: r.contact_id!,
+          phone: r.contact?.phone ?? '',
+          // Read back off the row rather than re-resolved, so this
+          // pass and any later resume send identical params.
+          params: Array.isArray(r.template_params) ? r.template_params : [],
+          ...(messageParams ? { messageParams } : {}),
+        }));
 
         if (apiRecipients.length === 0) continue;
 
@@ -554,9 +584,19 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
+                connection_id: payload.connection.connectionId,
                 recipients: apiRecipients,
-                template_name: payload.template.name,
-                template_language: payload.template.language ?? 'en_US',
+                ...(hasTemplate
+                  ? {
+                      template_name: payload.template!.name,
+                      template_language:
+                        payload.template!.language ?? 'en_US',
+                    }
+                  : {
+                      message_text: payload.messageText || undefined,
+                      message_media_url:
+                        payload.messageMediaUrl || undefined,
+                    }),
               }),
             });
 
@@ -573,14 +613,18 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             await sleep(retryIn);
           }
 
-          const resultsByPhone = new Map<string, BroadcastApiResult>();
+          // Keyed by contact_id, not phone (US-013): a non-template
+          // channel's recipients can share an empty/absent phone, which
+          // would collide as a map key and drop all but one result.
+          const resultsByContact = new Map<string, BroadcastApiResult>();
           for (const r of (data.results ?? []) as BroadcastApiResult[]) {
-            resultsByPhone.set(r.phone, r);
+            if (r.contact_id) resultsByContact.set(r.contact_id, r);
           }
 
           for (const recipient of batch) {
-            const phone = recipient.contact?.phone;
-            const result = phone ? resultsByPhone.get(phone) : undefined;
+            const result = recipient.contact_id
+              ? resultsByContact.get(recipient.contact_id)
+              : undefined;
 
             if (!result) {
               failedCount++;
@@ -588,7 +632,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
                 .from('broadcast_recipients')
                 .update({
                   status: 'failed',
-                  error_message: 'No phone number on contact',
+                  error_message: 'No result returned for this recipient',
                 })
                 .eq('id', recipient.id);
               continue;
@@ -600,7 +644,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
                 .update({
                   status: 'sent',
                   sent_at: new Date().toISOString(),
-                  whatsapp_message_id: result.whatsapp_message_id ?? null,
+                  external_message_id: result.external_message_id ?? null,
                   error_message: null,
                 })
                 .eq('id', recipient.id);

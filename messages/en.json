@@ -776,7 +776,8 @@
         "delivered": "Delivered",
         "read": "Read",
         "replied": "Replied",
-        "failed": "Failed"
+        "failed": "Failed",
+        "unavailableHint": "This channel doesn't report this metric"
       },
       "toastFailedDelete": "Failed to delete: {error}",
       "toastDeleted": "Broadcast deleted",
@@ -795,12 +796,14 @@
       "title": "New Broadcast",
       "subtitle": "Create and send a broadcast message to your contacts.",
       "steps": {
+        "connection": "Connection",
         "template": "Template",
         "audience": "Audience",
         "personalize": "Personalize",
         "send": "Send"
       },
       "toastGiveName": "Give the broadcast a name before saving a draft.",
+      "toastNoConnection": "Choose a connection before saving a draft.",
       "toastNotSignedIn": "Not signed in.",
       "toastNotLinked": "Your profile is not linked to an account.",
       "toastFailedDraft": "Failed to save draft: {error}",
@@ -810,12 +813,39 @@
       "next": "Next",
       "back": "Back",
       "cancel": "Cancel",
+      "chooseConnection": {
+        "title": "Choose a connection",
+        "subtitle": "Choose which connection this broadcast will send from.",
+        "label": "Connection",
+        "placeholder": "Select a connection",
+        "emptyTitle": "No connected channel",
+        "emptyBody": "Connect a channel before creating a broadcast.",
+        "emptyCta": "Go to Settings → Channels",
+        "errorLoad": "Failed to load connections"
+      },
       "chooseTemplate": {
         "title": "Choose a Template",
         "subtitle": "Select an approved message template for your broadcast.",
         "noTemplates": "No templates available.",
         "createFirst": "Create a template in Settings first.",
         "errorLoad": "Failed to load templates"
+      },
+      "composeMessage": {
+        "title": "Compose the message",
+        "subtitle": "This connection has no approved templates — write the message to send instead.",
+        "textLabel": "Message",
+        "textPlaceholder": "Type the message…",
+        "insertVariable": "Insert variable",
+        "charCount": "{count}/{max} characters",
+        "textTooLong": "Message exceeds this channel's limit of {max} characters.",
+        "mediaLabel": "Attachment (optional)",
+        "uploadButton": "Upload file",
+        "removeMedia": "Remove",
+        "mediaHint": "Optional. Accepted file types and size are limited by the chosen channel.",
+        "mediaPreviewAlt": "Attachment preview",
+        "unsupportedMedia": "This channel does not accept this kind of media",
+        "mediaTooLarge": "File is {size} MB — this channel's limit is {max} MB.",
+        "uploadFailed": "Upload failed."
       },
       "selectAudience": {
         "title": "Select Audience",
@@ -854,7 +884,8 @@
         "audienceSummary": "Audience Summary",
         "estimatedRecipients": "estimated recipients",
         "ineligibleTitle": "{count, plural, one {# contact is not eligible} other {# contacts are not eligible}}",
-        "ineligibleReason": "No WhatsApp number — this contact cannot receive broadcasts",
+        "ineligibleReasonTemplate": "No identity for this channel — this contact cannot receive broadcasts",
+        "ineligibleReasonConversation": "Hasn't messaged this channel yet — this contact cannot receive broadcasts",
         "ineligibleUnnamed": "Unnamed contact",
         "ineligibleMore": "+{count} more",
         "selectTypeForEstimate": "Select an audience type to see the estimate.",
@@ -863,8 +894,10 @@
       "personalize": {
         "title": "Personalize Variables",
         "subtitle": "Map your template variables to contact fields or provide static values.",
+        "subtitleMessage": "Map your variables to contact fields or provide static values.",
         "headerImage": "Header Image",
         "headerImageDesc": "This template requires a header image.",
+        "attachedMedia": "Attached media",
         "imageUrl": "Image URL",
         "imageUrlPlaceholder": "https://example.com/image.jpg",
         "variables": "Variables",
@@ -901,6 +934,7 @@
         "broadcastNamePlaceholder": "e.g., Summer Promo",
         "summary": "Summary",
         "template": "Template:",
+        "message": "Message:",
         "audience": "Audience:",
         "audienceAll": "All contacts",
         "audienceTags": "Filtered by tags",
@@ -917,7 +951,8 @@
         "estimatedReach": "Estimated Reach",
         "language": "Language",
         "confirmTitle": "Confirm Broadcast",
-        "confirmDesc": "You are about to send this broadcast to <b>{count, number}</b> {count, plural, =1 {contact} other {contacts}} using the <b>{template}</b> template. This action cannot be undone."
+        "confirmDesc": "You are about to send this broadcast to <b>{count, number}</b> {count, plural, =1 {contact} other {contacts}} using the <b>{template}</b> template. This action cannot be undone.",
+        "confirmDescMessage": "You are about to send this broadcast to <b>{count, number}</b> {count, plural, =1 {contact} other {contacts}}. This action cannot be undone."
       }
     }
   },

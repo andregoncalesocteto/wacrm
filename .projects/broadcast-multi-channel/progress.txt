@@ -1,6 +1,12 @@
 # Ralph Progress Log — ralph/broadcast-multi-channel
 Started: 2026-09-22
-PRD: .projects/broadcast-multi-channel/prd.json (14 stories, priority order = id order, no gaps).
+PRD: .projects/broadcast-multi-channel/prd.json (15 stories, priority order = id order, no gaps).
+US-009 ("Endereçamento do destinatário do broadcast resolve por canal") was inserted by the orchestrator after
+US-008, pushing the original US-009..US-014 (wizard/report/verification) to US-010..US-015. Reason: deliverBroadcast
+hardcodes `{kind: WA_PHONE_KIND, address: recipient.phone}` for EVERY channel — a real gap neither US-005 (free
+message content) nor US-006 (eligibility) closed. A Telegram-eligible contact with `phone=''` either gets dropped
+or gets the wrong send target. Fix it before building more UI on top (US-010 onward) that would look correct but
+send to the wrong place for non-template channels.
 Base docs: SOLUTION.md, design.md, adr/ADR-001-resolver-de-conexao-do-broadcast.md,
 adr/ADR-002-modelo-de-dados-do-broadcast-multicanal.md, prd-broadcast-multi-channel.md.
 No test-scenarios.json (acceptanceCriteria are the bar).
@@ -40,10 +46,20 @@ No test-scenarios.json (acceptanceCriteria are the bar).
   story/PRD drops it — never remove it in this PRD.
 - Apply to the dev DB: `$FULL run --rm -T migrate`. FULL="docker compose -f docker-compose.yml -f
   docker-compose.supabase.yml --env-file .env.local". Replay isolated (never touches dev data):
+    export WACRM_NETWORK_NAME=wacrm-replay-net
     R="docker compose -p wacrm-replay -f docker-compose.yml -f docker-compose.supabase.yml --env-file .env.local"
     $R up -d --wait db auth storage && $R run --rm -T migrate && \
     $R exec -T db psql -U postgres -v ON_ERROR_STOP=1 < supabase/ci/verify-schema.sql ; $R down -v
+    unset WACRM_NETWORK_NAME
   ALWAYS `-p wacrm-replay` for replay; `down -v` ONLY on that project, NEVER on the default (dev) one.
+  **`WACRM_NETWORK_NAME=wacrm-replay-net` is REQUIRED whenever the dev stack is also up** (docker-compose.yml /
+  docker-compose.supabase.yml's `wacrm-net` network is now parametrized — `${WACRM_NETWORK_NAME:-wacrm-net}` —
+  specifically so replay gets its own isolated network instead of literally sharing `wacrm-net` with the dev
+  stack). This SUPERSEDES the old PGHOST/DATABASE_URL override workaround documented below (US-001/US-004 hit
+  the underlying Docker-DNS-alias-collision bug and worked around it per-service; the fix here is the actual root
+  cause and makes those overrides unnecessary — verified end-to-end after fixing: 54/54 migrations + verify-schema
+  green with zero PGHOST/DATABASE_URL overrides). The old collision-symptom notes further down stay for context
+  only, not as a recipe to reuse.
 - i18n rules (CLAUDE.md): text via useTranslations (no literals), keys in ALL FOUR catalogues
   (messages/{en,pt,es,ko}.json; `npx vitest run src/i18n` for parity), never toLocale*String / new Intl.*Format.
   Prefer exact string replace (python str.replace on the raw file text) over json.dump/reload for existing files —
@@ -67,3 +83,1076 @@ No test-scenarios.json (acceptanceCriteria are the bar).
   scratchpad, never in the repo. `waitUntil: "networkidle"` can hang forever on a page with an open websocket
   (Realtime) — use `waitUntil: "load"` + a fixed `waitForTimeout` instead.
 - Never commit AGENTS.md (Next dev/build can touch it) or `.vscode/`. Never `git add -f` an ignored file.
+- **Replay DB network collision when the dev stack is already up**: `docker-compose.yml` declares `wacrm-net` as a
+  fixed-name network (`networks.wacrm-net.name: wacrm-net`), shared literally (not project-scoped) between the
+  default `wacrm` project and any `-p wacrm-replay` run — both `db` containers register the SAME network alias
+  `db`, so anything resolving hostname `db` while both stacks are up gets Docker's DNS round-robin between the
+  two Postgres instances (symptom: `migrate` mid-run suddenly sees "relation does not exist" or a duplicate-key
+  error on an already-applied migration name — it silently bounced between the two DBs). The `migrate.sh` script
+  and the `migrate` compose service always use `PGHOST: db` from the compose file's `environment:`, so you can't
+  avoid this by just being careful. Fix: override PGHOST to the replay container's own unique alias when running
+  migrate: `$R run --rm -T -e PGHOST=wacrm-replay-db-1 migrate` (the container's own alias is always
+  `<project>-<service>-1`, confirm with `docker inspect wacrm-replay-db-1 --format '{{json
+  .NetworkSettings.Networks}}'`). `$R exec -T db ...` for `auth`/`rest`/`storage`/`verify-schema` is fine as-is
+  (those are project-scoped `docker compose exec`, which targets the container by compose project, not DNS). Every
+  migration file's DDL is idempotent (`IF NOT EXISTS`/`DROP ... IF EXISTS`) and `migrate.sh` runs one transaction
+  per file, so a collision aborts cleanly with no partial state on either DB — but still confirm the dev DB wasn't
+  left inconsistent (`SELECT count(*), count(distinct name) FROM public.wacrm_migrations` should match, no
+  duplicates) before trusting it after a collision. Future migration stories (US-002) should use this
+  `-e PGHOST=wacrm-replay-db-1` override every time the main stack might be up.
+- **Auditing "already covered" before writing a characterization test is worth doing literally, not just
+  skimming the summary bullet above.** For US-003, the capability-reject branch of `deliverBroadcast`
+  (`!provider.capabilities.templates` -> `ChannelError('unsupported', ...)`) turned out to be already fully
+  pinned by `broadcast-core.provider.test.ts` (pre-existing, from channel-abstraction's US-030) — same error
+  code, `send` never called, only the broadcast row stamped `failed`. Re-reading that file's actual assertions
+  (not just trusting the "what it covers" list above, which happened not to mention that branch) avoided a
+  duplicate test. Only `createBroadcast`'s connection resolution needed new coverage.
+
+## 2026-09-22 - US-001
+- Implemented: new migration `052_broadcast_content_columns.sql` — drops NOT NULL from
+  `broadcasts.template_name`/`template_language`, adds nullable `broadcasts.message_text` and
+  `broadcasts.message_media_url`, adds CHECK `broadcasts_content_exclusive_check` enforcing
+  `(template_name IS NOT NULL) <> (message_text IS NOT NULL OR message_media_url IS NOT NULL)` (ADR-002, option A).
+  Extended `supabase/ci/verify-schema.sql` with checks for the two nullable columns, the two new columns, and the
+  CHECK constraint's presence.
+- Files changed: `supabase/migrations/052_broadcast_content_columns.sql` (new), `supabase/ci/verify-schema.sql`,
+  `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Applied to dev DB (`$FULL run --rm -T migrate` — 1 migration applied) and to the isolated replay
+  (`-p wacrm-replay`, full 52-migration replay + `verify-schema.sql` — both passed); replay torn down with
+  `down -v` on the replay project only, dev DB verified unchanged/intact afterwards.
+- No app code touched (US-001 is migration-only per the PRD; `create_broadcast_with_recipients` and the TS
+  `Broadcast` type still assume template-only — that's US-004/US-005's job, not a regression from this story).
+- Checks: `npm run typecheck` clean, `npm run lint` 0 errors/41 warnings (matches baseline exactly), `TZ=UTC npm
+  test` 160 files / 1935 tests passed (matches baseline exactly). No build/browser check needed (story doesn't
+  touch routing/config or UI).
+- **Learnings for future iterations:**
+  - See the new "Replay DB network collision" entry at the top of Codebase Patterns — hit it live on this story
+    (migrate bounced between the dev and replay Postgres instances via the shared `db` DNS alias) and worked
+    around it with `-e PGHOST=wacrm-replay-db-1`. US-002 also touches migrations — reuse that recipe.
+  - The dev stack was NOT already up at the start of this iteration (despite the earlier Codebase Patterns note
+    assuming it is) — had to `up -d --wait db auth storage` first. Its `wacrm_db-data` volume did already have
+    migrations 001-051 applied (persisted from a prior session), so only 052 was new there.
+---
+
+## 2026-09-22 - US-002
+- Implemented: new migration `053_broadcast_recipient_external_message_id.sql` — adds
+  `broadcast_recipients.external_message_id text`, backfills it from `whatsapp_message_id`, and replicates the
+  unique conditional index (`idx_broadcast_recipients_external_message_id`, expand-only — `whatsapp_message_id` and
+  its old index stay). Extended `supabase/ci/verify-schema.sql` with checks for the new column and index.
+  Renamed the write/read side to the new column in the 5 files the PRD named: `broadcast-core.ts` (write on send +
+  doc comment), the broadcast route (`app/api/whatsapp/broadcast/route.ts`, JSON response field), the client hook
+  (`use-broadcast-sending.ts`, request-field read + DB write), and the client type (`types/index.ts`,
+  `BroadcastRecipient.external_message_id`). `broadcast-resume.ts` itself doesn't touch the column (no change
+  needed there, confirmed by reading it).
+- Scope note beyond the PRD's file list (needed to avoid a real regression, not a spec deviation): the inbound
+  webhook's status-update matcher — `src/lib/channels/ingest.ts`'s `ingestStatus`, which is what
+  `app/api/whatsapp/webhook/route.ts` actually delegates to for ALL channels including WhatsApp — queried
+  `broadcast_recipients` by `.eq('whatsapp_message_id', event.externalId)`. Since `broadcast-core.ts` now writes
+  only `external_message_id` on send, leaving that query unchanged would have silently broken delivered/read
+  status mirroring for every broadcast sent after this story (a real RNF-01 regression, not a hypothetical one).
+  Updated that one `.eq(...)` (plus its doc comment) to match on `external_message_id`. Did NOT touch the
+  `whatsapp_message_id`/`external_message_id` dual-key fields inside outbound webhook PAYLOADS in `ingest.ts`
+  (line ~612) and `fanout.ts` (line ~144) — those are the public API's `message.status_updated`/`message.received`
+  JSON contract (backward-compat dual-key from channel-abstraction), unrelated to the `broadcast_recipients` DB
+  column; left exactly as-is.
+- Files changed: `supabase/migrations/053_broadcast_recipient_external_message_id.sql` (new),
+  `supabase/ci/verify-schema.sql`, `src/lib/whatsapp/broadcast-core.ts`, `src/lib/channels/ingest.ts`,
+  `src/app/api/whatsapp/broadcast/route.ts`, `src/hooks/use-broadcast-sending.ts`, `src/types/index.ts`,
+  `src/lib/whatsapp/broadcast-deliver.characterization.test.ts`, `src/app/api/whatsapp/broadcast/route.test.ts`,
+  `src/lib/channels/ingest.events.test.ts`, `src/app/api/whatsapp/webhook/route.characterization.test.ts`,
+  `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Test renames were surgical, not blanket string-replace across the repo: `whatsapp_message_id` also appears as an
+  unrelated local variable/return-shape name in `flows/`, `automations/`, `api/v1/messages`, `api/whatsapp/send` —
+  none of those touch `broadcast_recipients` and were left untouched. Within `ingest.events.test.ts` and
+  `webhook/route.characterization.test.ts`, only the `broadcast_recipients` mock-row fixture fields were renamed;
+  the webhook-payload dual-key assertions in the same files were left alone.
+- Applied to dev DB (`$FULL run --rm -T migrate` — 1 migration applied) and to the isolated replay (full 53-migration
+  replay + `verify-schema.sql`, both passed); replay torn down with `-p wacrm-replay down -v` only, dev DB verified
+  unchanged afterwards (`wacrm_migrations` count 53/53 distinct, `\d broadcast_recipients` shows both columns + both
+  indexes coexisting as expected for an expand-only rename).
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `TZ=UTC npm test` 160 files / 1935 tests passed (matches baseline exactly). No build/browser check
+  needed (story is migration + non-UI code only).
+- **Learnings for future iterations:**
+  - The `-e PGHOST=wacrm-replay-db-1` override for the replay `migrate` service (documented in Codebase Patterns
+    above) worked cleanly again this iteration with the dev stack up the whole time — no DNS collision, no partial
+    state. Keep using it for any future migration story while the dev stack might be up.
+  - When a PRD lists a narrow set of files to change for a DB column rename, still grep the WHOLE column name
+    across `src/` before trusting the list — a consumer of that column that isn't a "writer" (here, the webhook's
+    status-update reader in `ingest.ts`) can be just as load-bearing and isn't always obvious from the story
+    description. `git grep -n whatsapp_message_id` and reading each hit's surrounding code (DB column vs. unrelated
+    variable/JSON-field of the same name) was necessary to get the true scope right without either under- or
+    over-reaching.
+---
+
+## 2026-09-22 - US-003
+- Implemented: audited the six existing characterization test files named in the story's AC first. Found
+  `broadcast-core.provider.test.ts` (pre-existing, from channel-abstraction's US-030) already fully pins the
+  `deliverBroadcast` capability-reject branch (`!provider.capabilities.templates` ->
+  `ChannelError('unsupported', ...)`, `send` never called, only the broadcast row stamped `failed`) — did not
+  duplicate it. Added new coverage only for the other half of the AC, `createBroadcast`'s connection
+  resolution (nothing pinned this before): a new file, `broadcast-core.connection-resolution.test.ts`, with 3
+  tests — (1) `createBroadcast` calls `loadWhatsAppSendConnection(db, accountId)` with exactly those two
+  args, no `connectionId`/opts (pins "no parameter" ahead of US-004 adding one), (2) throws
+  `BroadcastError('whatsapp_not_configured', ..., 400)` when that resolver returns null, (3) uses whichever
+  connection comes back as-is (phoneNumberId/accessToken/persisted `p_connection_id`) — createBroadcast has
+  no independent connection-selection logic of its own.
+- Files changed: `src/lib/whatsapp/broadcast-core.connection-resolution.test.ts` (new),
+  `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches
+  baseline exactly), `TZ=UTC npm test` 161 files / 1938 tests passed (baseline 160/1935 + 1 new file/3 new
+  tests, nothing else changed). No build/browser check needed (story is test-only, no routing/UI/config
+  touched).
+- **Learnings for future iterations:**
+  - See the new "Auditing 'already covered'..." entry at the top of Codebase Patterns.
+  - US-004 (createBroadcast accepts an explicit `connection_id`) can lean on this story's
+    `toHaveBeenCalledWith(db, 'acc')` assertion as the signal that the "no parameter" behavior is being
+    intentionally changed — that one assert (not the whole file) is expected to need updating when
+    `connection_id` starts threading through; the `whatsapp_not_configured` and "uses whichever connection
+    comes back" tests should still hold conceptually (just resolved differently) even if their exact mocking
+    of `loadWhatsAppSendConnection` gets replaced by whatever generic resolver US-004 introduces.
+  - US-005's own AC already acknowledges the capability-reject branch is about to become a send branch, so
+    `broadcast-core.provider.test.ts`'s "fails typed unsupported" test is NOT expected to survive US-005
+    unchanged — it tests exactly the behavior being replaced, not a permanent characterization guard. Don't
+    be surprised when US-005 needs to touch it.
+---
+
+## 2026-09-22 - US-004
+- Implemented: `createBroadcast` (src/lib/whatsapp/broadcast-core.ts) no longer calls
+  `loadWhatsAppSendConnection`. It now takes a required `connectionId` and resolves it generically via
+  `getConnectionById(connectionId, db)` + `conn.account_id === accountId` (same pattern as
+  `POST /api/v1/messages`'s `pickConnection`) — no `channel_type` filter, so any connection type works. Errors:
+  missing/wrong-account connection -> `BroadcastError('not_found', ..., 404)`; disabled -> unchanged
+  `CONNECTION_DISABLED_CODE`/409 (US-078), now for any channel. `whatsapp_not_configured` is gone from
+  createBroadcast (it was WhatsApp-specific "no connection found" phrasing; 404 replaces it for a bad id).
+  `CreateBroadcastParams.templateName` is now optional; added `messageText`/`messageMediaUrl`/`templateVariables`.
+  A new content-exclusivity check (`hasTemplate === hasMessage` -> `BroadcastError('content_required', ..., 400)`)
+  mirrors the migration-052 CHECK exactly (its XOR shape) and rejects both "neither" and "both" up front, before
+  the RPC. `resolveTemplateRow` is only called on the template path (skipped entirely for a free-message create).
+  `create_broadcast_with_recipients` gained three new DEFAULT NULL params (new migration
+  `054_broadcast_free_message_rpc.sql`, same drop-old-overload/recreate pattern as 046) —
+  `p_message_text`/`p_message_media_url`/`p_template_variables` — so a free-message broadcast can be persisted
+  atomically (the CHECK from 052 requires either shape to be present in the SAME insert). `verify-schema.sql`'s
+  two `create_broadcast_with_recipients(...)::regprocedure` casts were updated to the new 12-arg signature, plus
+  a new assertion that the RPC stores `message_media_url`.
+- Scope decision, worth flagging explicitly: the AC asks createBroadcast to persist template OR free-message
+  content, so the function fully supports both shapes (tested directly). BUT `POST /api/v1/broadcasts`
+  (route.ts) still only extracts `template_name` from the request body — it does NOT expose
+  `message_text`/`message_media_url` in this story. Reason: `deliverBroadcast` (US-005's job, untouched here)
+  still unconditionally builds a `{type:'template', template:{name: plan.templateName, ...}}` payload; wiring
+  free-message content through the only live route today would let a caller create a broadcast that
+  `deliverBroadcast` can't send correctly once `provider.capabilities.templates` is true (a benign "unsupported"
+  failure for a non-template channel, but a REAL broken-template-send risk for a WhatsApp connection, since
+  `plan.templateName` would be `''`). Keeping the route template-only until US-005 lands avoids that risk
+  entirely while still satisfying the AC's literal requirement at the function level. Whoever picks up US-005
+  (or a later story that wires the dashboard route through this core) should revisit whether the route should
+  gain `message_text`/`message_media_url` at that point.
+- Design-doc inaccuracy found and worked around, not fixed in design.md: `design.md`'s risk table says "aplicar
+  aviso [de rename] se broadcast algum dia for exposto na API pública (hoje não é)" — but `/api/v1/broadcasts`
+  ALREADY is a public, documented (`docs/public-api.md`), MCP-exposed (`mcp-server/src/tools/broadcast.ts`'s
+  `send_broadcast`, scope `broadcasts:send`) endpoint, and it's the ONLY caller of `createBroadcast`. Making
+  `connection_id` strictly required with no fallback would have silently broken that MCP tool (it doesn't send
+  `connection_id` today) for the very common single-connection deployment. Resolution: `createBroadcast` itself
+  keeps `connectionId: string` as a genuinely required param (matches the AC's "obrigatório" literally) — the
+  ROUTE (`src/app/api/v1/broadcasts/route.ts`) gained a small `resolveConnectionId` helper, copying
+  `POST /api/v1/messages`' `pickConnection` convention: explicit `connection_id` passed straight through; omitted,
+  falls back to the account's one active connection, or `connection_required`(400, ambiguous)/
+  `whatsapp_not_configured`(400, none) otherwise. This keeps the MCP tool and any other existing caller working
+  unchanged. `docs/public-api.md`'s broadcasts section documents `connection_id` as optional-with-fallback and
+  lists the new domain error codes. `mcp-server/` was NOT touched (no change needed — the fallback covers it).
+- Files changed: `src/lib/whatsapp/broadcast-core.ts`, `src/app/api/v1/broadcasts/route.ts`,
+  `supabase/migrations/054_broadcast_free_message_rpc.sql` (new), `supabase/ci/verify-schema.sql`,
+  `docs/public-api.md`, `src/lib/whatsapp/broadcast-core.test.ts`,
+  `src/lib/whatsapp/broadcast-core.disabled.test.ts`,
+  `src/lib/whatsapp/broadcast-core.connection-resolution.test.ts` (rewritten for the new behavior — this is the
+  US-003 file the previous iteration flagged; its `toHaveBeenCalledWith(db, 'acc')`-style assert on
+  `loadWhatsAppSendConnection` and its `whatsapp_not_configured` assert are both gone, replaced with
+  `getConnectionById`/404-`not_found` assertions matching this story's own AC), `.projects/broadcast-multi-channel/prd.json`,
+  `.projects/broadcast-multi-channel/progress.txt`. `broadcast-core.credentials.test.ts`,
+  `broadcast-core.provider.test.ts`, `broadcast-deliver.characterization.test.ts` and `broadcast-resume.test.ts`
+  were audited and left untouched — none of them call `createBroadcast` (they exercise `deliverBroadcast`
+  directly with a hand-built plan, or `broadcast-resume.ts`, both unchanged by this story).
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `TZ=UTC npm test` 161 files / 1941 tests passed (baseline 161/1938 + 3 new tests: 2 content-validation
+  cases + 1 free-message-persists-content case in `broadcast-core.test.ts`; `connection-resolution.test.ts` went
+  from 3 to 4 tests, net +1 there too — 1938+2+1=1941 checks out). `npm run build` run (this story touched an
+  API route file) — succeeded, `/api/v1/broadcasts` compiles. No browser check needed (no UI touched, not an AC
+  criterion for this story).
+- Migration `054` applied to the dev DB (`$FULL run --rm -T migrate` — 1 migration applied) and to the isolated
+  replay (`-p wacrm-replay`, full 54-migration replay + `verify-schema.sql`, both passed); replay torn down with
+  `down -v` on the replay project only; dev DB verified unchanged afterwards (`wacrm_migrations` 54/54 distinct,
+  no duplicates).
+- **Learnings for future iterations:**
+  - **The documented "Replay DB network collision" fix (PGHOST override on the `migrate` service alone) is
+    INCOMPLETE** when the dev stack is up at the same time as the replay one. `storage`/`auth`/`rest` in
+    `docker-compose.supabase.yml` also hardcode `db:5432` inside their own env vars (`DATABASE_URL`,
+    `GOTRUE_DB_DATABASE_URL`, `PGRST_DB_URI`) — NOT just the `migrate` service — and Docker's embedded DNS for
+    the shared `wacrm-net` alias `db` resolved these THREE containers to the DEV db (`wacrm-db-1`), not the
+    replay one, in this session (observed via `docker compose -p wacrm-replay exec storage getent hosts db` ->
+    the dev db's IP). Consequence: `storage`-replay's own internal schema migrations silently ran against DEV
+    instead of replay (harmless there since dev already has that schema — an idempotent no-op — but it meant
+    replay's OWN db never got `storage.buckets` etc., so `migrate` failed at `008_profile_avatars_storage.sql`
+    with "relation storage.buckets does not exist", and `verify-schema.sql`'s storage check would have failed
+    too). Fix used this session (not committed, repo-external): a throwaway docker-compose override file (in the
+    scratchpad, `-f <override>`) pinning `DATABASE_URL`/`GOTRUE_DB_DATABASE_URL`/`PGRST_DB_URI` to
+    `wacrm-replay-db-1` for `storage`/`auth`/`rest`, then `up -d --force-recreate --wait db auth storage rest`
+    before running `migrate`. No repo file was changed for this (transient, per-session workaround) — a FUTURE
+    story that touches `docker-compose.supabase.yml` might consider giving `db` a project-scoped alias instead of
+    the fixed network-wide one, which is the actual root cause. No evidence of any write reaching the dev auth/
+    storage schemas beyond a no-op schema-migration check (no signups/uploads were sent to the replay stack), so
+    dev data integrity was verified intact afterwards, but this is worth knowing before trusting a replay
+    `up -d --wait db auth storage` at face value while the dev stack is up.
+  - `getConnectionById(id, db)` + `conn.account_id === accountId` (mirroring `POST /api/v1/messages`'
+    `pickConnection`) is the established "generic connection lookup, no channel_type filter" idiom in this
+    codebase now — reuse it verbatim for US-006/US-008 rather than reinventing.
+  - The `broadcasts_content_exclusive_check` CHECK from migration 052 is a strict XOR
+    (`(template_name IS NOT NULL) <> (message_text IS NOT NULL OR message_media_url IS NOT NULL)`) — mirroring it
+    in application code as `hasTemplate === hasMessage -> reject` (rather than two separate "missing"/"both"
+    checks) is the shortest correct implementation and is easy to eyeball against the SQL.
+---
+
+## 2026-09-22 - US-005
+- Implemented: `deliverBroadcast` (src/lib/whatsapp/broadcast-core.ts) no longer rejects a broadcast up front when
+  `!provider.capabilities.templates`. It now decides per delivery pass with `isTemplatePath =
+  provider.capabilities.initiate === 'template'` (matches the AC's literal wording, not the content-presence check
+  `design.md`'s pseudocode used — see note below) and builds the `OutboundMessage` inside the per-recipient loop
+  (was built once outside; now has to be, since free-message variables are per-recipient):
+    - `isTemplatePath` -> the exact same `{type:'template', ...}` payload as before, byte-for-byte (same fields,
+      same `plan.templateRow`/`recipient.params`).
+    - otherwise, `plan.messageMediaUrl` set -> `{type:'media', kind: inferMediaKind(url), url, caption}`;
+      else -> `{type:'text', text}`. Both render `plan.messageText`'s `{{1}}` tokens through the EXISTING
+      `renderTemplateBody` (src/lib/whatsapp/template-body.ts, already used for template body persistence) with
+      `recipient.params` — reused instead of introducing a new substitution function. That is what the AC's
+      "reaproveita `resolveVariables`" pointed at conceptually; the actual `resolveVariables` (src/hooks/use-
+      broadcast-sending.ts) is a CLIENT hook that maps a `VariableMapping` to a contact field at compose time,
+      wrong layer/wrong signature for a server-side per-recipient render from already-frozen `params` — verified
+      by reading it before deciding not to import it.
+    - New local helper `inferMediaKind(url): MediaKind` (extension-based image/video/audio, default 'document') —
+      `message_media_url` has no separate kind column (migration 052), and no existing "infer from URL" helper
+      was found anywhere in the codebase (checked flows/send.ts, automations, media/filename.ts — all take an
+      explicit `kind`, none infer it).
+  `BroadcastPlan` gained `messageText?: string | null` / `messageMediaUrl?: string | null` (optional, so
+  `broadcast-resume.ts`'s own plan-builder — untouched, still WhatsApp/template-only, US-008's job — didn't need
+  editing). `createBroadcast` now populates them from its existing `hasMessage`/`messageText`/`messageMediaUrl`
+  locals (previously computed but only used for the RPC args). `send`/target construction, credentials read-once,
+  the try/catch error mapping, and the sent/failed row-stamping are all UNCHANGED — exactly what the AC asked for
+  ("mesma chamada de hoje, só o message monta diferente").
+- Design-doc vs. AC divergence, resolved in favor of the AC (JSON is authoritative per the scratchpad rule):
+  `design.md`'s pseudocode branches on `broadcast.template_name` (content presence): `broadcast.template_name ?
+  {type:'template'} : ...`. The AC instead says branch on `capabilities.initiate`. Implemented the AC's version.
+  They can only diverge on a content/channel MISMATCH (e.g. a template-content broadcast pointed at a
+  `after_inbound` connection, or vice versa) — nothing in the codebase validates that alignment yet; US-004's own
+  notes already flagged this and deferred the fix to US-012's route-level `connection_channel_mismatch` check.
+  This story does not make that gap worse (pre-US-005, deliverBroadcast ALWAYS took the template branch
+  regardless of content, so an unguarded mismatch was already possible) — just worth knowing before US-012 lands.
+- Files changed: `src/lib/whatsapp/broadcast-core.ts`, `src/lib/whatsapp/broadcast-core.provider.test.ts`
+  (rewritten — see below), `.projects/broadcast-multi-channel/prd.json`,
+  `.projects/broadcast-multi-channel/progress.txt`.
+- Test-file note (per the mid-task instruction from this iteration's caller, matching progress's own earlier
+  note): `broadcast-core.provider.test.ts` previously had ONE test, "fails typed unsupported before sending
+  anything" — it characterized the exact capability-reject branch this story replaces with a send branch, so it
+  could not survive unchanged. Replaced its content (not its file name) with 3 new tests against the REAL
+  telegram provider (`registerBuiltinProviders` unmocked; only `callBotApi` from
+  `@/lib/channels/providers/telegram/api` and `getConnectionCredentials` are stubbed — no `getProvider` mock, so
+  this also exercises the actual `capabilities.initiate` value read off the registry, not a hand-set flag):
+  (1) sends free text with `{{1}}` resolved per recipient and grabs `external_message_id` (`chat:message_id`,
+  the AC's literal "novo teste"), (2) media + rendered caption (`inferMediaKind` + caption-render coverage),
+  (3) one recipient fails without aborting the other (non-template path), asserting both the typed error message
+  and the surviving success. All existing WhatsApp characterization files (`broadcast-core.test.ts`,
+  `.credentials.test.ts`, `.disabled.test.ts`, `.connection-resolution.test.ts`,
+  `broadcast-deliver.characterization.test.ts`, `broadcast-resume.test.ts`) were left untouched and pass with
+  their asserts unmodified — confirmed by running them explicitly before the full suite.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `TZ=UTC npm test` 161 files / 1943 tests passed (baseline 161/1941 + net 2: provider.test.ts went
+  from 1 test to 3). No `npm run build` (story doesn't touch routing/config). No browser check (not an AC
+  criterion for this story — createBroadcast's route still only exposes `template_name`, per US-004's own note,
+  so there is no dashboard/API path yet that actually reaches the new free-message branch end-to-end; that wiring
+  is US-009 through US-012's job).
+- **Learnings for future iterations:**
+  - `renderTemplateBody` (src/lib/whatsapp/template-body.ts) is the codebase's one `{{n}}` positional-param
+    substitution function — reuse it for ANY future per-recipient text templating (not just broadcasts); it
+    leaves an unresolved placeholder as-is (`{{2}}`) rather than blanking it, which is what "variables already
+    resolved per recipient" needs to stay honest about under-supplied params.
+  - `inferMediaKind` is intentionally local/unexported to `broadcast-core.ts` (not a shared lib) — it's a thin
+    extension sniff for a schema that has no kind column, not a general-purpose MIME classifier. If a future story
+    needs the same inference elsewhere (e.g. US-010's compose UI), consider promoting it then rather than now.
+  - The `provider.capabilities.initiate === 'template'` vs. `broadcast.template_name` content-check divergence
+    (see above) is still open — US-012 (`connection_channel_mismatch` 400) is where it gets closed. Until then,
+    `deliverBroadcast` trusts that content and channel already agree.
+---
+
+## 2026-09-22 - US-006
+- Implemented: `src/lib/contacts/broadcast-eligibility.ts` is now connection-aware instead of assuming WhatsApp.
+  New exported type `BroadcastConnectionContext = { connectionId, channelType, initiate }`. `isBroadcastEligible`/
+  `partitionBroadcastAudience`/`fetchIneligibleContacts` all take it as a required second parameter:
+    - `initiate === 'template'`: identity-based, generalized by `channelType` (`whatsapp_cloud` keeps calling
+      `isWhatsAppReachable` byte-for-byte — same phone-column fallback as before; any other channel type checks
+      `identityChannelType(kind) === channelType` over the contact's identities). Existing WhatsApp tests updated
+      only in SETUP (pass a `waConnection` context) — asserts/results unchanged, matching the US-003/US-004
+      precedent.
+    - `initiate !== 'template'`: eligible = `row.hasConversationWithConnection` (a new optional field on
+      `EligibilityRow`), computed by `fetchIneligibleContacts` via a `conversations` query filtered by
+      `.eq('connection_id', connection.connectionId)` — so `isBroadcastEligible`/`partitionBroadcastAudience` stay
+      pure/sync (no DB access inside the predicate); only the fetcher is async and does the query. For this branch
+      `fetchIneligibleContacts` can't use the old "only phoneless contacts" shortcut (phone is irrelevant to a
+      non-template channel) — it fetches all contacts, then a `conversations` lookup paginated by 500 ids
+      (`fetchConversationContactIds`, same `.in()`-cap pattern as `fetchCustomValueIndex` in use-broadcast-sending.ts).
+  Threaded the new required `connection` parameter through every caller (typecheck forces this, not scope creep):
+  `step2-select-audience.tsx` (new `connection: BroadcastConnectionContext | null` prop; `null` while resolving
+  keeps showing "calculating" instead of a stale/wrong estimate), `step4-schedule-send.tsx` (same pattern),
+  `use-broadcast-sending.ts` (`BroadcastPayload.connection` required; `resolveAudience` takes it and passes it to
+  `fetchIneligibleContacts`; ALSO replaced the hook's own inline `channel_connections` query for `connection_id`
+  with `payload.connection.connectionId` — one less redundant query, and eligibility + the persisted `connection_id`
+  can no longer disagree). `new/page.tsx` resolves `connection` once (a `useEffect` keyed on `accountId`, same
+  query `use-broadcast-sending.ts` used to run inline: the account's WhatsApp connection, `disabled_at` ascending
+  nulls-first) and passes it down to both steps and into `createAndSendBroadcast`'s payload.
+- Scope note on step0/US-009 (spec tension, resolved not deferred): the AC says step2 "consults/filters by the
+  connection chosen at step 0 (US-009)", but step 0 doesn't exist yet — `/broadcasts/new` today only has the
+  WhatsApp-template flow (`Step1ChooseTemplate` is still `currentStep === 0`). Read this as "make step2
+  connection-aware now; the REAL picker is explicitly US-009's job" (the AC names US-009 itself as where selection
+  happens) rather than a spec bug to stop on. Filled the gap with the SAME auto-resolution
+  `use-broadcast-sending.ts` already did today (single account WhatsApp connection, `channelType: 'whatsapp_cloud'`,
+  `initiate: 'template'` hardcoded since that's the only path this page supports pre-US-009) — zero behavior change
+  for the existing WhatsApp flow, and the prop/plumbing is now exactly where US-009 needs to swap in a real
+  dropdown + selection state instead of the auto-resolve effect in `new/page.tsx`.
+- Files changed: `src/lib/contacts/broadcast-eligibility.ts`, `src/lib/contacts/broadcast-eligibility.test.ts`
+  (rewritten: existing tests' setup updated to pass a connection context, same asserts; new describe blocks for the
+  non-template branch — pure `hasConversationWithConnection` cases, and a `fetchIneligibleContacts` + fake-db test
+  with TWO Telegram connections, the AC's literal "contact only talked to Bot A is not eligible for Bot B" case,
+  which also exercises the real `.eq('connection_id', …)` filter since the fake filters on whatever value was
+  actually passed, not canned per-table data), `src/components/broadcasts/step2-select-audience.tsx`,
+  `src/components/broadcasts/step4-schedule-send.tsx`, `src/hooks/use-broadcast-sending.ts`,
+  `src/app/(dashboard)/broadcasts/new/page.tsx`, `.projects/broadcast-multi-channel/prd.json`,
+  `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `TZ=UTC npm test` 161 files / 1947 tests passed (baseline 161/1943 + 4 new tests in
+  `broadcast-eligibility.test.ts`: 2 new non-template `isBroadcastEligible` cases + 2 new `fetchIneligibleContacts`
+  two-bots cases). No `npm run build` (no new route/config — `new/page.tsx` already existed). No browser check (not
+  an AC criterion for this story; also nothing to browser-verify yet since step0's real picker doesn't exist).
+- **Learnings for future iterations:**
+  - `BroadcastConnectionContext { connectionId, channelType, initiate }` (src/lib/contacts/broadcast-eligibility.ts)
+    is now the shape components/hooks use to describe "which connection a broadcast targets" — US-009 should reuse
+    this exact type for the real step-0 dropdown's selection state rather than inventing a parallel one.
+  - Keeping `isBroadcastEligible`/`partitionBroadcastAudience` synchronous (by pushing the async `conversations`
+    lookup into `fetchIneligibleContacts` alone, via a `hasConversationWithConnection` field on the row) kept the
+    core predicate trivially unit-testable without a supabase fake — only `fetchIneligibleContacts` itself needs
+    one. Worth reusing this split (sync predicate + row pre-hydrated by the async fetcher) for any future
+    per-connection eligibility rule.
+  - `use-broadcast-sending.ts` had its OWN independent WhatsApp-connection resolution (inline query in
+    `createAndSendBroadcast`, separate from anything step2/step4 did) — this story collapsed that into the single
+    `connection` resolved once in `new/page.tsx` and threaded through `BroadcastPayload`. US-009/US-012 should keep
+    this "resolve once at the wizard level, pass down" shape rather than reintroducing a second independent lookup.
+  - US-009 will also need to change the HARDCODED `channelType: 'whatsapp_cloud'` / `initiate: 'template'` in
+    `new/page.tsx`'s auto-resolve effect once a real picker exists — that effect is intentionally the single place
+    this lives, so it's a one-spot change, not a hunt.
+---
+
+## 2026-09-22 - US-007
+- Implemented: `step2-select-audience.tsx`'s single fixed `selectAudience.ineligibleReason` i18n key is now two keys,
+  picked at render time by `connection?.initiate === 'template'` (the same `BroadcastConnectionContext` field
+  US-006 introduced) — `ineligibleReasonTemplate` ("no identity for this channel") for template-capable channels,
+  `ineligibleReasonConversation` ("hasn't messaged this channel yet") otherwise. `connection === null` (still
+  resolving) falls back to the template copy, matching the old single-message behavior most closely; the ineligible
+  block itself is already gated behind `!loadingCount && ineligible.length > 0` so this only matters for an instant.
+  No new component/type needed — pure copy + a ternary reading a field that already existed.
+- Files changed: `src/components/broadcasts/step2-select-audience.tsx`, `messages/en.json`, `messages/pt.json`,
+  `messages/es.json`, `messages/ko.json` (`ineligibleReason` → `ineligibleReasonTemplate` +
+  `ineligibleReasonConversation` in all four), `.projects/broadcast-multi-channel/prd.json`,
+  `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `npx vitest run src/i18n` (key-parity + ICU-safety) 3 files/19 tests passed, `TZ=UTC npm test` 161
+  files / 1947 tests passed (matches baseline exactly — no new test file; this story is copy/i18n only, nothing to
+  characterize). No `npm run build` (no routing/config touched, not an AC criterion for this story).
+- Browser check (dev-browser, containerized app rebuilt first with `up -d --build app --no-deps`... actually ran a
+  full `up -d --build` this session since kong/app/realtime/meta/studio weren't up yet, not just `app --no-deps`):
+  seeded a throwaway QA account (`/auth/v1/signup`, auto-confirmed) that got its own account+profile on first
+  dashboard visit, then seeded (one psql statement per call) a `stores` row, a `channel_connections` row
+  (`channel_type='whatsapp_cloud'`, `status='connected'`), an `APPROVED` `message_templates` row, and two
+  `contacts` (one with a phone, one with `phone=''`). Logged in via the UI, walked `/broadcasts/new` through step 1
+  (picked the template) to step 2: the audience summary correctly showed "1 contato não elegível" / "Sem
+  identidade neste canal — este contato não pode receber broadcasts" / "QA Ineligible Contact", with the phoned
+  contact correctly counted in the 1-estimated-recipient total. All seeded rows deleted afterwards (`delete from
+  accounts where id=...` cascades stores/channel_connections/contacts/message_templates/profiles; `delete from
+  auth.users` separately since `accounts.owner_user_id` is `ON DELETE RESTRICT`) — verified 0 rows remain by name/
+  email pattern.
+  - Could NOT browser-verify the `initiate !== 'template'` branch ("ainda não conversou com este canal"): confirmed
+    by reading `src/app/(dashboard)/broadcasts/new/page.tsx` that its auto-resolve effect (US-006's note, still
+    accurate) hardcodes `channelType: 'whatsapp_cloud'` / `initiate: 'template'` regardless of what connections the
+    account actually has — there is no UI path to a non-template connection until US-009's real step-0 picker
+    lands. This is the same known gap US-006 already hit and documented for its own audience-filter change; US-007
+    inherits it verbatim. Logic was verified by code read only (the ternary reads `connection.initiate` the same
+    way `isBroadcastEligible` already does), not by an actual render. Recorded in the story's `notes` in prd.json.
+- **Learnings for future iterations:**
+  - `/broadcasts/new`'s hardcoded WhatsApp/template auto-resolve (flagged by US-006, confirmed again here) blocks
+    ANY future story's browser verification of a non-template-connection UI path until US-009 lands — expect
+    US-010/US-011/US-012 to hit the same "logic implemented, can't browser-verify yet" situation for their
+    non-template branches unless they land after or alongside US-009.
+  - New QA account signup does NOT auto-create an `accounts`/`profiles` row — that happens lazily on first
+    authenticated page load (observed: `/auth/v1/signup` alone left zero `profiles` rows; visiting `/dashboard`
+    logged in created the account+profile as `owner`). Query `profiles` by `user_id` (not `id` — `profiles.id` is
+    its own uuid, `profiles.user_id` is the FK to `auth.users.id`) to find the auto-created `account_id` after
+    login, not before.
+  - Cleanup recipe for a QA account seeded this way: `delete from accounts where id='<account_id>'` cascades
+    stores/channel_connections/message_templates/contacts/profiles (all FK `ON DELETE CASCADE` on `account_id`),
+    then `delete from auth.users where id='<user_id>'` separately (`accounts.owner_user_id` FK is `ON DELETE
+    RESTRICT`, so the user row survives the account delete and needs its own statement).
+---
+
+## 2026-09-22 - US-008
+- Implemented: `planBroadcastResume` (src/lib/whatsapp/broadcast-resume.ts) no longer imports
+  `loadWhatsAppSendConnection`. It resolves the connection generically off the broadcast's own persisted
+  `connection_id`, reusing the exact `getConnectionById(id, db)` + `conn.account_id === accountId` +
+  `getConnectionCredentials(conn.id)` idiom `createBroadcast` established in US-004 (no `channel_type` filter):
+  missing/wrong-account connection -> `BroadcastError('not_found', ..., 404)` (was `whatsapp_not_configured`/400 —
+  that phrasing was WhatsApp-specific "no connection found"; 404 replaces it for a bad/foreign id, matching
+  createBroadcast's own choice); disabled -> unchanged `CONNECTION_DISABLED_CODE`/409, now for any channel.
+  `resolveTemplateRow` is now gated behind `hasTemplate = !!broadcast.template_name` — only called on the
+  template path; a free-message broadcast (US-005) gets `templateRow: null` / `templateLanguage: ''` without
+  touching `message_templates` at all, matching `createBroadcast`'s own `hasTemplate` gating exactly. The
+  broadcast `select` was extended with `message_text, message_media_url` so `BroadcastPlan.messageText`/
+  `messageMediaUrl` (US-005's fields) get populated on resume too — without them a resumed free-message
+  broadcast would silently deliver an empty message. `plan.templateName` is `''` on the free-message path
+  (mirrors createBroadcast) instead of the previous unconditional `broadcast.template_name`.
+- Files changed: `src/lib/whatsapp/broadcast-resume.ts`, `src/lib/whatsapp/broadcast-resume.test.ts` (rewritten —
+  see below), `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Test-file note: the old `channel_connections`/`admin-client`-mock-based fake for WhatsApp connection resolution
+  was replaced with a direct `vi.mock('@/lib/channels/connections', ...)` of `getConnectionById`/
+  `getConnectionCredentials` (same pattern as `broadcast-core.connection-resolution.test.ts` and
+  `broadcast-core.provider.test.ts`) — simpler than faking the `channel_connections` query shape, and the same
+  idiom the codebase already uses for this. All 8 pre-existing `planBroadcastResume` tests kept their asserts
+  unchanged; only their fixture setup dropped the now-unused `config: CONFIG` field (connection comes from the
+  mock default in a new top-level `beforeEach` now, not from the fixture). New test (the AC's "Telegram abandonado"
+  case): a free-message Telegram broadcast (`template_name: null`, `message_text` set, `connection_id` already
+  on the row) with 2 pending recipients — `planBroadcastResume` builds a plan with `templateName: ''`,
+  `templateRow: null`, `messageText` populated, `connection.channel_type: 'telegram'`; `deliverBroadcast` (called
+  directly against the same fake db, real telegram provider via `registerBuiltinProviders`, only `callBotApi`
+  stubbed) delivers both recipients and stamps them `sent` with `external_message_id` `"<chat_id>:<message_id>"`;
+  the fake's always-0 `broadcast_recipients` count queries make `finalizeBroadcastStatus` (called internally by
+  `deliverBroadcast`) flip the broadcast to `status: 'sent'`, asserted via the fake's captured `broadcasts` update
+  — covers the AC's literal "entrega os que faltam e finaliza a campanha". A dedicated `telegramResumeDb` fake
+  was written for this one test (table-aware `broadcasts`/`broadcast_recipients` chain, `update(patch).eq('id',
+  id)` order handled by deferring the recipient-update commit to the `.eq()` call, since `.update()` runs before
+  `.eq()` in the real chain) rather than extending the shared `planDb` — `planDb` only ever needed one flat
+  `writes.failedUpdate`, not per-recipient history or count-query awareness, and stretching it would have made
+  the simple tests harder to read for a fixture only this one test needs. `resolveTemplateRow`'s absence in this
+  test is itself an assertion: `telegramResumeDb` throws on any unexpected table (no `message_templates` branch),
+  so the test would fail loudly if `hasTemplate` gating regressed and the code tried to resolve a template for a
+  `template_name: null` broadcast.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `TZ=UTC npm test` 161 files / 1948 tests passed (baseline 161/1947 + 1 new test). No `npm run build`
+  (story doesn't touch routing/config). No migration (none needed for this story — connection_id/message_text/
+  message_media_url are all already-existing columns from US-001/US-004/US-046). No browser check (not an AC
+  criterion for this story — resume is triggered from `POST /api/whatsapp/broadcast/[id]/resume`, an existing
+  route untouched by this change; its own route.ts already maps `BroadcastError` generically via `err.status`/
+  `err.code`, so the `not_found`/`CONNECTION_DISABLED_CODE` codes from the new resolver need no route change).
+- **Learnings for future iterations:**
+  - `getConnectionById(id, db)` + `conn.account_id === accountId` + `getConnectionCredentials(conn.id)` is now
+    reused verbatim in THREE places (`createBroadcast` US-004, `planBroadcastResume` US-008, and
+    `POST /api/v1/messages`'s `pickConnection` from channel-abstraction) — if a 4th caller needs "resolve a
+    connection by id, scoped to this account, no channel_type filter", this is the idiom, not a new one.
+  - `broadcast-resume.ts`'s recipient-addressing (`contact.phone`, `sanitizePhoneForMeta`/`isValidE164` validating
+    it, feeding `plan.planned[].phone`) was NOT touched by this story and is still literally phone-shaped —
+    confirmed by reading `deliverBroadcast` that this is already an established, pre-existing simplification
+    across the whole broadcast-core feature (US-005's own `broadcast-core.provider.test.ts` sends telegram
+    messages with `phone: '555'` as the literal Telegram chat_id, and `WA_PHONE_KIND`/`recipient.phone` is used
+    as a generic "address" field regardless of channel — the telegram provider's `send()` never inspects
+    `target.kind`, only `target.address`). Not a gap introduced or left open by US-008; nothing in this story's
+    AC asked to generalize that naming, and doing so would have been out of scope. Worth knowing before assuming
+    it needs fixing in a later story: it's `to`/`phone` used as "recipient address, whatever shape the channel
+    needs", not literally required to be a phone number.
+  - `whatsappConnectionRow(accountId, externalId, extra?)` from `credentials-admin.fake.ts` is generic enough to
+    build a fake Telegram (or any) connection row too — just spread it and override `channel_type`/`id`, same
+    trick `broadcast-core.connection-resolution.test.ts` used for its telegram case.
+---
+
+## 2026-09-22 - US-009
+- Implemented: `deliverBroadcast` (src/lib/whatsapp/broadcast-core.ts) no longer builds every recipient's send
+  target as `{kind: WA_PHONE_KIND, address: recipient.phone}`. That literal target is now used ONLY on the
+  template path (`isTemplatePath`, i.e. WhatsApp) — byte-for-byte the same as before (RNF-01, zero behavior
+  change). For `capabilities.initiate !== 'template'`, the target is resolved via `provider.resolveTarget(identities)`
+  — the exact method `lib/channels/send.ts`'s `sendOutbound` already uses for a regular conversation send —
+  where `identities` comes from a new local helper `loadRecipientIdentities(db, contactId)` that reads
+  `contact_identities` filtered by `contact_id` (no whatsapp_cloud/`contacts.phone` fallback: unnecessary, since
+  no built-in provider with `capabilities.initiate !== 'template'` resolves off `contacts.phone`). If
+  `resolveTarget` returns null (contact has no identity for this channel), the recipient is stamped `failed` with
+  `error_message: 'No reachable address on this channel'` — same best-effort-per-recipient shape as any other send
+  failure, never aborting the rest of the loop.
+  This required threading `contactId` through the shared recipient shape both plan-builders produce: added
+  `contactId: string` to `PlannedRecipient` (broadcast-core.ts), populated from the RPC's `contact_id` column in
+  `createBroadcast`, and from `broadcast_recipients.contact_id` (added to the `select`) in
+  `planBroadcastResume` (broadcast-resume.ts) — confirming the AC's "broadcast-resume.ts herda a mesma resolução"
+  literally, not by assumption: both plan-builders now feed the exact same `deliverBroadcast` target-resolution
+  code path.
+- `broadcast-resume.ts`'s own phone-based "unsendable" pre-filter (previously applied unconditionally to every
+  channel, marking any row without a valid E.164 `contacts.phone` as `failed` up front) was the actual live
+  instance of the AC's "eligible contact with phone='' silently dropped" bug for a resumed campaign — a phone-less
+  Telegram contact hitting a resume pass would have been marked failed with "No valid phone number on contact"
+  before ever reaching `deliverBroadcast`. Fixed by resolving the connection (and `provider.capabilities.initiate`)
+  BEFORE building the sendable/unsendable split, and only running the phone pre-filter when `isTemplatePath` is
+  true; for a non-template channel every in-scope row is now `sendable` and `deliverBroadcast` resolves (or fails)
+  each one individually via `contact_identities`, exactly like a fresh send. This moved the connection-resolution
+  block earlier in the function (was after the recipient load/filter, now before it) — a structural reorder, not a
+  behavior change for the template path (same lookups, same error codes, same order of `not_found`/
+  `connection_disabled` checks relative to the broadcast-existence check).
+  Scope confirmed NOT touched (checked, not assumed): the public API's `POST /api/v1/broadcasts` `recipients`
+  contract (`{to: phone, params}`) stays phone-based — `createBroadcast`'s own recipient-input validation
+  (`sanitizePhoneForMeta`/`isValidE164` on `to`) is unchanged. That contract is documented in `docs/public-api.md`
+  as phone-shaped and untouched by this story; the AC's "não descartado por phone=''" scenario is about a
+  `broadcast_recipients` row that ALREADY exists (created via `createBroadcast` OR — once US-013 lands — the
+  dashboard wizard) reaching delivery/resume, not about widening the API's input shape.
+- Files changed: `src/lib/whatsapp/broadcast-core.ts`, `src/lib/whatsapp/broadcast-resume.ts`,
+  `src/lib/whatsapp/broadcast-core.test.ts`, `src/lib/whatsapp/broadcast-core.disabled.test.ts`,
+  `src/lib/whatsapp/broadcast-deliver.characterization.test.ts`, `src/lib/whatsapp/broadcast-core.provider.test.ts`
+  (2 new tests: phone-empty Telegram recipient resolves + sends via identity; a recipient with no identity fails
+  without aborting others), `src/lib/whatsapp/broadcast-resume.test.ts` (recipient fixture now carries `contact_id`;
+  the existing US-008 Telegram-resume test's `r2` now has `phone: ''` and asserts its `chat_id` came from
+  `contact_identities`, not from phone — the AC's "confirmar com um teste, não assumir" for resume inheriting
+  deliverBroadcast's resolution), `.projects/broadcast-multi-channel/prd.json`,
+  `.projects/broadcast-multi-channel/progress.txt`. `broadcast-core.credentials.test.ts` and
+  `broadcast-core.connection-resolution.test.ts` were audited and left untouched — the former casts its plan
+  fixture `as unknown as BroadcastPlan` (no type pressure to add `contactId`) and only exercises the
+  always-template WhatsApp path; the latter never calls `deliverBroadcast`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `TZ=UTC npm test` 161 files / 1950 tests passed (baseline 161/1948 + 2 new tests in
+  `broadcast-core.provider.test.ts`; all pre-existing WhatsApp-path characterization tests — US-003/US-005/US-008 —
+  pass with their asserts unmodified, only `contactId`/`contact_id` added to fixtures where the type or a `toEqual`
+  literal required it). No `npm run build` (story doesn't touch routing/config, not an AC criterion). No browser
+  check (not an AC criterion for this story — it's server-side delivery logic; also same UI-not-reachable-yet gap
+  US-006/US-007/US-008 already documented: `/broadcasts/new` still hardcodes the WhatsApp/template path until
+  US-010 lands, so there's no dashboard path to a non-template send to browser-verify).
+- **Learnings for future iterations:**
+  - `loadRecipientIdentities(db, contactId)` (broadcast-core.ts, local/unexported) is now the broadcast-specific
+    counterpart of `lib/channels/send.ts`'s private `loadIdentities` — narrower on purpose (no `contacts.phone`
+    fallback, since it's only ever called on the non-template path). If a future story needs the SAME
+    identity-based resolution outside `deliverBroadcast`, consider promoting one shared helper instead of a third
+    copy.
+  - `PlannedRecipient.contactId` is now load-bearing for both plan-builders — any future third builder of a
+    `BroadcastPlan` (there are only two today: `createBroadcast` and `planBroadcastResume`) MUST populate it, or
+    every non-template recipient it plans will fail with "No reachable address on this channel".
+  - The connection-resolve-before-recipient-filter reorder in `planBroadcastResume` is a good pattern for "this
+    decision depends on the channel" logic in general — resolve the connection/provider first, branch the
+    recipient-shaping logic on `provider.capabilities` second. US-013's route-level validation (`connection_id`
+    required, content exclusivity, `connection_channel_mismatch`) will likely want the same ordering.
+  - Confirmed by reading (not assuming): no built-in provider (`whatsapp-cloud`, `telegram`) with
+    `capabilities.initiate !== 'template'` ever resolves a target from `contacts.phone` — so
+    `loadRecipientIdentities` correctly has zero phone fallback. If a future non-template provider DID want a
+    phone fallback, it would need to be added there explicitly (or via a whatsapp-cloud-style identities
+    fallback), not assumed to already work.
+---
+
+## 2026-09-22 - US-010
+- Implemented: new `src/components/broadcasts/step0-choose-connection.tsx`, the wizard's real step 0. Fetches
+  `/api/stores` + `/api/channels/connections` + `/api/channels/providers` in parallel (same pattern
+  `connect-channel-wizard.tsx`/`channels-panel.tsx` already use), filters connections to `status === 'connected'
+  && !disabled_at`, and labels each `"${channelLabel} — ${storeName}"` (channelLabel via
+  `Settings.channels.type.<type>`, same `t.has(...) ? t(...) : type` fallback `channels-panel.tsx` uses locally).
+  `capabilities.initiate` per connection comes from the providers list (`GET /api/channels/providers`, no
+  server-only import needed client-side). Exactly one eligible connection: pre-selects it via an effect (step
+  stays visible, per the AC — no auto-advance). Zero eligible: empty state with a `PlugZap` icon + a
+  `/settings?tab=channels` link, `Avançar` disabled. `>=2` eligible: dropdown (shadcn/base-ui `Select`), nothing
+  pre-selected, `Avançar` disabled until the user picks one.
+  `new/page.tsx`: added `Step0ChooseConnection` as the new index-0 step (`steps` array gained `'connection'`
+  first; every other step index +1), removed the old `useEffect` that auto-resolved the account's single
+  WhatsApp connection (`channelType: 'whatsapp_cloud'`/`initiate: 'template'` hardcoded — that was US-006's
+  documented stand-in until this story). `connection` state now starts `null` and is set only by
+  `Step0ChooseConnection`'s `onSelect`. `Step1ChooseTemplate`'s `onBack` now goes to `setCurrentStep(0)` (was
+  `router.push('/broadcasts')`, which moved to step 0's own `onBack`).
+- Bug caught by the browser check, not by typecheck/lint/tests (none of those exercise the rendered label): the
+  first render showed the RAW connection UUID in the closed `SelectTrigger` instead of "WhatsApp — QA Store
+  Centro". `@base-ui/react` `Select.Value` only auto-resolves a label when the `value` string is itself the
+  displayed text (confirmed in `template-manager.tsx`'s header-format `Select`, which already works around the
+  exact same limitation with `<SelectValue>{headerFormatLabel(form.header_format)}</SelectValue>`). Fixed by
+  passing `<SelectValue>{(value) => eligible.find(r => r.connection.id === value)?.label ?? value}</SelectValue>`
+  — a render-prop children, per `SelectValueProps.children`'s documented `(value) => ReactNode` form. Rebuilt the
+  container and re-verified after the fix.
+- Files changed: `src/components/broadcasts/step0-choose-connection.tsx` (new),
+  `src/app/(dashboard)/broadcasts/new/page.tsx`, `messages/en.json`, `messages/pt.json`, `messages/es.json`,
+  `messages/ko.json` (`Broadcasts.new.steps.connection` + `Broadcasts.wizard.chooseConnection.{title,subtitle,
+  label,placeholder,emptyTitle,emptyBody,emptyCta,errorLoad}` in all four), `.projects/broadcast-multi-channel/
+  prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `npx vitest run src/i18n` 3 files/19 tests passed, `TZ=UTC npm test` 161 files/1950 tests passed
+  (matches baseline exactly — no unit-test AC for this story, it's UI/wizard-state only). No `npm run build` run
+  standalone (not an AC criterion; the containerized rebuild's Next build already compiles the route/component).
+- Browser check (dev-browser, containerized app rebuilt twice — once before the Select-label fix, once after —
+  with `up -d --build app --no-deps`): seeded a throwaway QA account (`/auth/v1/signup`, auto-confirmed), visited
+  `/dashboard` once to trigger its lazy account/profile creation, then seeded one `stores` row and, incrementally,
+  two `channel_connections` (`whatsapp_cloud` then `telegram`, both `status='connected'`, same store) to exercise
+  all three AC branches: (1) zero connections → empty state, link to Settings → Channels, `Avançar` disabled; (2)
+  one connection → pre-selected `"WhatsApp — QA Store Centro"`, step still shows the dropdown, `Avançar` enabled;
+  (3) two connections → dropdown open lists `"WhatsApp — QA Store Centro"` and `"Telegram — QA Store Centro"`,
+  neither pre-selected, `Avançar` disabled until picked; picking one and clicking `Avançar` advances to step 1
+  (`Step1ChooseTemplate`, unchanged) with step 0 marked completed; `Voltar` from step 1 returns to step 0 with the
+  same connection still selected (state preserved, not re-fetched-and-lost). Screenshots saved under
+  `/tmp/claude-1000/.../scratchpad/us010-*.png` (not in the repo). All seeded rows deleted afterwards (`delete
+  from accounts where id=...` cascades store/connections/profile; `delete from auth.users where id=...`
+  separately) — verified 0 rows remain by name pattern.
+- **Learnings for future iterations:**
+  - **`@base-ui/react` `Select` does NOT auto-resolve a label for a controlled `value` unless that value string
+    equals the item's displayed text.** This bit US-010 live (raw UUID shown instead of the connection's label)
+    and is silent at typecheck/lint/test time — only a rendered screenshot catches it. `template-manager.tsx`
+    already had the workaround for its header-format select; the pattern
+    (`<SelectValue>{(value) => lookupLabel(value)}</SelectValue>`, using `SelectValueProps.children`'s
+    `(value) => ReactNode` form) is now used twice. Any future `Select` bound to an id/enum whose value isn't
+    literally its own display text needs this — don't rely on the bare `<SelectValue />`.
+  - `GET /api/channels/providers` (no `channel_type` filter, any account member) is the client-safe way to read
+    `capabilities.initiate` per channel type — no need to import server-only `getProvider`/`registry.ts` into a
+    client component. `ConnectChannelWizard` already established this; `Step0ChooseConnection` reuses it.
+  - `new/page.tsx`'s step-index shift (adding step 0 pushed every other step's `currentStep` number by one) was a
+    pure renumbering — no step component's own props/behavior changed, only which numeric index triggers it and
+    which index each step's own `onNext`/`onBack` targets. Worth remembering for US-011 (inserting a step1
+    alternative doesn't renumber anything already indexed 2+).
+  - **Left deliberately unimplemented, per the AC's own wording and design.md's component table:** step 1 (index
+    1) is still unconditionally `Step1ChooseTemplate` regardless of the chosen connection's `capabilities.initiate`.
+    A Telegram connection picked at step 0 today still advances into the WhatsApp-template step (which then shows
+    "no templates" if none exist, or would let you pick a real template that `deliverBroadcast`/the route can't
+    actually send on that connection — no live regression today since `POST /api/whatsapp/broadcast` and
+    `use-broadcast-sending.ts` are still template-only end-to-end per US-004's own note, US-013 is where the route
+    gains conditional content). US-011 is explicitly where `step1-compose-message.tsx` gets built and this
+    branches; not attempted here to stay surgical (design.md: "step1-choose-template.tsx | Inalterado").
+---
+
+## 2026-09-22 - US-011
+- Implemented: new `src/components/broadcasts/step1-compose-message.tsx`, the wizard's step 1 for a connection
+  whose `capabilities.initiate !== 'template'`. A textarea for the message body (a "Inserir variável" button
+  inserts the next free `{{n}}` token at the cursor — same `{{n}}` style templates already use, `renderTemplateBody`
+  (US-005) resolves it the same way at send time) + an optional media attachment, mirroring
+  `template-manager.tsx`'s header-media upload UX (hidden file input triggered by a button + preview image, no
+  separate manual-URL fallback — unlike the template header, a broadcast's free-message media has no "reuse the
+  approved sample" case to seed from). `new/page.tsx` now renders `Step1ComposeMessage` at `currentStep === 1` when
+  `connection.initiate !== 'template'`, and `Step1ChooseTemplate` (unchanged) when `=== 'template'` — the branch the
+  US-010 iteration explicitly left open. New page-level state: `messageText`/`messageMediaUrl` (parallel to
+  `template`/`headerMediaUrl`, not yet consumed elsewhere — wiring them into send is US-012 (step 3
+  generalization)/US-013 (step 4 + route), matching design.md's own phasing).
+- Limits are read from the CHOSEN connection's provider, never a fixed number (the AC's explicit requirement,
+  citing the Flows fix for the same class of bug): `captionMaxLength` (`lib/channels/types.ts`'s `Capabilities`,
+  fetched client-side via the existing `useChannelProviders()` hook / `GET /api/channels/providers`) is the ONLY
+  per-provider text-length capability that exists in the contract — there is no separate "body text max length"
+  field, and `broadcast-core.ts` (US-005) already treats this same field as the media caption when media is
+  attached, so reusing it for both the plain-text and the media-caption case is correct, not a workaround. Media
+  type is checked against `capabilities.mediaKinds` (MIME-sniffed from the picked `File.type`, prefix-matched
+  image/video/audio, default document — a small local `mediaKindFromFile`, same "local, not promoted" precedent as
+  `broadcast-core.ts`'s own `inferMediaKind` from US-005, since this one is client-only and can't share a module
+  with server code anyway). Media size is checked against
+  `Math.min(capabilities.maxMediaBytes, MEDIA_MAX_BYTES)` — `MEDIA_MAX_BYTES` (16 MB, `lib/storage/upload-media.ts`)
+  is the `chat-media` bucket's own real `file_size_limit` (migrations 016/020/023), a genuine infra ceiling below
+  some providers' own cap (Telegram advertises 50 MB) that `template-manager.tsx` already documented and worked
+  around the same way for template headers — advertising a provider's raw cap without this min would let a user
+  pick a file the channel allows but the bucket will still reject.
+- Exceeding either limit blocks "Avançar" (not just a toast): a live `{count}/{max} caracteres` counter turns red
+  and a specific inline message appears under the textarea once `text.length > captionMaxLength`; an
+  over-type/oversized media file is rejected before upload via a toast with the exact provider-derived MB numbers,
+  the existing valid attachment (if any) is left untouched. `hasContent` (text or media present) also gates
+  "Avançar" — mirrors `createBroadcast`'s own `content_required` check (US-004) so the wizard can't produce a state
+  the server would reject anyway.
+- Files changed: `src/components/broadcasts/step1-compose-message.tsx` (new),
+  `src/app/(dashboard)/broadcasts/new/page.tsx`, `messages/en.json`, `messages/pt.json`, `messages/es.json`,
+  `messages/ko.json` (`Broadcasts.wizard.composeMessage.*` in all four), `.projects/broadcast-multi-channel/
+  prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `npx vitest run src/i18n` 3 files/19 tests passed, `TZ=UTC npm test` 161 files/1950 tests passed
+  (matches baseline exactly — no unit-test AC for this story, it's UI/validation-in-the-browser only, same
+  precedent as US-010). No `npm run build` run standalone (not an AC criterion; the containerized rebuild's Next
+  build already compiles the route/component, confirmed by the successful `docker compose ... up -d --build`).
+- Browser check (dev-browser, containerized app rebuilt with `up -d --build app --no-deps`): seeded a throwaway QA
+  account (`/auth/v1/signup`, auto-confirmed), visited `/dashboard` once to trigger lazy account/profile creation,
+  seeded one `stores` row and a `telegram` `channel_connections` row (`status='connected'`). At `/broadcasts/new`:
+  step 0 auto-pre-selected the single Telegram connection; advancing to step 1 rendered "Componha a mensagem" (NOT
+  the template picker) with "0/1024 caracteres" (Telegram's real `captionMaxLength`), "Avançar" disabled with empty
+  text. Clicking "Inserir variável" inserted `{{1}}`; typing text enabled "Avançar"; filling 1050 chars turned the
+  counter red, showed "A mensagem excede o limite de 1024 caracteres deste canal." and re-disabled "Avançar".
+  Uploading a real (tiny, synthetic) PNG via the hidden file input (dispatched through `page.evaluate` + a
+  browser-native `File`/`DataTransfer`, since the dev-browser sandbox has no direct filesystem access for
+  `setInputFiles`) succeeded — object landed in `chat-media` at the correct account-scoped path, "Remover" appeared,
+  preview rendered. A synthetic 17 MB file (built via `crypto`-free zero-filled `Uint8Array` inside `page.evaluate`,
+  to avoid piping ~23 MB of base64 through the sandbox) was rejected with "O arquivo tem 17.0 MB — o limite deste
+  canal é 16 MB." (the bucket cap, not Telegram's raw 50 MB) and did NOT clear the already-valid attachment.
+  Regression check: seeded a second, `whatsapp_cloud` connection in the same account/store — with two eligible
+  connections, step 0 correctly listed both, unselected; picking WhatsApp and advancing rendered the unchanged
+  `Step1ChooseTemplate` ("Nenhum template disponível", same empty-state copy as before this story). No new browser
+  console errors (`[PresenceHeartbeat] touch_presence failed` is a pre-existing, unrelated tunnel/network log, seen
+  on a plain page load with no wizard interaction). All seeded rows deleted afterwards (`delete from accounts
+  where id=...` cascades store/connections/profile; `delete from auth.users where id=...` separately) — verified 0
+  rows remain by id.
+  Could NOT browser-verify: an actual send of a free-message broadcast (step 2 audience → step 4 send is still
+  gated on `template` in `new/page.tsx`, `{currentStep === 3 && template && (...)}` /
+  `{currentStep === 4 && template && (...)}` — unwired on purpose, US-012/US-013's job per design.md's own phasing;
+  confirmed by reading `new/page.tsx`, not assumed). Recorded in the story's `notes` only as scope, not as a defect.
+- **Learnings for future iterations:**
+  - `useChannelProviders()` (`hooks/use-channel-providers.ts`) returns the FULL `Capabilities` object per provider
+    type (not just the derived subset `composer-capabilities.ts`'s `composerCapabilities()` exposes) — reuse the
+    raw hook directly (as `step0-choose-connection.tsx` already does) whenever a caller needs a field
+    `composerCapabilities` doesn't surface, like `maxMediaBytes` here. Don't extend `composerCapabilities` just to
+    avoid a second `useChannelProviders()` call — the hook is already a shared, cached, one-fetch-per-page-load
+    promise, so calling it from two components is free.
+  - **`captionMaxLength` is the codebase's only per-provider text-length capability** — there is no separate
+    "plain body text max length" field, and none is needed: `broadcast-core.ts` already collapses "text" and
+    "media caption" into the same `messageText`/`renderTemplateBody` path. Any future free-text UI for a channel
+    (not just broadcasts) should read the same field rather than inventing a parallel limit.
+  - `Math.min(capabilities.maxMediaBytes, MEDIA_MAX_BYTES)` (the `chat-media`/`flow-media` bucket's real 16 MB
+    `file_size_limit`) is the correct "true" upload ceiling whenever a provider's own cap is being surfaced in a
+    NEW upload UI — a raw `capabilities.maxMediaBytes` (Telegram: 50 MB) would advertise a number the storage
+    layer itself can't honor. `message-composer.tsx`'s existing upload path does NOT do this (it caps by a fixed
+    `MEDIA_MAX_BYTES_BY_KIND` unrelated to `capabilities.maxMediaBytes` at all) — that's a pre-existing
+    inconsistency, left untouched (out of scope for this story; noted here in case a future story reconciles it).
+  - dev-browser's QuickJS sandbox has no `fs`, so `page.setInputFiles(<path>)` (which needs to read the file from
+    disk) throws `fs is not available`. Work around it by building the `File`/`DataTransfer` INSIDE
+    `page.evaluate(...)` (real browser JS, not the sandbox) — either `atob(base64)` a small fixture transferred as
+    a script argument, or (for a large file where you only care about triggering a size check, not real content) a
+    zero-filled `new Uint8Array(size)` constructed entirely in-page, which avoids piping megabytes of base64
+    through the sandbox pipe. Useful for any future story that needs to browser-test a file upload.
+---
+
+## 2026-09-22 - US-012
+- Implemented: `step3-personalize.tsx`'s `template` prop is now `MessageTemplate | null`, with two new optional
+  props (`messageText`, `messageMediaUrl`) read only when `template` is null. A new `bodyText` local
+  (`template ? template.body_text : (messageText ?? '')`) feeds `placeholders`/the preview memo — both were
+  `template.body_text`-only before; every other piece of the mapping logic (type static/field/custom_field,
+  `previewFieldValue`, `updateVariable`, `unmappedKeys`) was already generic over `placeholders`/`variables` and
+  needed zero changes, matching the AC's "funciona igual pros dois casos" literally rather than by intent.
+  `mediaHeaderType` is now `template && isMediaHeaderType(...)` (was unconditional on `template.body_text`), so
+  the template-only editable media-header block (URL input, seed-from-template-sample, missing/invalid validation)
+  is untouched and unreachable when there's no template. A new sibling block (`hasFreeMessageMedia = !template &&
+  !!messageMediaUrl`) renders when a free message has an attachment: READ-ONLY (no input — the file was already
+  uploaded/validated by step1-compose-message.tsx in US-011, there's nothing to re-edit here), a local
+  `looksLikeImageUrl` extension sniff decides between an `<img>` preview (mirrors the template block's own
+  image-only preview rule) or a plain URL line for non-image kinds. The "no preview" empty state
+  (`placeholders.length === 0 && !mediaHeaderType`) gained `&& !hasFreeMessageMedia` so a media-only free message
+  doesn't show a contradictory "preview not available" card next to its own media preview. Subtitle copy is now
+  `template ? t('personalize.subtitle') : t('personalize.subtitleMessage')` — the original copy literally says
+  "template variables", which would have been a real (if cosmetic) bug for the free-message case; a second i18n
+  key was the smallest fix (added to all 4 catalogues, along with `personalize.attachedMedia` for the new block's
+  label).
+  `new/page.tsx`: the step-3 gate changed from `currentStep === 3 && template` to `currentStep === 3 && (template
+  || messageText)`, and `Step3Personalize` now also receives `messageText`/`messageMediaUrl` (both already existed
+  as page-level state from US-011, just weren't threaded to step 3 yet — exactly the note this iteration started
+  from). Step 4's own gate is UNCHANGED (`currentStep === 4 && template`) — deliberately, per design.md's phasing
+  and the US-011 iteration's own precedent (it left step 2->4 unwired for the same reason): wiring step 4 to
+  render for a free-message broadcast is US-013's job (route + `use-broadcast-sending.ts` payload), not this
+  story's. Concretely this means clicking "Avançar" from a fully-mapped free-message step 3 today advances
+  `currentStep` to 4, but nothing renders there yet — a known, intentional dead end until US-013 lands, not a bug
+  introduced here.
+- Files changed: `src/components/broadcasts/step3-personalize.tsx`,
+  `src/app/(dashboard)/broadcasts/new/page.tsx`, `messages/en.json`, `messages/pt.json`, `messages/es.json`,
+  `messages/ko.json` (`Broadcasts.wizard.personalize.subtitleMessage` + `.attachedMedia` in all four),
+  `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `npx vitest run src/i18n` 3 files/19 tests passed, `TZ=UTC npm test` 161 files/1950 tests passed
+  (matches baseline exactly — no unit-test AC for this story, same precedent as US-010/US-011: UI/wizard-state
+  only). No `npm run build` run standalone (not an AC criterion; the containerized rebuild's Next build already
+  compiles the route/component).
+- Browser check (dev-browser, containerized app rebuilt with `up -d --build app --no-deps`): seeded a throwaway QA
+  account (`/auth/v1/signup`, auto-confirmed), visited `/dashboard` once to trigger lazy account/profile creation,
+  then seeded one `stores` row, a `telegram` `channel_connections` row, a phoneless contact + `contact_identities`
+  (telegram) + a `conversations` row for that connection (US-006's eligibility requirement), and separately a
+  `whatsapp_cloud` connection + one `APPROVED` text-header template (for the regression check). Free-message path:
+  step 0 auto-pre-selected the lone-at-that-point Telegram connection; step 1 composed "Olá! Sua compra
+  chegou." + `{{1}}` via "Inserir variável" + a tiny synthetic PNG upload; step 2 showed "1 destinatários
+  estimados" (the seeded contact); step 3 rendered (previously impossible — gated on `template`) showing a
+  read-only "Mídia anexada" block with the step-1-uploaded image (confirmed via `img.src`/`naturalWidth` in-page
+  that it's the same `chat-media` storage URL from step 1, not a stale/wrong one), the `{{1}}` token read from the
+  free message text (not `template.variables`), the same static/field/custom-field type selector, a live preview
+  substituting the mapped value ("Olá! Sua compra chegou.Pedido #4821"), and the same unmapped-placeholder warning
+  gating "Avançar" until mapped. Regression check: added a second, `whatsapp_cloud` connection + template in the
+  same account, re-ran the wizard picking WhatsApp explicitly at step 0 (now unselected with 2 options, per
+  US-010) through `Step1ChooseTemplate` (unchanged) — step 3 rendered byte-identical to pre-story behavior: the
+  original `personalize.subtitle` copy ("...variáveis do template..."), no media block (text-only header), same
+  `{{1}}` mapping/preview mechanics. All seeded rows deleted afterwards (`delete from accounts where id=...`
+  cascades store/connections/templates/contacts/identities/conversations/profile; `delete from auth.users where
+  id=...` separately) — verified 0 rows remain by id.
+- **Learnings for future iterations:**
+  - Generalizing a step component to accept "template OR free message" only required touching the few spots that
+    read `template.<field>` directly (`body_text`, `header_type`, `header_media_url`) — everything downstream of
+    `placeholders`/`variables` (the actual mapping/preview logic) was already parametric and needed no changes.
+    Worth checking for the same shape (does the logic depend on the SOURCE of the tokens, or just on the tokens
+    themselves?) before generalizing any other template-shaped component in this PRD.
+  - The free-message media preview in step 3 is intentionally NOT editable (no URL input, unlike the template's
+    header-media block) — it's a pass-through display of what step 1 already collected/validated. Don't add an
+    edit affordance there without a reason; step 1 is the single place a free-message attachment gets chosen.
+  - `messageText`/`messageMediaUrl` living as page-level state in `new/page.tsx` (since US-011) meant they were
+    already "passed forward" across step transitions without step 3 doing anything special — the only work this
+    story needed for AC3 was making step 3 itself READ and DISPLAY them, not any new propagation plumbing.
+  - US-013 will need to change `new/page.tsx`'s step-4 gate (`currentStep === 4 && template`) to also cover the
+    free-message case, mirroring this story's own step-3 gate change (`template || messageText`) — that gate is
+    the one remaining piece of `new/page.tsx` still hardcoded to template-only.
+---
+
+## 2026-09-22 - US-013
+- Implemented: `POST /api/whatsapp/broadcast` (src/app/api/whatsapp/broadcast/route.ts) no longer resolves "the"
+  WhatsApp connection via `loadWhatsAppSendConnection` — it now requires `connection_id` in the body (400
+  `connection_id_required` if missing) and resolves it generically via `getConnectionById(id, supabase)` +
+  `conn.account_id === accountId` (404 `not_found`), same idiom as `createBroadcast`/`planBroadcastResume`
+  (US-004/US-008). Content is now conditional: `template_name` OR `message_text`/`message_media_url`, exactly one
+  (400 `content_required` on neither/both — mirrors the `broadcasts_content_exclusive_check` XOR). New
+  `connection_channel_mismatch` (400) when `template_name` is sent to a connection whose
+  `provider.capabilities.initiate !== 'template'`. Per-recipient message construction now branches on
+  `isTemplatePath = provider.capabilities.initiate === 'template'` (byte-identical `{type:'template',...}` payload
+  on that path — RNF-01) vs. `{type:'media'|'text', ...}` built from `message_text`/`message_media_url` +
+  `renderTemplateBody(text, recipient.params)`, reusing `inferMediaKind`/`loadRecipientIdentities` — both
+  newly-exported from `broadcast-core.ts` rather than re-implemented (the US-009 iteration's own note anticipated
+  exactly this second caller). Target resolution mirrors `deliverBroadcast`: template path resolves by phone
+  unchanged; non-template path resolves via `provider.resolveTarget(identities)` from `contact_identities`,
+  loaded by `recipient.contact_id` — never `recipient.phone`, so a phoneless-but-eligible contact (Telegram) is no
+  longer silently unreachable. `BroadcastResult`/`NewRecipient` gained `contact_id` (optional, always sent by the
+  hook); `phone` is kept for display/back-compat but is no longer the correlation key.
+  `use-broadcast-sending.ts`: `BroadcastPayload.template` is now optional, with new `messageText`/`messageMediaUrl`
+  fields (mutually exclusive with `template`, mirroring the CHECK). The `broadcasts` insert persists whichever
+  content shape is present (the other's columns null). The per-batch POST body now always includes `connection_id:
+  payload.connection.connectionId` plus the conditional content. The client-side `apiRecipients` mapping DROPPED
+  its `.filter((r) => r.contact?.phone)` — filtering out phoneless contacts before ever calling the API was the
+  actual live instance of the "phone='' silently dropped" bug for THIS send path (the dashboard wizard), the
+  sibling of what US-009 already fixed in `deliverBroadcast`/`broadcast-resume.ts` for the public-API path. Every
+  recipient now carries `contact_id`; result correlation switched from a `phone`-keyed `Map` to a
+  `contact_id`-keyed one, because phone can be empty (or, in principle, repeated) for a non-template channel and
+  would have silently collapsed multiple recipients onto one map entry.
+  `new/page.tsx`: step-4 gate changed from `currentStep === 4 && template` to `currentStep === 4 && (template ||
+  messageText)` (the one hardcoded spot US-011/US-012's own notes flagged as remaining). `handleSend`'s guard and
+  payload were updated to match. `handleSaveDraft` was ALSO generalized (template optional, `message_text`/
+  `message_media_url` persisted on the free-message path) — not explicitly asked by the AC, but its "Salvar como
+  rascunho" button becomes reachable and visibly clickable the moment step 4 renders for a free message, and the
+  pre-existing `if (!template || !name.trim())` guard would have shown a misleading "give it a name" toast forever
+  on that path (never a crash, since it returns before touching `template.name` — but a newly-user-visible dead
+  button is worse than the 10-line fix, so it was made consistent with `handleSend`'s same conditional).
+  `Step4ScheduleSend` (`step4-schedule-send.tsx`): `template` prop is now `MessageTemplate | null`, new optional
+  `messageText` prop. Summary card's "Template:"/name row becomes "Message:"/messageText when there's no template
+  (new i18n key `scheduleSend.message`); the "Language" row shows the template's language or `—` for a free
+  message (no new key needed). The confirm dialog branches between the existing `confirmDesc` (still says
+  "...using the **{template}** template...") and a new `confirmDescMessage` (no template wording at all) — reusing
+  `confirmDesc` for a free message would have literally said "using the **Message** template", which is wrong, not
+  just imprecise.
+- Files changed: `src/app/api/whatsapp/broadcast/route.ts`, `src/app/api/whatsapp/broadcast/route.test.ts`
+  (rewritten — new connection-resolution/validation tests, 5 new: `connection_id_required`, `content_required`
+  x2 (neither/both), `not_found`, `connection_channel_mismatch`, plus a new "free-message content (US-013)"
+  describe block exercising the REAL telegram provider, 2 tests), `src/lib/whatsapp/broadcast-core.ts` (exported
+  `inferMediaKind`/`loadRecipientIdentities`, no behavior change), `src/hooks/use-broadcast-sending.ts`,
+  `src/app/(dashboard)/broadcasts/new/page.tsx`, `src/components/broadcasts/step4-schedule-send.tsx`,
+  `messages/en.json`, `messages/pt.json`, `messages/es.json`, `messages/ko.json`
+  (`Broadcasts.wizard.scheduleSend.message` + `.confirmDescMessage` in all four),
+  `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `npx vitest run src/i18n` 3 files/19 tests passed, `TZ=UTC npm test` 161 files/1955 tests passed
+  (baseline 161/1950 + 5 new in route.test.ts). `npm run build` run (story touches an API route + routing state) —
+  succeeded, all routes including `/api/whatsapp/broadcast` and `/broadcasts/new` compiled.
+- Browser check (dev-browser, containerized app rebuilt with `up -d --build app --no-deps`): seeded a throwaway QA
+  account, one store, a `whatsapp_cloud` connection + an `APPROVED` template (`qa_promo_013`, body `{{1}}`), a
+  `telegram` connection (fake external_id, distinct from the account's real bot's `8399204028` — the DB's own
+  `(channel_type, external_id)` UNIQUE constraint would have refused reusing the real bot's id anyway), a
+  phoned contact (WhatsApp-eligible) and a phoneless contact with a `telegram:chat_id` identity + a `conversations`
+  row for the Telegram connection (US-006-eligible). Walked BOTH wizard flows all the way to clicking "Enviar
+  broadcast" (not just to step 4):
+    - Telegram/free-message: step 0 listed both connections correctly; step 1 rendered `Step1ComposeMessage`;
+      step 2 correctly showed 1 eligible / flagged the WhatsApp contact ineligible with "Ainda não conversou com
+      este canal"; step 3 previewed the composed text; step 4 (previously unreachable — this story's core fix)
+      showed "Mensagem:"/the text and "Idioma: —"; the confirm dialog used the new template-free copy. After
+      sending, the broadcast persisted `connection_id`/`message_text` (`template_name` null) and the recipient
+      row's `error_message` was `"Telegram connection has no bot token"` — NOT "No reachable address on this
+      channel" or "Invalid phone number format", which confirms `loadRecipientIdentities`/`resolveTarget` actually
+      found and used the contact's Telegram identity (not its empty phone) before failing at the real, unmocked
+      telegram provider's credentials check.
+    - WhatsApp/template regression: step 1 still rendered `Step1ChooseTemplate` unchanged; step 2 correctly
+      inverted (WhatsApp contact eligible, Telegram contact flagged "Sem identidade neste canal"); step 4 showed
+      the original "Template:"/name + real language, confirm dialog used the original `confirmDesc` copy
+      unchanged. After sending, the broadcast persisted `connection_id`/`template_name` (`message_text` empty) and
+      the recipient failed with `"WhatsApp connection has no access token"` — the same class of clean, typed
+      credentials failure as before this story (this dev environment has never had real Meta credentials, in any
+      story in this PRD).
+    - Could NOT verify an actual successful external delivery to Meta or Telegram's live API in either case — no
+      real WhatsApp Business credentials exist in this dev environment (true since before this PRD started), and
+      the account's one real, working Telegram bot connection is explicitly off-limits per this file's own
+      Codebase Patterns ("do NOT touch it or seed test data against the real account"); its `external_id` is also
+      literally unique-constrained against being reused by a second connection. This was the story's own scratchpad
+      instructions' documented carve-out ("a real Meta/Telegram round-trip a human has to trigger") — recorded
+      here rather than faked. Everything up to and including the real (unmocked) provider's credentials check was
+      verified live.
+    All seeded rows deleted afterwards (`delete from accounts where id=...` cascades store/connections/template/
+    contacts/identities/conversations/broadcasts/profile; `delete from auth.users where id=...` separately) —
+    verified 0 rows remain by id/name pattern (including the two test broadcasts, `QA US-013 Telegram`/`QA
+    US-013 WhatsApp`, which cascade-deleted with their account).
+- **Learnings for future iterations:**
+  - **`use-broadcast-sending.ts`'s client-side `.filter((r) => r.contact?.phone)` before the per-batch POST was a
+    second, independent instance of the "phone='' silently dropped" bug US-009 fixed in `deliverBroadcast`/
+    `broadcast-resume.ts`.** Two different broadcast-sending code paths exist in this codebase (the dashboard
+    wizard's client-driven loop through `/api/whatsapp/broadcast`, and the public-API/resume path through
+    `createBroadcast`/`deliverBroadcast`) — a fix in one does NOT cover the other. If a THIRD send path is ever
+    added, check it for the same class of bug explicitly rather than assuming US-009 already covered it.
+  - Correlating a per-recipient API request/response by `phone` breaks the moment phone can be empty or
+    non-unique (any non-template channel) — `contact_id` is the only field guaranteed unique per recipient row in
+    this codebase's broadcast model; prefer it as the correlation key for any future per-recipient
+    request/response pairing, not `phone`.
+  - `inferMediaKind`/`loadRecipientIdentities` (both now exported from `broadcast-core.ts`) are reused verbatim by
+    a second caller (`route.ts`) exactly as the US-009 iteration's note anticipated — a THIRD caller needing the
+    same logic should keep reusing these rather than adding a third copy or moving them without checking both
+    existing call sites.
+  - A step becoming reachable for the first time (here, step 4 for a free message) can expose OTHER, previously
+    dead code paths in the same component tree (here, `handleSaveDraft`) that were written assuming the earlier
+    gate would always protect them. Worth a quick check of "what else reads this same optional state" whenever a
+    gate like this is relaxed, not just the specific field the story's AC names.
+  - `channel_connections_type_external_id_key` (UNIQUE on `channel_type, external_id`) is a genuine safety net
+    against accidentally reusing a real bot/number's external id for a second, throwaway QA connection — don't
+    rely on memory alone to avoid touching the real account's channel; the DB itself refuses the collision.
+---
+
+## 2026-09-22 - US-014
+- Implemented: `[id]/page.tsx` (broadcast report) no longer shows a literal `0`/`0%` for Delivered/Read when the
+  broadcast's connection is on a channel that has no delivery/read receipts (Telegram's Bot API has neither) — it
+  now shows "—" there, with a title tooltip explaining why. Added a `connectionChannelType` state, populated by a
+  new query in `fetchData` (`channel_connections.channel_type` by `bc.connection_id`, one extra `.maybeSingle()`
+  call alongside the existing broadcast/recipients reads — same raw-supabase-read style already used in this file,
+  no new API route). Read the connection's real `Capabilities` via the existing `useChannelProviders()` hook
+  (`GET /api/channels/providers`, already used by `step0-choose-connection.tsx`/`step1-compose-message.tsx`) —
+  `deliveryUnavailable = !capabilities.deliveryStatus`, `readUnavailable = !capabilities.readStatus`, defaulting
+  to "available" (`false`) while `providers`/`connectionChannelType` are still loading, so the common WhatsApp case
+  never flashes "—" before settling (same bias as `composerCapabilities`'s `WHATSAPP_FALLBACK`).
+  `StatCard` gained optional `unavailable`/`unavailableHint` props: when `unavailable`, both the value and the `%`
+  badge render "—" (no `format.number`/percent math run), and the card gets a `title` tooltip. `FunnelChart`'s
+  `FunnelStep` gained optional `unavailable`: when set, the bar renders at the same minimum 5% width as a
+  legitimate 0 (so the funnel shape doesn't visually break) but the label inside becomes "—" instead of `0 (0%)`.
+  Only the Delivered/Read stat cards and funnel steps pass `unavailable` — Sent/Replied/Failed are untouched, and
+  the per-recipient table's `delivered`/`read` columns were ALREADY correct before this story (they render the
+  row's `delivered_at`/`read_at` TIMESTAMP, which is `null`/"-" for an unreachable metric, never a misleading `0`
+  — confirmed by reading the render code, not assumed; no change needed there, matching the AC's own scope which
+  only names the top-level report, not the per-recipient table).
+- `Broadcast` (src/types/index.ts) gained `connection_id: string` (was entirely missing from the TS type despite
+  being a real, NOT NULL DB column since migration 051/channel-abstraction) — needed to read `bc.connection_id`
+  off the `supabase.from('broadcasts').select('*')` result in the report page; a genuinely minimal, story-driven
+  addition (only the one field this story needs), not a broader type reconciliation.
+- Files changed: `src/app/(dashboard)/broadcasts/[id]/page.tsx`, `src/types/index.ts`, `messages/en.json`,
+  `messages/pt.json`, `messages/es.json`, `messages/ko.json` (`Broadcasts.detail.stats.unavailableHint` in all
+  four), `.projects/broadcast-multi-channel/prd.json`, `.projects/broadcast-multi-channel/progress.txt`.
+- Checks: `npm run typecheck` clean (after `rm -rf .next`), `npm run lint` 0 errors/41 warnings (matches baseline
+  exactly), `npx vitest run src/i18n` 3 files/19 tests passed, `TZ=UTC npm test` 161 files/1955 tests passed
+  (matches baseline exactly — no unit-test AC for this story, same precedent as US-010/US-011/US-012: UI-only,
+  read straight from a live capability + a DB join, nothing pure enough to unit-test in isolation without
+  duplicating what `broadcast-eligibility`/`composer-capabilities` already characterize elsewhere). No
+  `npm run build` run standalone (not an AC criterion; the containerized rebuild's Next build already compiled the
+  route/component, confirmed by the successful `docker compose ... up -d --build`).
+- Browser check (dev-browser, containerized app rebuilt with `up -d --build app --no-deps`): seeded a throwaway QA
+  account (`/auth/v1/signup`, auto-confirmed), logged in via the UI to trigger lazy account/profile creation, then
+  seeded one `stores` row, a `whatsapp_cloud` connection, a `telegram` connection, two contacts (one phoned, one
+  phoneless), and TWO broadcasts directly via SQL (bypassing the wizard, since this story is about the report
+  page's read side, not the send flow): (1) WhatsApp, `template_name` set, one recipient inserted directly at
+  `status='read'` with `sent_at`/`delivered_at`/`read_at` all set — the incremental aggregate trigger (migration
+  005) bumped `sent_count`/`delivered_count`/`read_count` to 1/1/1 automatically; (2) Telegram, `message_text` set
+  (free-message, matches what US-013's real wizard would persist for this channel), one recipient inserted at
+  `status='sent'` only (Telegram legitimately never reaches `delivered`/`read` — there's no receipt to advance it)
+  — `sent_count=1`, `delivered_count=0`, `read_count=0`. Visited both `/broadcasts/[id]` pages:
+    - WhatsApp: "Entregues" and "Lidas" stat cards both showed "1"/"100%" (unchanged from pre-story behavior); the
+      funnel showed "Entregue 1 (100%)"/"Lida 1 (100%)"; the recipient row showed real timestamps in the
+      Entregue/Lida columns. Confirms AC2 (sent/failed/replied — and, in this control case, delivered/read too —
+      are byte-identical to before for a channel that DOES report these).
+    - Telegram: "Entregues" and "Lidas" stat cards both showed "—"/"—" (no `0`, no `0%`); hovering (confirmed via
+      `document.querySelectorAll('div[title]')`) showed the new tooltip text "Este canal não reporta esta
+      métrica" on both cards; the funnel showed "Entregue —" / "Lida —" (no "(0%)"); "Enviadas" (1/100%) and
+      "Respondidas"/"Com falha" (0/0%, untouched — AC2) rendered normally; the recipient row's Entregue/Lida
+      columns showed "-" (unchanged, per-recipient behavior was already correct pre-story). Screenshot saved at
+      `/tmp/claude-1000/.../scratchpad/us014-telegram-report.png` (not in the repo). All seeded rows deleted
+      afterwards (`delete from accounts where id=...` cascades store/connections/contacts/broadcasts/
+      broadcast_recipients/profile; `delete from auth.users where id=...` separately) — verified 0 rows remain by
+      id/name pattern for accounts, broadcasts (`QA US-014%`) and connections (`qa-us014%`).
+- **Learnings for future iterations:**
+  - **`Broadcast` in `src/types/index.ts` was missing `connection_id` despite the column existing (NOT NULL) since
+    channel-abstraction's migration 051** — worth checking that type against the real `\d broadcasts` schema
+    before assuming any other DB column is already represented there; `template_name`/`template_language` are
+    still typed as required non-nullable strings even though migration 052/US-001 made them nullable in the DB
+    (not touched by this story, since nothing here needed to read them as possibly-null — flagging for whichever
+    future story next touches broadcast content display).
+  - Seeding a broadcast + recipients directly via SQL (not through the wizard) is a fast, valid way to
+    browser-verify a REPORT page in a specific counts state — the incremental aggregate trigger from migration 005
+    (`_bcast_cols_for_status`) recomputes `sent/delivered/read/replied/failed_count` automatically off whatever
+    `status` you insert the recipient at (e.g. `status='read'` bumps all three of sent/delivered/read by 1 in one
+    INSERT), so there's no need to also hand-set the `broadcasts.*_count` columns or walk a recipient through every
+    status transition.
+  - `useChannelProviders()` returning the FULL `Capabilities` object (confirmed again here, same finding as
+    US-011's note) means any future report/detail page that needs `deliveryStatus`/`readStatus`/any other raw
+    capability field should call the hook directly rather than routing through `composerCapabilities()`'s derived
+    subset, which does not expose these fields.
+---
+
+## 2026-09-22 - US-015 (final story, 15/15)
+- Implemented: no app code changes — this story is verification + docs. Ran the full quality gate from a clean
+  `.next/`: `npm run typecheck` clean, `npm run lint` 0 errors/41 warnings (matches baseline exactly), `TZ=UTC npm
+  test` 161 files/1955 tests passed (matches the US-014 baseline exactly — no new tests added by this story), and
+  separately re-ran the six US-003/US-005/US-008-lineage characterization files
+  (`broadcast-core.connection-resolution.test.ts`, `broadcast-core.provider.test.ts`,
+  `broadcast-core.credentials.test.ts`, `broadcast-core.disabled.test.ts`,
+  `broadcast-deliver.characterization.test.ts`, `broadcast-resume.test.ts`, `broadcast-core.test.ts` — 7 files/55
+  tests) explicitly to confirm none broke (AC6). `npm run build` succeeded (AC2), all routes including
+  `/api/v1/broadcasts` and `/broadcasts/[id]` compiled.
+- Docs (AC5): read `docs/public-api.md` and `CLAUDE.md` end to end looking for "WhatsApp-only" broadcast claims to
+  correct. Found the opposite kind of inaccuracy instead: US-004's own doc update had added `content_required (400
+  — neither template_name nor a free-message body given)` to the `POST /api/v1/broadcasts` section, but
+  `src/app/api/v1/broadcasts/route.ts` was (and still is) confirmed by reading it to only ever extract
+  `template_name` from the request body — there is no `message_text`/`message_media_url` field accepted by this
+  endpoint at all (free-message broadcasts only exist through the dashboard wizard's `/api/whatsapp/broadcast`
+  route, wired up in US-011-US-013). The doc implied a capability the public API doesn't have. Fixed: added an
+  explicit "this endpoint is currently template-only ... not yet exposed here" note right before the error-code
+  list, and reworded the `content_required` entry to "`template_name` missing" instead of the misleading
+  "neither ... nor a free-message body given". `CLAUDE.md` was read too — no broadcast-as-WhatsApp-only claim
+  found there (the one broadcast-core.ts/broadcast-resume.ts mention is channel-neutral); left unchanged.
+- Browser verification (dev-browser, containerized app — no rebuild needed, no app source changed this story):
+  seeded a throwaway QA account (`/auth/v1/signup`, auto-confirmed, logged in via the UI to trigger lazy
+  account/profile creation), one store, a `whatsapp_cloud` connection + an `APPROVED` template (`qa_promo_015`,
+  body `Hi {{1}}, your order is ready!`), a `telegram` connection (fake `external_id`, distinct from the account's
+  real bot — same UNIQUE-constraint safety net US-013 relied on), a phoned WhatsApp-eligible contact, and a
+  phoneless contact with a `telegram:chat_id` identity + a `conversations` row for the Telegram connection
+  (US-006-eligible). Deliberately did NOT seed `channel_connection_credentials` for either connection (same
+  established pattern as US-013 — the missing-credentials error is itself the clean, typed proof that addressing
+  resolved correctly before failing). Walked BOTH flows all the way through clicking "Enviar broadcast":
+  - Telegram/free-message (AC3): step 0 listed both connections with correct labels; step 1 rendered
+    `Step1ComposeMessage` (not the template picker) with the real `1024 caracteres` Telegram cap; step 2 showed 1
+    eligible (the Telegram contact) / the WhatsApp contact flagged "Ainda não conversou com este canal"; step 3
+    (`Personalizar`) rendered the free-message `{{1}}` token with a live preview; step 4 showed "Mensagem:"/the
+    text and "Idioma: —"; the confirm dialog used the template-free copy. After sending, the broadcast row
+    persisted `connection_id` (the Telegram one) + `message_text`, `template_name` null; the recipient failed with
+    `error_message = "Telegram connection has no bot token"` (confirmed via `select ... from broadcast_recipients`)
+    — NOT an addressing/identity error, confirming `loadRecipientIdentities`/`resolveTarget` found and used the
+    contact's Telegram identity correctly before hitting the (expected, in this environment) credentials wall. The
+    report page (`/broadcasts/[id]`) showed "—"/"—" for the Entregues/Lidas stat cards and funnel rows (no `0`, no
+    `0%`) — Enviadas/Respondidas/Com falha rendered normally (0/0%/100%) — exactly the US-014 behavior, now
+    confirmed on a broadcast that went through a REAL send attempt end to end, not just SQL-seeded rows.
+  - WhatsApp/template regression (AC4): step 1 rendered the unchanged `Step1ChooseTemplate` (picked
+    `qa_promo_015`); step 2 correctly inverted eligibility (WhatsApp contact eligible, Telegram contact flagged
+    "Sem identidade neste canal"); step 4 showed the original "Template:"/name + real language (`en_US`); the
+    confirm dialog used the original template-mentioning copy, byte-identical to pre-PRD wording. After sending,
+    the broadcast persisted `connection_id` (the WhatsApp one) + `template_name`, `message_text` empty; the
+    recipient failed with `error_message = "WhatsApp connection has no access token"` — the same class of clean
+    credentials failure as every prior story in this PRD. The report page showed real `0`/`0%` values (no dashes)
+    for every stat card and funnel row, confirming AC4's "continua funcionando exatamente como antes" literally,
+    not just by code review.
+  - Could NOT verify (recorded here, not faked, per this iteration's own carried-over instruction and every prior
+    story's identical carve-out): an actual message arriving at a real Telegram bot, or an actual delivery to a
+    real WhatsApp number. No real Meta/WhatsApp Business credentials have existed in this dev environment at any
+    point in this PRD; the account's one real, working Telegram bot is explicitly off-limits (this file's own
+    Codebase Patterns, reiterated by this iteration's own instructions); and creating a fresh throwaway Telegram
+    bot requires a human to message @BotFather, which this sandboxed session cannot do. AC3's literal "a conexão
+    real já configurada nesta sessão" phrasing was read as aspirational, not actionable here, given that hard
+    constraint — resolved in favor of the constraint (don't touch/impersonate the real account), consistent with
+    every prior story (US-006 onward) that hit the exact same wall.
+  - Incidental, not a defect of this feature (confirmed by reading `step3-personalize.tsx`): the step-3 preview
+    picks the single most-recently-created contact account-wide (`order('created_at', desc).limit(1)`), not one
+    filtered by the current audience/eligibility — pre-existing behavior, untouched by US-012's generalization (it
+    only changed which FIELDS the preview reads, template vs. free message, not which contact it picks). Noticed
+    because the Telegram contact (seeded second) showed in the preview during the WhatsApp flow too. Not
+    introduced by this PRD; not fixed here (out of scope for a verification-only story).
+  All seeded rows deleted afterwards (`delete from accounts where id=...` cascades store/connections/template/
+  contacts/identities/conversations/broadcasts/profile; `delete from auth.users where id=...` separately) —
+  verified 0 rows remain (accounts, auth.users, broadcasts by name, channel_connections by external_id).
+- Gap found and flagged, NOT fixed (real but out of this story's scope — a correctness question about a route
+  none of this PRD's stories asked to touch beyond US-004's original connection_id work, not a doc or test-suite
+  regression): `POST /api/v1/broadcasts` (the public API route) has no `connection_channel_mismatch` guard, unlike
+  the dashboard's `/api/whatsapp/broadcast` route which US-013 gave one. Since the public route only ever sends
+  `template_name` (never `message_text`), pointing it at a non-template connection (e.g. Telegram) would pass
+  `createBroadcast`'s content-exclusivity check (template_name present, hasMessage false) but then hit
+  `deliverBroadcast`'s non-template branch with an EMPTY `messageText` — silently attempting to send a blank
+  message instead of a clear typed rejection. Not exercised by this story's own AC (which verifies the dashboard
+  wizard, not the public API, for both channels) and not something any story in this PRD's scope named explicitly
+  for the public route. Left as a known gap for a future story/PRD, not patched here to stay surgical.
+- Files changed: `docs/public-api.md`, `.projects/broadcast-multi-channel/prd.json`,
+  `.projects/broadcast-multi-channel/progress.txt`.
+- **Learnings for future iterations (none — this is the last story of this PRD):**
+  - If this PRD is ever reopened (e.g. a follow-up "broadcast multi-channel v2"), the two open items worth
+    starting from are: (1) the `Broadcast` TS type's `template_name`/`template_language` still typed
+    required/non-nullable despite the DB allowing null since migration 052 (flagged by US-014, still open), and
+    (2) the `POST /api/v1/broadcasts` `connection_channel_mismatch` gap noted above (never flagged before this
+    story, since no earlier story browser/route-tested the public API against a non-template connection).
+---

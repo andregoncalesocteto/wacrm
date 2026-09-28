@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { whatsappConnectionRow } from '@/lib/channels/credentials-admin.fake';
 
-import { BroadcastError } from './broadcast-core';
+import { BroadcastError, deliverBroadcast } from './broadcast-core';
 import {
   claimBroadcastDelivery,
   planBroadcastResume,
@@ -10,23 +10,34 @@ import {
   RESUME_MAX_PER_REQUEST,
 } from './broadcast-resume';
 
-vi.mock('@/lib/whatsapp/encryption', () => ({
-  decrypt: (v: string) => `decrypted:${v}`,
+// Connection resolution now goes through the same generic
+// getConnectionById/getConnectionCredentials idiom createBroadcast uses
+// (US-004/US-008) — mocked directly, like
+// broadcast-core.connection-resolution.test.ts does, rather than faking the
+// `channel_connections` query shape.
+const h = vi.hoisted(() => ({
+  getConnectionById: vi.fn(),
+  getConnectionCredentials: vi.fn(),
+}));
+vi.mock('@/lib/channels/connections', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/channels/connections')>()),
+  getConnectionById: h.getConnectionById,
+  getConnectionCredentials: h.getConnectionCredentials,
 }));
 
-// Credentials now come from channel_connection_credentials (US-015): serve the
-// same "tok" the removed legacy config table carried.
-vi.mock('@/lib/channels/admin-client', async () => {
-  const { fakeCredentialsAdmin } = await import(
-    '@/lib/channels/credentials-admin.fake'
-  );
-  return {
-    supabaseAdmin: () =>
-      fakeCredentialsAdmin(() => ({
-        secrets_encrypted: 'tok',
-        secrets_format: 'wa_token_v0',
-      })),
-  };
+// Real telegram provider (registered via registerBuiltinProviders inside
+// deliverBroadcast) for the Telegram resume test below — only the Bot API
+// call at the bottom is stubbed, same as broadcast-core.provider.test.ts.
+const tg = vi.hoisted(() => ({ callBotApi: vi.fn() }));
+vi.mock('@/lib/channels/providers/telegram/api', () => ({
+  callBotApi: tg.callBotApi,
+}));
+
+beforeEach(() => {
+  h.getConnectionById.mockReset();
+  h.getConnectionCredentials.mockReset();
+  h.getConnectionById.mockResolvedValue(whatsappConnectionRow('acct-1', 'pn-1'));
+  h.getConnectionCredentials.mockResolvedValue({ access_token: 'decrypted:tok' });
 });
 
 // ============================================================
@@ -131,7 +142,6 @@ describe('releaseBroadcastDelivery', () => {
 interface PlanFixture {
   broadcast?: Record<string, unknown> | null;
   recipients?: Record<string, unknown>[];
-  config?: Record<string, unknown> | null;
   templates?: Record<string, unknown>[];
 }
 
@@ -161,29 +171,12 @@ function planDb(fx: PlanFixture, writes: PlanWrites = {}): SupabaseClient {
           data: fx.broadcast === undefined ? null : fx.broadcast,
           error: null,
         }),
-        single: async () => ({
-          data: fx.config === undefined ? null : fx.config,
-          error: null,
-        }),
         then: (resolve: (r: { data: unknown[]; error: null }) => unknown) => {
           if (table === 'broadcast_recipients') {
             return resolve({ data: fx.recipients ?? [], error: null });
           }
           if (table === 'message_templates') {
             return resolve({ data: fx.templates ?? [], error: null });
-          }
-          if (table === 'channel_connections') {
-            return resolve({
-              data: fx.config
-                ? [
-                    whatsappConnectionRow(
-                      'acct-1',
-                      String(fx.config.phone_number_id),
-                    ),
-                  ]
-                : [],
-              error: null,
-            });
           }
           return resolve({ data: [], error: null });
         },
@@ -197,9 +190,8 @@ const BROADCAST = {
   id: 'bc-1',
   template_name: 'order_update',
   template_language: 'en_US',
+  connection_id: 'conn-acct-1',
 };
-
-const CONFIG = { phone_number_id: 'pn-1', access_token: 'tok' };
 
 function recipient(
   id: string,
@@ -208,6 +200,7 @@ function recipient(
 ) {
   return {
     id,
+    contact_id: `c-${id}`,
     template_params: params,
     contact: phone ? { phone } : null,
   };
@@ -220,7 +213,6 @@ describe('planBroadcastResume', () => {
       planDb(
         {
           broadcast: BROADCAST,
-          config: CONFIG,
           recipients: [
             recipient('r1', '+15551234567', ['A123', 'Friday']),
             recipient('r2', '+15559876543', ['B456', 'Monday']),
@@ -240,11 +232,13 @@ describe('planBroadcastResume', () => {
     expect(plan.planned).toEqual([
       {
         recipientRowId: 'r1',
+        contactId: 'c-r1',
         phone: '15551234567',
         params: ['A123', 'Friday'],
       },
       {
         recipientRowId: 'r2',
+        contactId: 'c-r2',
         phone: '15559876543',
         params: ['B456', 'Monday'],
       },
@@ -260,7 +254,6 @@ describe('planBroadcastResume', () => {
       planDb(
         {
           broadcast: BROADCAST,
-          config: CONFIG,
           recipients: [recipient('r1', '+15551234567')],
         },
         failedWrites,
@@ -276,7 +269,6 @@ describe('planBroadcastResume', () => {
       planDb(
         {
           broadcast: BROADCAST,
-          config: CONFIG,
           recipients: [recipient('r1', '+15551234567')],
         },
         allWrites,
@@ -292,7 +284,6 @@ describe('planBroadcastResume', () => {
     const { plan } = await planBroadcastResume(
       planDb({
         broadcast: BROADCAST,
-        config: CONFIG,
         recipients: [
           // Rows created before migration 038 carry NULL.
           recipient('r1', '+15551234567', null),
@@ -312,7 +303,6 @@ describe('planBroadcastResume', () => {
       planDb(
         {
           broadcast: BROADCAST,
-          config: CONFIG,
           recipients: [
             recipient('r1', '+15551234567'),
             recipient('r2', null),
@@ -339,7 +329,7 @@ describe('planBroadcastResume', () => {
       recipient(`r${i}`, '+1555000' + String(i).padStart(4, '0')),
     );
     const { plan, remaining } = await planBroadcastResume(
-      planDb({ broadcast: BROADCAST, config: CONFIG, recipients: many }),
+      planDb({ broadcast: BROADCAST, recipients: many }),
       'acct-1',
       'bc-1',
       'pending',
@@ -363,7 +353,7 @@ describe('planBroadcastResume', () => {
   it('refuses when there is nothing outstanding', async () => {
     await expect(
       planBroadcastResume(
-        planDb({ broadcast: BROADCAST, config: CONFIG, recipients: [] }),
+        planDb({ broadcast: BROADCAST, recipients: [] }),
         'acct-1',
         'bc-1',
         'failed',
@@ -375,7 +365,6 @@ describe('planBroadcastResume', () => {
     const { plan } = await planBroadcastResume(
       planDb({
         broadcast: { ...BROADCAST, template_language: 'en_US' },
-        config: CONFIG,
         recipients: [recipient('r1', '+15551234567')],
         templates: [
           {
@@ -393,5 +382,175 @@ describe('planBroadcastResume', () => {
       'pending',
     );
     expect(plan.templateRow?.language).toBe('en');
+  });
+});
+
+// ============================================================
+// Generic resume — a free-message broadcast on a channel without the
+// template capability (US-008: broadcast-resume.ts no longer assumes
+// WhatsApp).
+// ============================================================
+
+interface TelegramResumeFixture {
+  broadcast: Record<string, unknown>;
+  recipients: Record<string, unknown>[];
+  /** contact_id -> contact_identities rows (US-009: deliverBroadcast's non-template target resolution). */
+  identities?: Record<string, { kind: string; external_id: string }[]>;
+}
+
+function telegramResumeDb(fx: TelegramResumeFixture) {
+  const recipientUpdates: { id: string; patch: Record<string, unknown> }[] =
+    [];
+  let broadcastUpdate: Record<string, unknown> | null = null;
+
+  const db = {
+    from(table: string) {
+      if (table === 'broadcasts') {
+        const b: Record<string, unknown> = {
+          select: () => b,
+          eq: () => b,
+          maybeSingle: async () => ({ data: fx.broadcast, error: null }),
+          update: (patch: Record<string, unknown>) => {
+            broadcastUpdate = patch;
+            return b;
+          },
+        };
+        return b;
+      }
+      if (table === 'broadcast_recipients') {
+        let isCountQuery = false;
+        let pendingPatch: Record<string, unknown> | null = null;
+        const b: Record<string, unknown> = {
+          select: (_cols?: string, opts?: { head?: boolean }) => {
+            isCountQuery = !!opts?.head;
+            return b;
+          },
+          eq: (col: string, val: unknown) => {
+            if (col === 'id' && pendingPatch) {
+              recipientUpdates.push({ id: val as string, patch: pendingPatch });
+              pendingPatch = null;
+            }
+            return b;
+          },
+          in: () => b,
+          order: () => b,
+          update: (patch: Record<string, unknown>) => {
+            pendingPatch = patch;
+            return b;
+          },
+          then: (resolve: (v: unknown) => void) => {
+            if (isCountQuery) return resolve({ count: 0, error: null });
+            return resolve({ data: fx.recipients, error: null });
+          },
+        };
+        return b;
+      }
+      // deliverBroadcast's non-template target resolution (US-009): each
+      // recipient's contact_identities, looked up by contact_id.
+      if (table === 'contact_identities') {
+        let contactId: string | undefined;
+        const b: Record<string, unknown> = {
+          select: () => b,
+          eq: (col: string, val: unknown) => {
+            if (col === 'contact_id') contactId = val as string;
+            return b;
+          },
+          then: (resolve: (v: unknown) => void) =>
+            resolve({ data: fx.identities?.[contactId ?? ''] ?? [] }),
+        };
+        return b;
+      }
+      throw new Error(`unexpected table: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  return {
+    db,
+    recipientUpdates,
+    finalBroadcastUpdate: () => broadcastUpdate,
+  };
+}
+
+describe('planBroadcastResume + deliverBroadcast — Telegram resume (US-008)', () => {
+  it('resumes an abandoned Telegram broadcast: delivers the pending recipients and finalizes the campaign', async () => {
+    const telegramConn = {
+      ...whatsappConnectionRow('acct-1', '555000111'),
+      id: 'conn-tg',
+      channel_type: 'telegram',
+    };
+    h.getConnectionById.mockResolvedValue(telegramConn);
+    h.getConnectionCredentials.mockResolvedValue({ bot_token: 'tg-tok' });
+    tg.callBotApi
+      .mockResolvedValueOnce({ message_id: 10, chat: { id: 555 } })
+      .mockResolvedValueOnce({ message_id: 11, chat: { id: 556 } });
+
+    // A free-message broadcast (US-005): no template_name, connection_id
+    // already recorded (US-004), some recipients still pending.
+    const broadcast = {
+      id: 'bc-tg',
+      template_name: null,
+      template_language: null,
+      connection_id: 'conn-tg',
+      message_text: 'Hi {{1}}, welcome!',
+      message_media_url: null,
+    };
+    // r2 is an eligible Telegram contact with phone='' — the AC's literal
+    // case: it must NOT be dropped as "unsendable" (that phone check is
+    // WhatsApp/template-only now) and its target must resolve from
+    // contact_identities, not from `contacts.phone` (US-009).
+    const recipients = [
+      recipient('r1', '+15550001111', ['Maria']),
+      { id: 'r2', contact_id: 'c-r2', template_params: ['João'], contact: { phone: '' } },
+    ];
+
+    const { db, recipientUpdates, finalBroadcastUpdate } = telegramResumeDb({
+      broadcast,
+      recipients,
+      identities: {
+        'c-r1': [{ kind: 'telegram:chat_id', external_id: '555' }],
+        'c-r2': [{ kind: 'telegram:chat_id', external_id: '556' }],
+      },
+    });
+
+    const { plan } = await planBroadcastResume(db, 'acct-1', 'bc-tg', 'pending');
+
+    // resolveTemplateRow was never called (no message_templates table wired
+    // into telegramResumeDb — it would throw "unexpected table" if it had
+    // been), matching the AC: only called when template_name IS NOT NULL.
+    expect(plan.templateName).toBe('');
+    expect(plan.templateRow).toBeNull();
+    expect(plan.messageText).toBe('Hi {{1}}, welcome!');
+    expect(plan.connection.channel_type).toBe('telegram');
+
+    await deliverBroadcast(db, plan);
+
+    expect(tg.callBotApi).toHaveBeenCalledTimes(2);
+    // r2's chat_id came from contact_identities (its resolved target), not
+    // from `contacts.phone` — which was '' and would otherwise fail to
+    // resolve anything (US-009).
+    expect(tg.callBotApi).toHaveBeenCalledWith(
+      'tg-tok',
+      'sendMessage',
+      expect.objectContaining({ chat_id: '556' })
+    );
+    expect(recipientUpdates).toContainEqual({
+      id: 'r1',
+      patch: expect.objectContaining({
+        status: 'sent',
+        external_message_id: '555:10',
+      }),
+    });
+    expect(recipientUpdates).toContainEqual({
+      id: 'r2',
+      patch: expect.objectContaining({
+        status: 'sent',
+        external_message_id: '556:11',
+      }),
+    });
+
+    // deliverBroadcast finalizes in-line (finalizeBroadcastStatus, called
+    // once every recipient is stamped) — the campaign flips out of
+    // 'sending' rather than being left abandoned again.
+    expect(finalBroadcastUpdate()).toMatchObject({ status: 'sent' });
   });
 });

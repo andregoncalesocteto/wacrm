@@ -41,6 +41,7 @@ import {
   getRecipientStatus,
 } from '@/lib/broadcast-status';
 import { useFormatter, useTranslations } from 'next-intl';
+import { useChannelProviders } from '@/hooks/use-channel-providers';
 
 interface StatCardProps {
   label: string;
@@ -48,20 +49,40 @@ interface StatCardProps {
   total: number;
   icon: React.ReactNode;
   color: string;
+  /** True when the connection's channel doesn't report this metric at all
+   * (e.g. Telegram has no delivery/read receipts) — shows "—" instead of a
+   * count that would always read 0 and look like every send failed. */
+  unavailable?: boolean;
+  unavailableHint?: string;
 }
 
-function StatCard({ label, value, total, icon, color }: StatCardProps) {
+function StatCard({
+  label,
+  value,
+  total,
+  icon,
+  color,
+  unavailable,
+  unavailableHint,
+}: StatCardProps) {
   const format = useFormatter();
   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div
+      className="rounded-xl border border-border bg-card p-4"
+      title={unavailable ? unavailableHint : undefined}
+    >
       <div className="flex items-center justify-between">
         <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${color}`}>
           {icon}
         </div>
-        <span className="text-xs text-muted-foreground">{`${pct}%`}</span>
+        <span className="text-xs text-muted-foreground">
+          {unavailable ? '—' : `${pct}%`}
+        </span>
       </div>
-      <p className="mt-3 text-2xl font-bold text-foreground">{format.number(value)}</p>
+      <p className="mt-3 text-2xl font-bold text-foreground">
+        {unavailable ? '—' : format.number(value)}
+      </p>
       <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
@@ -71,6 +92,7 @@ interface FunnelStep {
   label: string;
   value: number;
   color: string;
+  unavailable?: boolean;
 }
 
 /**
@@ -87,7 +109,9 @@ function FunnelChart({ steps }: { steps: FunnelStep[] }) {
       <h3 className="mb-4 text-sm font-medium text-foreground">{t('funnel')}</h3>
       <div className="space-y-2">
         {steps.map((step) => {
-          const pctOfMax = Math.max(5, Math.round((step.value / max) * 100));
+          const pctOfMax = step.unavailable
+            ? 5
+            : Math.max(5, Math.round((step.value / max) * 100));
           const pctOfSent =
             steps[0].value > 0
               ? Math.round((step.value / steps[0].value) * 100)
@@ -103,10 +127,16 @@ function FunnelChart({ steps }: { steps: FunnelStep[] }) {
                   style={{ width: `${pctOfMax}%` }}
                 />
                 <span className="absolute inset-0 flex items-center px-3 text-xs font-medium text-foreground">
-                  {format.number(step.value)}
-                  <span className="ml-2 text-muted-foreground/80">
-                    {`(${pctOfSent}%)`}
-                  </span>
+                  {step.unavailable ? (
+                    '—'
+                  ) : (
+                    <>
+                      {format.number(step.value)}
+                      <span className="ml-2 text-muted-foreground/80">
+                        {`(${pctOfSent}%)`}
+                      </span>
+                    </>
+                  )}
                 </span>
               </div>
             </div>
@@ -157,6 +187,9 @@ export default function BroadcastDetailPage() {
 
   const [broadcast, setBroadcast] = useState<Broadcast | null>(null);
   const [recipients, setRecipients] = useState<BroadcastRecipient[]>([]);
+  const [connectionChannelType, setConnectionChannelType] = useState<
+    string | null
+  >(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<RecipientStatus | 'all'>(
@@ -167,6 +200,7 @@ export default function BroadcastDetailPage() {
   const [resumingScope, setResumingScope] = useState<
     'pending' | 'failed' | null
   >(null);
+  const providers = useChannelProviders();
 
   const fetchData = useCallback(async () => {
     try {
@@ -180,6 +214,14 @@ export default function BroadcastDetailPage() {
 
       if (bcError) throw bcError;
       setBroadcast(bc);
+
+      const { data: conn, error: connError } = await supabase
+        .from('channel_connections')
+        .select('channel_type')
+        .eq('id', bc.connection_id)
+        .maybeSingle();
+      if (connError) throw connError;
+      setConnectionChannelType(conn?.channel_type ?? null);
 
       const { data: recs, error: recsError } = await supabase
         .from('broadcast_recipients')
@@ -330,10 +372,34 @@ export default function BroadcastDetailPage() {
   // than leaving a permanently pulsing "sending" badge.
   const isStalled = broadcast.status === 'sending' && pendingCount > 0;
 
+  // Not every channel reports delivery/read receipts (Telegram's Bot API has
+  // neither) — while the connection's channel is unknown, assume it reports
+  // both rather than flashing "—" for the common (WhatsApp) case.
+  const connectionCapabilities = providers?.find(
+    (p) => p.type === connectionChannelType,
+  )?.capabilities;
+  const deliveryUnavailable = connectionCapabilities
+    ? !connectionCapabilities.deliveryStatus
+    : false;
+  const readUnavailable = connectionCapabilities
+    ? !connectionCapabilities.readStatus
+    : false;
+  const unavailableHint = t('stats.unavailableHint');
+
   const funnelSteps: FunnelStep[] = [
     { label: t('stats.sent'), value: broadcast.sent_count, color: 'bg-primary' },
-    { label: t('stats.delivered'), value: broadcast.delivered_count, color: 'bg-teal-500' },
-    { label: t('stats.read'), value: broadcast.read_count, color: 'bg-blue-500' },
+    {
+      label: t('stats.delivered'),
+      value: broadcast.delivered_count,
+      color: 'bg-teal-500',
+      unavailable: deliveryUnavailable,
+    },
+    {
+      label: t('stats.read'),
+      value: broadcast.read_count,
+      color: 'bg-blue-500',
+      unavailable: readUnavailable,
+    },
     { label: t('stats.replied'), value: broadcast.replied_count, color: 'bg-indigo-500' },
   ];
 
@@ -484,6 +550,8 @@ export default function BroadcastDetailPage() {
           total={broadcast.total_recipients}
           icon={<CheckCheck className="h-4 w-4" />}
           color="bg-teal-500/10 text-teal-400"
+          unavailable={deliveryUnavailable}
+          unavailableHint={unavailableHint}
         />
         <StatCard
           label={t('stats.read')}
@@ -491,6 +559,8 @@ export default function BroadcastDetailPage() {
           total={broadcast.total_recipients}
           icon={<Eye className="h-4 w-4" />}
           color="bg-blue-500/10 text-blue-400"
+          unavailable={readUnavailable}
+          unavailableHint={unavailableHint}
         />
         <StatCard
           label={t('stats.replied')}

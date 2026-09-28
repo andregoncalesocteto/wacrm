@@ -170,7 +170,7 @@ alcançar de verdade.
       `connection_id` específico (não basta ter identidade do canal em
       geral — uma conta pode ter mais de uma conexão do mesmo tipo).
 - [ ] `step2-select-audience.tsx` passa a consultar/filtrar pela conexão
-      escolhida no passo 0 (US-009), não mais por telefone/identidade
+      escolhida no passo 0 (US-010), não mais por telefone/identidade
       WhatsApp fixo.
 - [ ] Teste cobrindo o caso de duas conexões Telegram na mesma conta: um
       contato que só conversou com o Bot A não aparece elegível pro
@@ -213,7 +213,43 @@ abandonado funcione pra qualquer canal, não só WhatsApp.
       `pending`) entrega os que faltam e finaliza a campanha.
 - [ ] Typecheck e testes passam.
 
-### US-009: Wizard — passo 0, escolher conexão
+### US-009: Endereçamento do destinatário do broadcast resolve por canal
+
+**Description:** As a developer, preciso que o alvo de envio de cada
+destinatário do broadcast seja resolvido pelo `resolveTarget` do provider a
+partir das identidades do contato, não hardcoded para telefone/WhatsApp —
+senão um broadcast num canal sem template manda para o endereço errado, ou o
+contato nem entra na lista por ter `phone` vazio.
+
+> Inserida pelo orquestrador após a US-008: `deliverBroadcast` hardcoda
+> `{kind: WA_PHONE_KIND, address: recipient.phone}` para **qualquer** canal —
+> nem a US-005 (mensagem livre) nem a US-006 (elegibilidade) fecharam essa
+> lacuna. Corrigir antes de construir mais UI em cima (US-010 em diante) que
+> pareceria funcionar mas mandaria pro lugar errado num canal sem template.
+
+**Acceptance Criteria:**
+- [ ] `deliverBroadcast`/`createBroadcast` deixam de assumir universalmente
+      `contacts.phone`; para uma conexão com `capabilities.initiate !==
+      'template'`, o alvo de cada destinatário elegível é resolvido via
+      `provider.resolveTarget(identities)` (o mesmo método que `send.ts` já
+      usa), a partir do embed `contact_identities` do contato — não
+      `WA_PHONE_KIND`/`recipient.phone`.
+- [ ] Caminho WhatsApp (`capabilities.initiate === 'template'`) continua
+      resolvendo o alvo por telefone exatamente como hoje — zero mudança de
+      comportamento (RNF-01).
+- [ ] Um contato elegível para broadcast num canal sem template (US-006: tem
+      conversa existente naquela conexão) mas com `phone=''` deixa de ser
+      descartado silenciosamente por falta de telefone — o alvo dele é
+      resolvido pela identidade do canal em vez disso.
+- [ ] `broadcast-resume.ts` herda a mesma resolução (reaproveita
+      `deliverBroadcast`) — confirmar com um teste, não assumir.
+- [ ] Novo teste: um contato elegível para Telegram com telefone vazio tem o
+      alvo (chat_id) resolvido corretamente e o envio funciona.
+- [ ] Testes de caracterização existentes do caminho WhatsApp (US-003,
+      US-005) continuam passando sem alteração de asserts.
+- [ ] Typecheck e testes passam.
+
+### US-010: Wizard — passo 0, escolher conexão
 
 **Description:** As a agent/admin+, ao criar um broadcast, primeiro escolho
 por qual conexão ele vai sair.
@@ -228,11 +264,11 @@ por qual conexão ele vai sair.
 - [ ] Se a conta não tem nenhuma conexão conectada, o wizard mostra estado
       vazio orientando a ir em Configurações → Canais, sem deixar avançar.
 - [ ] A conexão escolhida fica no estado do wizard e decide o passo
-      seguinte (US-010 vs. o `step1-choose-template.tsx` já existente).
+      seguinte (US-011 vs. o `step1-choose-template.tsx` já existente).
 - [ ] Verify in browser using dev-browser skill.
 - [ ] Typecheck passes.
 
-### US-010: Wizard — passo 1 alternativo, compor mensagem livre
+### US-011: Wizard — passo 1 alternativo, compor mensagem livre
 
 **Description:** As a agent/admin+, ao escolher uma conexão sem template
 (ex. Telegram), componho a mensagem do broadcast diretamente, em vez de
@@ -256,13 +292,13 @@ escolher um template aprovado.
 - [ ] Verify in browser using dev-browser skill.
 - [ ] Typecheck passes.
 
-### US-011: Wizard — passo 3 "Personalizar" generalizado
+### US-012: Wizard — passo 3 "Personalizar" generalizado
 
 **Description:** As a agent/admin+, mapeio as variáveis da mensagem livre
 pros campos do contato do mesmo jeito que já faço pra template.
 
 **Acceptance Criteria:**
-- [ ] `step3-personalize.tsx` lê os tokens da mensagem livre (US-010)
+- [ ] `step3-personalize.tsx` lê os tokens da mensagem livre (US-011)
       quando não há template, em vez de assumir sempre `template.variables`.
 - [ ] O mapeamento (estático / campo / campo customizado) e a prévia
       (`previewFieldValue`) funcionam igual pros dois casos.
@@ -271,7 +307,7 @@ pros campos do contato do mesmo jeito que já faço pra template.
 - [ ] Verify in browser using dev-browser skill.
 - [ ] Typecheck passes.
 
-### US-012: Wizard — passo 4 envia com o conteúdo condicional
+### US-013: Wizard — passo 4 envia com o conteúdo condicional
 
 **Description:** As a agent/admin+, ao confirmar o envio, o broadcast sai
 pela conexão e com o conteúdo que escolhi nos passos anteriores.
@@ -292,7 +328,7 @@ pela conexão e com o conteúdo que escolhi nos passos anteriores.
 - [ ] Verify in browser using dev-browser skill.
 - [ ] Typecheck passes.
 
-### US-013: Relatório — métricas indisponíveis por canal
+### US-014: Relatório — métricas indisponíveis por canal
 
 **Description:** As a agent/admin+, ao ver o relatório de um broadcast
 Telegram, não vejo "0 entregues"/"0 lidos" como se tivesse falhado — vejo
@@ -309,7 +345,7 @@ que o canal não reporta isso.
 - [ ] Verify in browser using dev-browser skill.
 - [ ] Typecheck passes.
 
-### US-014: Verificação fim a fim + documentação
+### US-015: Verificação fim a fim + documentação
 
 **Description:** As a developer, confirmo que a feature funciona de ponta a
 ponta nos dois canais antes de considerar pronto.
@@ -332,21 +368,21 @@ ponta nos dois canais antes de considerar pronto.
 ## Functional Requirements
 
 - FR-1: O wizard de broadcast exige escolher uma conexão específica antes
-  de compor conteúdo (US-009).
+  de compor conteúdo (US-010).
 - FR-2: O passo de conteúdo se adapta a `capabilities.initiate` da conexão
-  escolhida — template (US existente) ou mensagem livre (US-010).
-- FR-3: O mapeamento de variáveis (US-011) funciona igual pros dois tipos
+  escolhida — template (US existente) ou mensagem livre (US-011).
+- FR-3: O mapeamento de variáveis (US-012) funciona igual pros dois tipos
   de conteúdo.
 - FR-4: Elegibilidade de audiência é calculada pela conexão escolhida,
   ramificando por `capabilities.initiate` (US-006), com motivo de
   inelegibilidade específico por canal (US-007).
 - FR-5: Validação de conteúdo usa os limites do provider escolhido,
-  bloqueando o avanço do wizard se excedido (US-010).
+  bloqueando o avanço do wizard se excedido (US-011).
 - FR-6: Envio (inicial e resume) usa `provider.send`/`getConnectionCredentials`/
   `getProvider` — nenhum caminho hardcoded pra WhatsApp (US-004, US-005,
   US-008).
 - FR-7: Relatório marca métricas não suportadas pelo canal como
-  indisponíveis, não zero (US-013).
+  indisponíveis, não zero (US-014).
 - FR-8: `broadcast_recipients.external_message_id` substitui
   `whatsapp_message_id` na leitura/escrita da aplicação (`whatsapp_message_id`
   continua existindo na tabela até uma história futura de contração)
@@ -373,9 +409,9 @@ ponta nos dois canais antes de considerar pronto.
 
 - Reaproveitar `ConversationScopeBadge`/`Settings.channels.type` (já
   existentes na UI do inbox) pro rótulo de canal no dropdown de conexão
-  (US-009).
+  (US-010).
 - Reaproveitar o componente de upload de mídia já usado no header de
-  template (US-010/US-011) — não criar um novo.
+  template (US-011/US-012) — não criar um novo.
 - Seguir o mesmo princípio já corrigido nas Flows para mensagens de
   validação: nunca citar o nome de um canal que não é o escolhido.
 

@@ -15,7 +15,7 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -31,7 +31,7 @@
         "Typecheck e testes passam"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -45,7 +45,7 @@
         "Typecheck e testes passam"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -62,7 +62,7 @@
         "Typecheck e testes passam"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -79,7 +79,7 @@
         "Typecheck e testes passam"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -90,14 +90,14 @@
         "isBroadcastEligible/partitionBroadcastAudience/fetchIneligibleContacts passam a receber a conexão (ou pelo menos channel_type + connection_id + capabilities.initiate) em vez de assumir WhatsApp",
         "capabilities.initiate === 'template': elegível = tem identidade daquele canal (qualquer uma) — comportamento idêntico ao de hoje pro WhatsApp",
         "capabilities.initiate !== 'template': elegível = existe uma conversations row para aquele contact_id E aquele connection_id específico (não basta ter identidade do canal em geral — uma conta pode ter mais de uma conexão do mesmo tipo)",
-        "step2-select-audience.tsx passa a consultar/filtrar pela conexão escolhida no passo 0 (US-009), não mais por telefone/identidade WhatsApp fixo",
+        "step2-select-audience.tsx passa a consultar/filtrar pela conexão escolhida no passo 0 (US-010), não mais por telefone/identidade WhatsApp fixo",
         "Teste cobrindo o caso de duas conexões Telegram na mesma conta: um contato que só conversou com o Bot A não aparece elegível pro broadcast do Bot B",
         "Testes existentes de elegibilidade WhatsApp continuam passando com os mesmos resultados",
         "Typecheck e testes passam"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "step2/step4/use-broadcast-sending pass a connection resolved by an auto-lookup of the account's WhatsApp connection (mirroring what use-broadcast-sending already did at send time) since step0 (US-010) doesn't exist yet — real user selection is US-010's job, this story only made the eligibility path connection-aware and wired it end to end."
     },
     {
       "id": "US-007",
@@ -111,8 +111,8 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Verified in browser only the capabilities.initiate === 'template' branch ('sem identidade neste canal') since /broadcasts/new (US-006's note, still true) hardcodes channelType: 'whatsapp_cloud'/initiate: 'template' until US-010's real connection picker lands — the initiate !== 'template' branch ('ainda não conversou com este canal') is implemented and reachable via the same ternary/connection.initiate check but has no UI path to browser-verify yet."
     },
     {
       "id": "US-008",
@@ -126,27 +126,44 @@
         "Typecheck e testes passam"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
       "id": "US-009",
+      "title": "Endereçamento do destinatário do broadcast resolve por canal",
+      "description": "As a developer, preciso que o alvo de envio de cada destinatário do broadcast seja resolvido pelo resolveTarget do provider a partir das identidades do contato, não hardcoded para telefone/WhatsApp — senão um broadcast num canal sem template manda para o endereço errado, ou o contato nem entra na lista por ter phone vazio.",
+      "acceptanceCriteria": [
+        "deliverBroadcast/createBroadcast param de destinatário deixa de assumir universalmente contacts.phone; para uma conexão com capabilities.initiate !== 'template', o alvo de cada destinatário elegível é resolvido via provider.resolveTarget(identities) (o mesmo método que send.ts já usa), a partir do embed contact_identities do contato — não WA_PHONE_KIND/recipient.phone",
+        "Caminho WhatsApp (capabilities.initiate === 'template') continua resolvendo o alvo por telefone exatamente como hoje — zero mudança de comportamento (RNF-01)",
+        "Um contato elegível para broadcast num canal sem template (US-006: tem conversa existente naquela conexão) mas com phone='' deixa de ser descartado silenciosamente por falta de telefone — o alvo dele é resolvido pela identidade do canal em vez disso",
+        "broadcast-resume.ts herda a mesma resolução (reaproveita deliverBroadcast) — confirmar com um teste, não assumir",
+        "Novo teste: um contato elegível para Telegram com phone vazio tem o alvo (chat_id) resolvido corretamente e o envio funciona",
+        "Testes de caracterização existentes do caminho WhatsApp (US-003, US-005) continuam passando sem alteração de asserts",
+        "Typecheck e testes passam"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Adicionada pelo orquestrador após a US-008: a US-005 (mensagem livre) e a US-006 (elegibilidade) ficaram funcionalmente completas, mas nenhuma delas corrigiu que deliverBroadcast hardcoda {kind: WA_PHONE_KIND, address: recipient.phone} pra QUALQUER canal — um gap real de planejamento (o design.md assumiu 'resolveTarget(recipient, connection) — já existe por provider' sem verificar que deliverBroadcast nunca chamava esse método). Sem esta história, um broadcast Telegram de verdade falha ou manda pro alvo errado mesmo com toda a UI funcionando. Escopo confirmado: o contrato de recipients da API pública (POST /api/v1/broadcasts, 'to': phone) NÃO mudou nesta história — continua fora de escopo, documentado como tal em docs/public-api.md. O que mudou é a resolução do ALVO de envio dentro de deliverBroadcast/broadcast-resume.ts, que agora não depende mais de recipient.phone para canais sem template."
+    },
+    {
+      "id": "US-010",
       "title": "Wizard — passo 0, escolher conexão",
       "description": "As a agent/admin+, ao criar um broadcast, primeiro escolho por qual conexão ele vai sair.",
       "acceptanceCriteria": [
         "Novo passo antes do atual passo 1: dropdown listando channel_connections da conta com status = 'connected' e disabled_at IS NULL, nome no formato 'Canal — Loja' (reaproveita badge/label já usados no inbox)",
         "Se a conta só tem uma conexão elegível, ela vem pré-selecionada mas o passo continua visível (consistência, sem esconder passo condicionalmente)",
         "Se a conta não tem nenhuma conexão conectada, o wizard mostra estado vazio orientando a ir em Configurações → Canais, sem deixar avançar",
-        "A conexão escolhida fica no estado do wizard e decide o passo seguinte (US-010 vs. o step1-choose-template.tsx já existente)",
+        "A conexão escolhida fica no estado do wizard e decide o passo seguinte (US-011 vs. o step1-choose-template.tsx já existente)",
         "Verify in browser using dev-browser skill",
         "Typecheck passes"
       ],
-      "priority": 9,
-      "passes": false,
-      "notes": ""
+      "priority": 10,
+      "passes": true,
+      "notes": "step1-choose-template.tsx (index 1) still renders unconditionally regardless of the chosen connection's capabilities.initiate — a non-template connection (e.g. Telegram) picked at step 0 currently still advances into the template-choosing step. That branch (step1-compose-message.tsx vs. step1-choose-template.tsx) is explicitly US-011's job per this story's own AC and design.md's component table; not implemented here to stay surgical. Verified in browser: empty state (no connected channel) blocks advance and links to Settings → Channels; single eligible connection pre-selects while the step stays visible; two eligible connections (WhatsApp + Telegram, same store) show neither pre-selected, list as 'Canal — Loja', block advance until chosen, and the pick survives navigating back from step 1."
     },
     {
-      "id": "US-010",
+      "id": "US-011",
       "title": "Wizard — passo 1 alternativo, compor mensagem livre",
       "description": "As a agent/admin+, ao escolher uma conexão sem template (ex. Telegram), componho a mensagem do broadcast diretamente, em vez de escolher um template aprovado.",
       "acceptanceCriteria": [
@@ -157,27 +174,27 @@
         "Verify in browser using dev-browser skill",
         "Typecheck passes"
       ],
-      "priority": 10,
-      "passes": false,
-      "notes": ""
+      "priority": 11,
+      "passes": true,
+      "notes": "Text length is validated against captionMaxLength — the only per-provider text-length capability the channel contract exposes (lib/channels/types.ts); broadcast-core.ts (US-005) already treats this same text as the media caption when media is attached, so one provider-driven limit correctly governs both cases. Media type/size validated against mediaKinds and min(provider.maxMediaBytes, the chat-media bucket's own 16 MB file_size_limit) — never advertises a limit the upload itself can't honor. Browser-verified end-to-end with a throwaway QA account + a Telegram connection: step1-compose-message.tsx renders (not the template picker), 'Insert variable' inserts {{1}}, Avançar is disabled with empty content, typing text enables it, exceeding captionMaxLength (1024 for Telegram) shows the specific over-limit message and blocks Avançar, a valid image uploads to chat-media and previews, and a 17 MB file is rejected client-side with the exact 16 MB bucket-cap message (no wrong channel name). Also verified the WhatsApp/template regression path: picking a whatsapp_cloud connection at step 0 still renders step1-choose-template.tsx unchanged."
     },
     {
-      "id": "US-011",
+      "id": "US-012",
       "title": "Wizard — passo 3 'Personalizar' generalizado",
       "description": "As a agent/admin+, mapeio as variáveis da mensagem livre pros campos do contato do mesmo jeito que já faço pra template.",
       "acceptanceCriteria": [
-        "step3-personalize.tsx lê os tokens da mensagem livre (US-010) quando não há template, em vez de assumir sempre template.variables",
+        "step3-personalize.tsx lê os tokens da mensagem livre (US-011) quando não há template, em vez de assumir sempre template.variables",
         "O mapeamento (estático / campo / campo customizado) e a prévia (previewFieldValue) funcionam igual pros dois casos",
         "Mídia (quando a mensagem livre tem uma) é passada adiante do mesmo jeito que o header de mídia de um template hoje",
         "Verify in browser using dev-browser skill",
         "Typecheck passes"
       ],
-      "priority": 11,
-      "passes": false,
-      "notes": ""
+      "priority": 12,
+      "passes": true,
+      "notes": "step3-personalize.tsx's own media block is READ-ONLY for the free-message case (no URL input) — the attachment was already uploaded/validated at step1-compose-message.tsx (US-011); step3 just previews it and carries it forward via page.tsx's existing messageMediaUrl state (no new prop plumbing needed for propagation itself, only for step3 to read/display it). new/page.tsx's step 4 gate is still `template &&` (US-013's job, unchanged here) — after step 3 a free-message broadcast currently has no step 4 to advance into; not attempted here per design.md's phasing, same precedent as US-011 leaving step 2->4 unwired. Verified in browser: Telegram/free-message path reads the {{1}} token from the composed message (not template.variables), type/value mapping and the live preview substitute correctly, the uploaded step1 attachment renders as a read-only 'Mídia anexada' preview; WhatsApp/template path (text-only header) renders byte-identical to before (unchanged subtitle copy, no media block, same {{1}} mapping/preview)."
     },
     {
-      "id": "US-012",
+      "id": "US-013",
       "title": "Wizard — passo 4 envia com o conteúdo condicional",
       "description": "As a agent/admin+, ao confirmar o envio, o broadcast sai pela conexão e com o conteúdo que escolhi nos passos anteriores.",
       "acceptanceCriteria": [
@@ -188,12 +205,12 @@
         "Verify in browser using dev-browser skill",
         "Typecheck passes"
       ],
-      "priority": 12,
-      "passes": false,
-      "notes": ""
+      "priority": 13,
+      "passes": true,
+      "notes": "use-broadcast-sending.ts's per-batch POST to /api/whatsapp/broadcast now carries connection_id plus conditional content (template OR message_text/message_media_url), and no longer filters recipients by contact.phone before sending — a non-template channel resolves its target by contact_id -> contact_identities server-side (loadRecipientIdentities, exported from broadcast-core.ts), matching a phoneless-but-eligible Telegram contact instead of dropping it. Client<->server result correlation switched from phone-keyed to contact_id-keyed (phone can be empty/non-unique for a non-template channel). new/page.tsx's step-4 gate is now `(template || messageText)` (was `template` only); Step4ScheduleSend/handleSaveDraft generalized the same way (template optional, messageText/messageMediaUrl persisted when there's no template) so the newly-reachable free-message step 4 doesn't crash or misbehave. Browser-verified END TO END (not just to step 4, all the way through clicking 'Enviar broadcast') with a throwaway QA account: (1) WhatsApp/template regression — unchanged UI copy at every step, broadcast persisted with template_name and connection_id, delivery attempt reached the real whatsapp_cloud provider and failed only at 'WhatsApp connection has no access token' (no real Meta credentials exist in this dev environment for ANY story in this PRD); (2) Telegram/free-message — step 4 now renders (previously a dead end), summary shows the composed message text and '—' for Idioma, confirm dialog uses the new template-free confirmDescMessage copy, broadcast persisted with message_text and connection_id (template_name null), and delivery reached the real telegram provider, resolved the phoneless contact's target via contact_identities (not phone), and failed only at 'Telegram connection has no bot token' — proving identity-based target resolution and conditional-content dispatch both work; the only unverifiable piece is the final external hop to Meta/Telegram's live API, which needs real, human-owned credentials this dev environment doesn't have (same limitation every prior browser check in this PRD hit for WhatsApp, now also true for Telegram since the account's real bot connection is explicitly off-limits per progress.txt). All seeded QA rows deleted afterwards, verified 0 remain."
     },
     {
-      "id": "US-013",
+      "id": "US-014",
       "title": "Relatório — métricas indisponíveis por canal",
       "description": "As a agent/admin+, ao ver o relatório de um broadcast Telegram, não vejo '0 entregues'/'0 lidos' como se tivesse falhado — vejo que o canal não reporta isso.",
       "acceptanceCriteria": [
@@ -203,12 +220,12 @@
         "Verify in browser using dev-browser skill",
         "Typecheck passes"
       ],
-      "priority": 13,
-      "passes": false,
+      "priority": 14,
+      "passes": true,
       "notes": ""
     },
     {
-      "id": "US-014",
+      "id": "US-015",
       "title": "Verificação fim a fim + documentação",
       "description": "As a developer, confirmo que a feature funciona de ponta a ponta nos dois canais antes de considerar pronto.",
       "acceptanceCriteria": [
@@ -219,9 +236,9 @@
         "docs/public-api.md/CLAUDE.md atualizados se algo do broadcast for mencionado lá como WhatsApp-only (checar e corrigir se for o caso)",
         "Nenhum teste de caracterização das US-003/US-005/US-008 quebrou"
       ],
-      "priority": 14,
-      "passes": false,
-      "notes": ""
+      "priority": 15,
+      "passes": true,
+      "notes": "Browser-verified both flows end-to-end (dashboard wizard, real seeded QA connections): Telegram free-message broadcast sent (connection_id + message_text persisted, template_name null), report showed —/— for Entregues/Lidas (funnel + stat cards), recipient failed cleanly at 'Telegram connection has no bot token' (credentials boundary, not an addressing/identity bug). WhatsApp template broadcast regression: unchanged Step1ChooseTemplate, confirm dialog and report page (Template:/name, real language, 0/0% not dashes), recipient failed cleanly at 'WhatsApp connection has no access token'. Could NOT verify an actual message arriving at a real Telegram bot or a real WhatsApp delivery — no real Meta credentials exist in this dev environment (true since before this PRD), and the account's one real, working Telegram bot is explicitly off-limits per this PRD's own Codebase Patterns; creating a fresh throwaway bot requires a human to talk to @BotFather, which this environment cannot do. This is the same documented carve-out every prior story's browser check hit (US-006 through US-014) — recorded here rather than faked, per the scratchpad's own instruction not to fake an unreachable real round-trip. docs/public-api.md's POST /api/v1/broadcasts section corrected: it previously implied a free-message body could be submitted through the public API (added by US-004's own doc update), but the route never actually exposes message_text/message_media_url (confirmed by reading route.ts — it only extracts template_name); fixed the content_required error description and added an explicit note that free-message/non-template broadcasts are dashboard-only for now. CLAUDE.md checked, no WhatsApp-only broadcast claim found needing correction."
     }
   ]
 }

@@ -33,18 +33,31 @@ vi.mock('@/lib/api/v1/contacts', () => ({
 const db = {} as SupabaseClient;
 
 describe('createBroadcast validation', () => {
-  it('rejects a missing template_name', async () => {
+  it('rejects when neither a template nor a free message is given (US-004)', async () => {
     await expect(
       createBroadcast(db, 'acc', 'user', {
+        connectionId: 'conn-1',
         templateName: '',
         recipients: [{ to: '+14155550123' }],
       })
-    ).rejects.toMatchObject({ code: 'bad_request', status: 400 });
+    ).rejects.toMatchObject({ code: 'content_required', status: 400 });
+  });
+
+  it('rejects when both a template and a free message are given (US-004)', async () => {
+    await expect(
+      createBroadcast(db, 'acc', 'user', {
+        connectionId: 'conn-1',
+        templateName: 'promo',
+        messageText: 'hi',
+        recipients: [{ to: '+14155550123' }],
+      })
+    ).rejects.toMatchObject({ code: 'content_required', status: 400 });
   });
 
   it('rejects an empty recipient list', async () => {
     await expect(
       createBroadcast(db, 'acc', 'user', {
+        connectionId: 'conn-1',
         templateName: 'promo',
         recipients: [],
       })
@@ -56,7 +69,11 @@ describe('createBroadcast validation', () => {
       to: '+14155550123',
     }));
     await expect(
-      createBroadcast(db, 'acc', 'user', { templateName: 'promo', recipients })
+      createBroadcast(db, 'acc', 'user', {
+        connectionId: 'conn-1',
+        templateName: 'promo',
+        recipients,
+      })
     ).rejects.toMatchObject({ status: 400 });
   });
 });
@@ -77,9 +94,9 @@ function makeDb(rpcResult: { data: unknown; error: unknown }) {
         const chain: Record<string, unknown> = {
           select: () => chain,
           eq: () => chain,
-          order: () =>
+          maybeSingle: () =>
             Promise.resolve({
-              data: [whatsappConnectionRow('acc', 'pn-1')],
+              data: whatsappConnectionRow('acc', 'pn-1'),
               error: null,
             }),
         };
@@ -122,6 +139,7 @@ describe('createBroadcast atomicity (#370)', () => {
     });
 
     const plan = await createBroadcast(db, 'acc', 'user', {
+      connectionId: 'conn-acc',
       templateName: 'promo',
       recipients: [{ to: '+14155550123' }],
     });
@@ -131,7 +149,12 @@ describe('createBroadcast atomicity (#370)', () => {
     expect(calls.usedDirectInsert).toBe(0);
     expect(plan.broadcastId).toBe('b-1');
     expect(plan.planned).toEqual([
-      { recipientRowId: 'r-1', phone: '14155550123', params: [] },
+      {
+        recipientRowId: 'r-1',
+        contactId: 'c1',
+        phone: '14155550123',
+        params: [],
+      },
     ]);
   });
 
@@ -142,6 +165,7 @@ describe('createBroadcast atomicity (#370)', () => {
     });
 
     const plan = await createBroadcast(db, 'acc', 'user', {
+      connectionId: 'conn-acc',
       templateName: 'promo',
       recipients: [{ to: '+14155550123' }],
     });
@@ -149,6 +173,27 @@ describe('createBroadcast atomicity (#370)', () => {
     expect(calls.rpc[0].args).toMatchObject({ p_connection_id: 'conn-acc' });
     expect(plan.phoneNumberId).toBe('pn-1');
     expect(plan.accessToken).toBe('plain-access-token');
+  });
+
+  it('persists free-message content instead of a template when given (US-004)', async () => {
+    const { db, calls } = makeDb({
+      data: [{ broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c1' }],
+      error: null,
+    });
+
+    await createBroadcast(db, 'acc', 'user', {
+      connectionId: 'conn-acc',
+      messageText: 'Hello {{1}}',
+      messageMediaUrl: 'https://example.com/img.png',
+      recipients: [{ to: '+14155550123' }],
+    });
+
+    expect(calls.rpc[0].args).toMatchObject({
+      p_template_name: null,
+      p_template_language: null,
+      p_message_text: 'Hello {{1}}',
+      p_message_media_url: 'https://example.com/img.png',
+    });
   });
 
   it('throws and leaves no orphaned parent when the atomic create fails', async () => {
@@ -159,6 +204,7 @@ describe('createBroadcast atomicity (#370)', () => {
 
     await expect(
       createBroadcast(db, 'acc', 'user', {
+        connectionId: 'conn-acc',
         templateName: 'promo',
         recipients: [{ to: '+14155550123' }],
       })

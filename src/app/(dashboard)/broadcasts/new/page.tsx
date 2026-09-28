@@ -6,15 +6,19 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { toast } from 'sonner';
 import { MessageTemplate } from '@/types';
+import { Step0ChooseConnection } from '@/components/broadcasts/step0-choose-connection';
 import { Step1ChooseTemplate } from '@/components/broadcasts/step1-choose-template';
+import { Step1ComposeMessage } from '@/components/broadcasts/step1-compose-message';
 import { Step2SelectAudience } from '@/components/broadcasts/step2-select-audience';
 import { Step3Personalize } from '@/components/broadcasts/step3-personalize';
 import { Step4ScheduleSend } from '@/components/broadcasts/step4-schedule-send';
 import { useBroadcastSending } from '@/hooks/use-broadcast-sending';
+import type { BroadcastConnectionContext } from '@/lib/contacts/broadcast-eligibility';
 import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 const steps = [
+  { label: 'connection', key: 'connection' },
   { label: 'template', key: 'template' },
   { label: 'audience', key: 'audience' },
   { label: 'personalize', key: 'personalize' },
@@ -46,13 +50,26 @@ export default function NewBroadcastPage() {
   const [headerMediaUrl, setHeaderMediaUrl] = useState('');
   const [name, setName] = useState('');
 
+  // Free-message content for a connection without templates (US-011).
+  // Mutually exclusive with `template` — only one is read at send time.
+  const [messageText, setMessageText] = useState('');
+  const [messageMediaUrl, setMessageMediaUrl] = useState('');
+
+  // Chosen at step 0 (Step0ChooseConnection) — the user's own pick now,
+  // no more auto-resolving "the" WhatsApp connection (US-010).
+  const [connection, setConnection] = useState<BroadcastConnectionContext | null>(
+    null
+  );
+
   async function handleSend() {
-    if (!template) return;
+    if ((!template && !messageText) || !connection) return;
 
     try {
       const broadcastId = await createAndSendBroadcast({
         name,
         template,
+        messageText: messageText || undefined,
+        messageMediaUrl: messageMediaUrl || undefined,
         audience: {
           type: audience.type,
           tagIds: audience.tagIds,
@@ -62,6 +79,7 @@ export default function NewBroadcastPage() {
         },
         variables,
         headerMediaUrl,
+        connection,
       });
       router.push(`/broadcasts/${broadcastId}`);
     } catch (err) {
@@ -83,8 +101,12 @@ export default function NewBroadcastPage() {
    * A full resume-draft UX is a future polish.
    */
   async function handleSaveDraft() {
-    if (!template || !name.trim()) {
+    if ((!template && !messageText) || !name.trim()) {
       toast.error(t('toastGiveName'));
+      return;
+    }
+    if (!connection) {
+      toast.error(t('toastNoConnection'));
       return;
     }
     const supabase = createClient();
@@ -104,10 +126,13 @@ export default function NewBroadcastPage() {
     const { error } = await supabase.from('broadcasts').insert({
       user_id: user.id,
       account_id: accountId,
+      connection_id: connection.connectionId,
       name: name.trim(),
-      template_name: template.name,
-      template_language: template.language ?? 'en_US',
+      template_name: template ? template.name : null,
+      template_language: template ? (template.language ?? 'en_US') : null,
       template_variables: variables,
+      message_text: template ? null : messageText || null,
+      message_media_url: template ? null : messageMediaUrl || null,
       audience_filter: {
         type: audience.type,
         tagIds: audience.tagIds,
@@ -189,43 +214,67 @@ export default function NewBroadcastPage() {
           }}
         >
           {currentStep === 0 && (
-            <Step1ChooseTemplate
-              selectedTemplate={template}
-              onSelect={setTemplate}
+            <Step0ChooseConnection
+              selected={connection}
+              onSelect={setConnection}
               onNext={() => setCurrentStep(1)}
               onBack={() => router.push('/broadcasts')}
             />
           )}
-          {currentStep === 1 && (
-            <Step2SelectAudience
-              audience={audience}
-              onUpdate={setAudience}
+          {currentStep === 1 && connection?.initiate === 'template' && (
+            <Step1ChooseTemplate
+              selectedTemplate={template}
+              onSelect={setTemplate}
               onNext={() => setCurrentStep(2)}
               onBack={() => setCurrentStep(0)}
             />
           )}
-          {currentStep === 2 && template && (
+          {currentStep === 1 && connection && connection.initiate !== 'template' && (
+            <Step1ComposeMessage
+              connection={connection}
+              text={messageText}
+              onTextChange={setMessageText}
+              mediaUrl={messageMediaUrl}
+              onMediaUrlChange={setMessageMediaUrl}
+              onNext={() => setCurrentStep(2)}
+              onBack={() => setCurrentStep(0)}
+            />
+          )}
+          {currentStep === 2 && (
+            <Step2SelectAudience
+              audience={audience}
+              onUpdate={setAudience}
+              onNext={() => setCurrentStep(3)}
+              onBack={() => setCurrentStep(1)}
+              connection={connection}
+            />
+          )}
+          {currentStep === 3 && (template || messageText) && (
             <Step3Personalize
               template={template}
+              messageText={messageText}
+              messageMediaUrl={messageMediaUrl}
               variables={variables}
               onUpdate={setVariables}
               headerMediaUrl={headerMediaUrl}
               onHeaderMediaUrlChange={setHeaderMediaUrl}
-              onNext={() => setCurrentStep(3)}
-              onBack={() => setCurrentStep(1)}
+              onNext={() => setCurrentStep(4)}
+              onBack={() => setCurrentStep(2)}
             />
           )}
-          {currentStep === 3 && template && (
+          {currentStep === 4 && (template || messageText) && (
             <Step4ScheduleSend
               name={name}
               onNameChange={setName}
               template={template}
+              messageText={messageText}
               audience={audience}
               onSend={handleSend}
               onSaveDraft={handleSaveDraft}
-              onBack={() => setCurrentStep(2)}
+              onBack={() => setCurrentStep(3)}
               isProcessing={isProcessing}
               progress={progress}
+              connection={connection}
             />
           )}
         </div>

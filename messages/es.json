@@ -776,7 +776,8 @@
         "delivered": "Entregados",
         "read": "Leídos",
         "replied": "Respondidos",
-        "failed": "Fallidos"
+        "failed": "Fallidos",
+        "unavailableHint": "Este canal no reporta esta métrica"
       },
       "toastFailedDelete": "Error al eliminar: {error}",
       "toastDeleted": "Difusión eliminada",
@@ -795,12 +796,14 @@
       "title": "Nueva difusión",
       "subtitle": "Crea y envía un mensaje masivo a tus contactos.",
       "steps": {
+        "connection": "Conexión",
         "template": "Plantilla",
         "audience": "Audiencia",
         "personalize": "Personalizar",
         "send": "Enviar"
       },
       "toastGiveName": "Ponle un nombre a la difusión antes de guardar un borrador.",
+      "toastNoConnection": "Elige una conexión antes de guardar un borrador.",
       "toastNotSignedIn": "No has iniciado sesión.",
       "toastNotLinked": "Tu perfil no está vinculado a una cuenta.",
       "toastFailedDraft": "Error al guardar el borrador: {error}",
@@ -810,12 +813,39 @@
       "next": "Siguiente",
       "back": "Atrás",
       "cancel": "Cancelar",
+      "chooseConnection": {
+        "title": "Elige una conexión",
+        "subtitle": "Elige desde qué conexión se enviará esta difusión.",
+        "label": "Conexión",
+        "placeholder": "Selecciona una conexión",
+        "emptyTitle": "Ningún canal conectado",
+        "emptyBody": "Conecta un canal antes de crear una difusión.",
+        "emptyCta": "Ir a Configuración → Canales",
+        "errorLoad": "Error al cargar las conexiones"
+      },
       "chooseTemplate": {
         "title": "Elige una plantilla",
         "subtitle": "Selecciona una plantilla de mensaje aprobada para tu difusión.",
         "noTemplates": "No hay plantillas disponibles.",
         "createFirst": "Primero crea una plantilla en Configuración.",
         "errorLoad": "Error al cargar las plantillas"
+      },
+      "composeMessage": {
+        "title": "Redacta el mensaje",
+        "subtitle": "Esta conexión no tiene plantillas aprobadas — escribe el mensaje que se enviará.",
+        "textLabel": "Mensaje",
+        "textPlaceholder": "Escribe el mensaje…",
+        "insertVariable": "Insertar variable",
+        "charCount": "{count}/{max} caracteres",
+        "textTooLong": "El mensaje supera el límite de {max} caracteres de este canal.",
+        "mediaLabel": "Adjunto (opcional)",
+        "uploadButton": "Subir archivo",
+        "removeMedia": "Quitar",
+        "mediaHint": "Opcional. El tipo y tamaño del archivo están limitados por el canal elegido.",
+        "mediaPreviewAlt": "Vista previa del adjunto",
+        "unsupportedMedia": "Este canal no acepta este tipo de contenido multimedia",
+        "mediaTooLarge": "El archivo tiene {size} MB — el límite de este canal es {max} MB.",
+        "uploadFailed": "Error al subir el archivo."
       },
       "selectAudience": {
         "title": "Seleccionar audiencia",
@@ -854,7 +884,8 @@
         "audienceSummary": "Resumen de la audiencia",
         "estimatedRecipients": "destinatarios estimados",
         "ineligibleTitle": "{count, plural, one {# contacto no elegible} other {# contactos no elegibles}}",
-        "ineligibleReason": "Sin número de WhatsApp — este contacto no puede recibir difusiones",
+        "ineligibleReasonTemplate": "Sin identidad en este canal — este contacto no puede recibir difusiones",
+        "ineligibleReasonConversation": "Aún no conversó con este canal — este contacto no puede recibir difusiones",
         "ineligibleUnnamed": "Contacto sin nombre",
         "ineligibleMore": "+{count} más",
         "selectTypeForEstimate": "Selecciona un tipo de audiencia para ver la estimación.",
@@ -863,8 +894,10 @@
       "personalize": {
         "title": "Personalizar variables",
         "subtitle": "Asigna las variables de la plantilla a campos del contacto o ingresa valores fijos.",
+        "subtitleMessage": "Asigna las variables a campos del contacto o ingresa valores fijos.",
         "headerImage": "Imagen del encabezado",
         "headerImageDesc": "Esta plantilla requiere una imagen de encabezado.",
+        "attachedMedia": "Archivo adjunto",
         "imageUrl": "URL de la imagen",
         "imageUrlPlaceholder": "https://example.com/image.jpg",
         "variables": "Variables",
@@ -901,6 +934,7 @@
         "broadcastNamePlaceholder": "p. ej. Promo de verano",
         "summary": "Resumen",
         "template": "Plantilla:",
+        "message": "Mensaje:",
         "audience": "Audiencia:",
         "audienceAll": "Todos los contactos",
         "audienceTags": "Filtrada por etiquetas",
@@ -917,7 +951,8 @@
         "estimatedReach": "Alcance estimado",
         "language": "Idioma",
         "confirmTitle": "Confirmar difusión",
-        "confirmDesc": "Estás a punto de enviar esta difusión a <b>{count, number}</b> {count, plural, =1 {contacto} other {contactos}} con la plantilla <b>{template}</b>. Esta acción no se puede deshacer."
+        "confirmDesc": "Estás a punto de enviar esta difusión a <b>{count, number}</b> {count, plural, =1 {contacto} other {contactos}} con la plantilla <b>{template}</b>. Esta acción no se puede deshacer.",
+        "confirmDescMessage": "Estás a punto de enviar esta difusión a <b>{count, number}</b> {count, plural, =1 {contacto} other {contactos}}. Esta acción no se puede deshacer."
       }
     }
   },

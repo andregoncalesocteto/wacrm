@@ -46,7 +46,7 @@ BEGIN
   -- plain replay can't catch it). Assert the qualified form is what's
   -- actually installed.
   IF pg_get_functiondef(
-       'public.create_broadcast_with_recipients(uuid,uuid,text,text,text,integer,uuid[],jsonb[],uuid)'::regprocedure
+       'public.create_broadcast_with_recipients(uuid,uuid,text,text,text,integer,uuid[],jsonb[],uuid,text,text,jsonb)'::regprocedure
      ) NOT LIKE '%RETURNING id, broadcast_recipients.contact_id%' THEN
     RAISE EXCEPTION
       'create_broadcast_with_recipients still has the ambiguous RETURNING — migration 041 did not apply';
@@ -120,12 +120,20 @@ BEGIN
   -- 046: the broadcast RPC persists the sending connection and the old
   -- 8-argument overload is gone (it would make omitted-arg calls ambiguous).
   IF pg_get_functiondef(
-       'public.create_broadcast_with_recipients(uuid,uuid,text,text,text,integer,uuid[],jsonb[],uuid)'::regprocedure
+       'public.create_broadcast_with_recipients(uuid,uuid,text,text,text,integer,uuid[],jsonb[],uuid,text,text,jsonb)'::regprocedure
      ) NOT LIKE '%connection_id%' THEN
     RAISE EXCEPTION 'create_broadcast_with_recipients does not store connection_id (migration 046)';
   END IF;
   IF (SELECT COUNT(*) FROM pg_proc WHERE proname = 'create_broadcast_with_recipients') <> 1 THEN
     RAISE EXCEPTION 'create_broadcast_with_recipients has more than one overload (migration 046)';
+  END IF;
+
+  -- 054: the RPC gains p_message_text/p_message_media_url/p_template_variables
+  -- so createBroadcast (US-004) can persist a free-message broadcast atomically.
+  IF pg_get_functiondef(
+       'public.create_broadcast_with_recipients(uuid,uuid,text,text,text,integer,uuid[],jsonb[],uuid,text,text,jsonb)'::regprocedure
+     ) NOT LIKE '%message_media_url%' THEN
+    RAISE EXCEPTION 'create_broadcast_with_recipients does not store message_text/message_media_url (migration 054)';
   END IF;
 
   -- 047: conversations.connection_id is NOT NULL and none is NULL; one
@@ -239,6 +247,49 @@ BEGIN
       AND indexdef LIKE 'CREATE UNIQUE INDEX%(connection_id, name, language)%'
   ) THEN
     RAISE EXCEPTION 'message_templates (connection_id, name, language) unique index is missing (migration 051)';
+  END IF;
+
+  -- 052: broadcasts can carry a template OR a free message. template_name/
+  -- template_language become nullable, message_text/message_media_url are
+  -- new nullable columns, and a CHECK enforces exclusivity.
+  IF (
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'broadcasts'
+      AND column_name IN ('template_name', 'template_language')
+      AND is_nullable = 'YES'
+  ) <> 2 THEN
+    RAISE EXCEPTION 'broadcasts.template_name/template_language must be nullable (migration 052)';
+  END IF;
+  IF (
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'broadcasts'
+      AND column_name IN ('message_text', 'message_media_url')
+  ) <> 2 THEN
+    RAISE EXCEPTION 'broadcasts.message_text/message_media_url are missing (migration 052)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.broadcasts'::regclass AND contype = 'c'
+      AND conname = 'broadcasts_content_exclusive_check'
+  ) THEN
+    RAISE EXCEPTION 'broadcasts_content_exclusive_check is missing (migration 052)';
+  END IF;
+
+  -- 053: broadcast_recipients.whatsapp_message_id renamed (expand-only) to
+  -- external_message_id, with a matching unique correlation index.
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'broadcast_recipients'
+      AND column_name = 'external_message_id'
+  ) THEN
+    RAISE EXCEPTION 'broadcast_recipients.external_message_id is missing (migration 053)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND tablename = 'broadcast_recipients'
+      AND indexname = 'idx_broadcast_recipients_external_message_id'
+  ) THEN
+    RAISE EXCEPTION 'idx_broadcast_recipients_external_message_id is missing (migration 053)';
   END IF;
 
   RAISE NOTICE 'schema verification passed';

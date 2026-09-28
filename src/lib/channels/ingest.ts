@@ -510,7 +510,7 @@ async function ingestMessage(
  *     message can go read -> delivered) and, on `failed` with a reason, the
  *     error_code/title/details columns. Later non-failed statuses leave them.
  *     No `.select()`: message_id is not unique, so 0..N rows are updated.
- *  2. `broadcast_recipients` by whatsapp_message_id, moved only when the
+ *  2. `broadcast_recipients` by external_message_id, moved only when the
  *     ladder allows it; `error_message` folds the reason.
  *  3. `message.status_updated` outbound webhook (last, so a slow subscriber
  *     cannot delay the mirrors); account resolved through the embedded
@@ -557,7 +557,7 @@ async function ingestStatus(
   const { data: recipient, error: recFetchErr } = await db
     .from('broadcast_recipients')
     .select('id, status')
-    .eq('whatsapp_message_id', event.externalId)
+    .eq('external_message_id', event.externalId)
     .maybeSingle();
   if (recFetchErr) {
     channelLog(

@@ -101,6 +101,7 @@ function plan(ids: string[], phones?: string[]): BroadcastPlan {
     templateRow: null,
     planned: ids.map((id, i) => ({
       recipientRowId: id,
+      contactId: `c${i}`,
       phone: phones?.[i] ?? `+1555000000${i}`,
       params: [`p${i}`],
     })),
@@ -139,13 +140,13 @@ describe('deliverBroadcast', () => {
     });
     expect(row('r1')).toMatchObject({
       status: 'sent',
-      whatsapp_message_id: 'wamid.1',
+      external_message_id: 'wamid.1',
       error_message: null,
     });
     expect(typeof row('r1').sent_at).toBe('string');
     expect(row('r2')).toMatchObject({
       status: 'sent',
-      whatsapp_message_id: 'wamid.2',
+      external_message_id: 'wamid.2',
     });
     expect(broadcast().status).toBe('sent');
   });
@@ -162,7 +163,7 @@ describe('deliverBroadcast', () => {
       status: 'failed',
       error_message: '(#132000) Param mismatch',
     });
-    expect(row('r1').whatsapp_message_id).toBeUndefined();
+    expect(row('r1').external_message_id).toBeUndefined();
     expect(row('r2').status).toBe('sent');
     // Only one failure among two: the broadcast as a whole is `sent`.
     expect(broadcast().status).toBe('sent');
@@ -196,7 +197,7 @@ describe('deliverBroadcast', () => {
     );
     expect(row('r1')).toMatchObject({
       status: 'sent',
-      whatsapp_message_id: 'wamid.v2',
+      external_message_id: 'wamid.v2',
       error_message: null,
     });
   });

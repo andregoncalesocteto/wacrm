@@ -18,7 +18,8 @@ import {
 
 const h = vi.hoisted(() => ({
   sendTemplateMessage: vi.fn(),
-  loadConn: vi.fn(),
+  getConnectionById: vi.fn(),
+  getConnectionCredentials: vi.fn(),
   updates: [] as Record<string, unknown>[],
   rpc: vi.fn(),
 }));
@@ -27,8 +28,10 @@ vi.mock('@/lib/whatsapp/meta-api', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   sendTemplateMessage: h.sendTemplateMessage,
 }));
-vi.mock('@/lib/channels/whatsapp-connection', () => ({
-  loadWhatsAppSendConnection: h.loadConn,
+vi.mock('@/lib/channels/connections', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/channels/connections')>()),
+  getConnectionById: h.getConnectionById,
+  getConnectionCredentials: h.getConnectionCredentials,
 }));
 vi.mock('@/lib/api/v1/contacts', () => ({
   findOrCreateContact: vi.fn(async () => ({ id: 'c1' })),
@@ -57,16 +60,15 @@ beforeEach(() => {
   h.updates = [];
   h.sendTemplateMessage.mockReset();
   h.rpc.mockReset();
+  h.getConnectionById.mockReset();
+  h.getConnectionCredentials.mockReset();
 });
 
 describe('broadcast with a disabled connection', () => {
   it('createBroadcast refuses with 409 connection_disabled and persists nothing', async () => {
-    h.loadConn.mockResolvedValue({
-      connection: disabledConn,
-      phoneNumberId: 'pn-1',
-      accessToken: 'tok',
-    });
+    h.getConnectionById.mockResolvedValue(disabledConn);
     const err = await createBroadcast(db, 'acc', 'user', {
+      connectionId: disabledConn.id,
       templateName: 'promo',
       recipients: [{ to: '+14155550123' }],
     }).catch((e) => e);
@@ -85,7 +87,9 @@ describe('broadcast with a disabled connection', () => {
       phoneNumberId: 'pn-1',
       accessToken: 'tok',
       templateRow: null,
-      planned: [{ recipientRowId: 'r1', phone: '+15550000000', params: [] }],
+      planned: [
+        { recipientRowId: 'r1', contactId: 'c1', phone: '+15550000000', params: [] },
+      ],
       rejected: 0,
     };
     await expect(deliverBroadcast(db, plan)).rejects.toBeInstanceOf(

@@ -20,6 +20,7 @@ import {
 import { useFormatter, useTranslations } from 'next-intl';
 import {
   fetchIneligibleContacts,
+  type BroadcastConnectionContext,
   type IneligibleContact,
 } from '@/lib/contacts/broadcast-eligibility';
 
@@ -47,6 +48,12 @@ interface Step2Props {
   onUpdate: (audience: AudienceConfig) => void;
   onNext: () => void;
   onBack: () => void;
+  /**
+   * The connection this broadcast will send from (chosen at step 0 — US-009;
+   * `null` while it is still resolving). Drives eligibility: null keeps
+   * showing a "calculating" state instead of a stale/wrong estimate.
+   */
+  connection: BroadcastConnectionContext | null;
 }
 
 export function Step2SelectAudience({
@@ -54,6 +61,7 @@ export function Step2SelectAudience({
   onUpdate,
   onNext,
   onBack,
+  connection,
 }: Step2Props) {
   const t = useTranslations('Broadcasts.wizard');
   const format = useFormatter();
@@ -160,6 +168,13 @@ export function Step2SelectAudience({
   }, [audience.type]);
 
   const fetchEstimatedCount = useCallback(async () => {
+    if (!connection) {
+      // Connection still resolving (US-009 will make this a real pick) —
+      // keep showing "calculating" instead of an estimate computed against
+      // the wrong (or no) channel.
+      setLoadingCount(true);
+      return;
+    }
     setLoadingCount(true);
     try {
       const supabase = createClient();
@@ -219,11 +234,13 @@ export function Step2SelectAudience({
         excludeSet = new Set((excludeRows ?? []).map((r) => r.contact_id));
       }
 
-      // Not eligible: no WhatsApp identity. Only those in scope (in the base
-      // set, not excluded by tag) are reported and removed from the count.
-      const notEligible = (await fetchIneligibleContacts(supabase)).filter(
-        (c) => !excludeSet?.has(c.id) && (!baseIds || baseIds.has(c.id))
-      );
+      // Not eligible for `connection`: no identity of that channel
+      // (template channels) or no conversation with THIS connection
+      // (non-template channels). Only those in scope (in the base set, not
+      // excluded by tag) are reported and removed from the count.
+      const notEligible = (
+        await fetchIneligibleContacts(supabase, connection)
+      ).filter((c) => !excludeSet?.has(c.id) && (!baseIds || baseIds.has(c.id)));
       setIneligible(notEligible);
 
       if (baseIds) {
@@ -252,6 +269,7 @@ export function Step2SelectAudience({
     audience.customField,
     audience.csvContacts,
     audience.excludeTagIds,
+    connection,
   ]);
 
   useEffect(() => {
@@ -595,7 +613,13 @@ export function Step2SelectAudience({
                 count: ineligible.length,
               })}
             </p>
-            <p className="mt-0.5">{t('selectAudience.ineligibleReason')}</p>
+            <p className="mt-0.5">
+              {t(
+                connection?.initiate === 'template'
+                  ? 'selectAudience.ineligibleReasonTemplate'
+                  : 'selectAudience.ineligibleReasonConversation'
+              )}
+            </p>
             <ul className="mt-1.5 list-disc pl-4">
               {ineligible.slice(0, INELIGIBLE_LIST_MAX).map((c) => (
                 <li key={c.id}>

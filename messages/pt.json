@@ -776,7 +776,8 @@
         "delivered": "Entregues",
         "read": "Lidas",
         "replied": "Respondidas",
-        "failed": "Com falha"
+        "failed": "Com falha",
+        "unavailableHint": "Este canal não reporta esta métrica"
       },
       "toastFailedDelete": "Falha ao excluir: {error}",
       "toastDeleted": "Broadcast excluído",
@@ -795,12 +796,14 @@
       "title": "Novo broadcast",
       "subtitle": "Crie e envie uma mensagem em massa para seus contatos.",
       "steps": {
+        "connection": "Conexão",
         "template": "Template",
         "audience": "Público",
         "personalize": "Personalizar",
         "send": "Enviar"
       },
       "toastGiveName": "Dê um nome ao broadcast antes de salvar um rascunho.",
+      "toastNoConnection": "Escolha uma conexão antes de salvar um rascunho.",
       "toastNotSignedIn": "Você não está conectado.",
       "toastNotLinked": "Seu perfil não está vinculado a uma conta.",
       "toastFailedDraft": "Falha ao salvar o rascunho: {error}",
@@ -810,12 +813,39 @@
       "next": "Avançar",
       "back": "Voltar",
       "cancel": "Cancelar",
+      "chooseConnection": {
+        "title": "Escolha uma conexão",
+        "subtitle": "Escolha por qual conexão este broadcast vai sair.",
+        "label": "Conexão",
+        "placeholder": "Selecione uma conexão",
+        "emptyTitle": "Nenhum canal conectado",
+        "emptyBody": "Conecte um canal antes de criar um broadcast.",
+        "emptyCta": "Ir para Configurações → Canais",
+        "errorLoad": "Falha ao carregar as conexões"
+      },
       "chooseTemplate": {
         "title": "Escolha um template",
         "subtitle": "Selecione um template de mensagem aprovado para o seu broadcast.",
         "noTemplates": "Nenhum template disponível.",
         "createFirst": "Crie um template em Configurações primeiro.",
         "errorLoad": "Falha ao carregar os templates"
+      },
+      "composeMessage": {
+        "title": "Componha a mensagem",
+        "subtitle": "Esta conexão não tem templates aprovados — escreva a mensagem que será enviada.",
+        "textLabel": "Mensagem",
+        "textPlaceholder": "Digite a mensagem…",
+        "insertVariable": "Inserir variável",
+        "charCount": "{count}/{max} caracteres",
+        "textTooLong": "A mensagem excede o limite de {max} caracteres deste canal.",
+        "mediaLabel": "Anexo (opcional)",
+        "uploadButton": "Enviar arquivo",
+        "removeMedia": "Remover",
+        "mediaHint": "Opcional. O tipo e o tamanho do arquivo são limitados pelo canal escolhido.",
+        "mediaPreviewAlt": "Pré-visualização do anexo",
+        "unsupportedMedia": "Este canal não aceita este tipo de mídia",
+        "mediaTooLarge": "O arquivo tem {size} MB — o limite deste canal é {max} MB.",
+        "uploadFailed": "Falha no envio do arquivo."
       },
       "selectAudience": {
         "title": "Selecionar público",
@@ -854,7 +884,8 @@
         "audienceSummary": "Resumo do público",
         "estimatedRecipients": "destinatários estimados",
         "ineligibleTitle": "{count, plural, one {# contato não elegível} other {# contatos não elegíveis}}",
-        "ineligibleReason": "Sem número de WhatsApp — este contato não pode receber broadcasts",
+        "ineligibleReasonTemplate": "Sem identidade neste canal — este contato não pode receber broadcasts",
+        "ineligibleReasonConversation": "Ainda não conversou com este canal — este contato não pode receber broadcasts",
         "ineligibleUnnamed": "Contato sem nome",
         "ineligibleMore": "+{count} outros",
         "selectTypeForEstimate": "Selecione um tipo de público para ver a estimativa.",
@@ -863,8 +894,10 @@
       "personalize": {
         "title": "Personalizar variáveis",
         "subtitle": "Associe as variáveis do template a campos do contato ou informe valores fixos.",
+        "subtitleMessage": "Associe as variáveis a campos do contato ou informe valores fixos.",
         "headerImage": "Imagem do cabeçalho",
         "headerImageDesc": "Este template exige uma imagem de cabeçalho.",
+        "attachedMedia": "Mídia anexada",
         "imageUrl": "URL da imagem",
         "imageUrlPlaceholder": "https://example.com/image.jpg",
         "variables": "Variáveis",
@@ -901,6 +934,7 @@
         "broadcastNamePlaceholder": "ex.: Promoção de verão",
         "summary": "Resumo",
         "template": "Template:",
+        "message": "Mensagem:",
         "audience": "Público:",
         "audienceAll": "Todos os contatos",
         "audienceTags": "Filtrado por tags",
@@ -917,7 +951,8 @@
         "estimatedReach": "Alcance estimado",
         "language": "Idioma",
         "confirmTitle": "Confirmar broadcast",
-        "confirmDesc": "Você está prestes a enviar este broadcast para <b>{count, number}</b> {count, plural, =1 {contato} other {contatos}} usando o template <b>{template}</b>. Esta ação não pode ser desfeita."
+        "confirmDesc": "Você está prestes a enviar este broadcast para <b>{count, number}</b> {count, plural, =1 {contato} other {contatos}} usando o template <b>{template}</b>. Esta ação não pode ser desfeita.",
+        "confirmDescMessage": "Você está prestes a enviar este broadcast para <b>{count, number}</b> {count, plural, =1 {contato} other {contatos}}. Esta ação não pode ser desfeita."
       }
     }
   },

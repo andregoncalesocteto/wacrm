@@ -432,6 +432,8 @@ export interface Broadcast {
   id: string;
   user_id: string;
   name: string;
+  /** Which connection this broadcast sends through (migration 051, NOT NULL). */
+  connection_id: string;
   template_name: string;
   template_language: string;
   template_variables?: Record<string, unknown>;
@@ -469,11 +471,12 @@ export interface BroadcastRecipient {
   replied_at?: string;
   error_message?: string;
   /**
-   * Meta's message id, persisted when the broadcast send succeeds so
-   * the webhook can mirror status updates back onto the recipient row.
-   * Added in migration 003.
+   * The channel's message id, persisted when the broadcast send
+   * succeeds so the webhook can mirror status updates back onto the
+   * recipient row. Added in migration 003 as whatsapp_message_id,
+   * renamed in migration 053 (broadcast-multi-channel US-002).
    */
-  whatsapp_message_id?: string;
+  external_message_id?: string;
   /**
    * Positional body values for this recipient's template send
    * ({{1}}, {{2}}, …), frozen when the broadcast was planned so a

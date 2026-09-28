@@ -192,7 +192,7 @@ describe('ingestInbound: status events', () => {
   describe('broadcast recipient ladder', () => {
     const recipient = (st: string) =>
       (state.tables.broadcast_recipients = [
-        { id: 'r-1', whatsapp_message_id: 'wamid.BC1', status: st },
+        { id: 'r-1', external_message_id: 'wamid.BC1', status: st },
       ]);
     const current = () => t('broadcast_recipients')[0];
 

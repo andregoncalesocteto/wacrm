@@ -16,7 +16,10 @@ import {
 } from '@/components/ui/dialog';
 import { ArrowLeft, Send, Loader2, Users, Save } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { fetchIneligibleContacts } from '@/lib/contacts/broadcast-eligibility';
+import {
+  fetchIneligibleContacts,
+  type BroadcastConnectionContext,
+} from '@/lib/contacts/broadcast-eligibility';
 
 interface AudienceConfig {
   type: string;
@@ -27,25 +30,31 @@ interface AudienceConfig {
 interface Step4Props {
   name: string;
   onNameChange: (name: string) => void;
-  template: MessageTemplate;
+  /** Exactly one of `template` or `messageText` is set (US-013). */
+  template: MessageTemplate | null;
+  messageText?: string;
   audience: AudienceConfig;
   onSend: () => void;
   onSaveDraft?: () => void;
   onBack: () => void;
   isProcessing: boolean;
   progress: number;
+  /** The connection this broadcast will send from (see Step2SelectAudience). */
+  connection: BroadcastConnectionContext | null;
 }
 
 export function Step4ScheduleSend({
   name,
   onNameChange,
   template,
+  messageText,
   audience,
   onSend,
   onSaveDraft,
   onBack,
   isProcessing,
   progress,
+  connection,
 }: Step4Props) {
   const t = useTranslations('Broadcasts.wizard');
   const format = useFormatter();
@@ -55,12 +64,16 @@ export function Step4ScheduleSend({
 
   useEffect(() => {
     async function calculateReach() {
+      if (!connection) {
+        setLoadingReach(true);
+        return;
+      }
       setLoadingReach(true);
       try {
         const supabase = createClient();
-        // Contacts without a WhatsApp identity are not broadcast recipients.
+        // Contacts not reachable on `connection` are not broadcast recipients.
         const ineligibleIn = async (scope?: Set<string>) =>
-          (await fetchIneligibleContacts(supabase)).filter(
+          (await fetchIneligibleContacts(supabase, connection)).filter(
             (c) => !scope || scope.has(c.id)
           );
 
@@ -98,7 +111,7 @@ export function Step4ScheduleSend({
     }
 
     calculateReach();
-  }, [audience]);
+  }, [audience, connection]);
 
   const audienceLabel =
     audience.type === 'all'
@@ -141,9 +154,11 @@ export function Step4ScheduleSend({
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <p className="text-muted-foreground text-xs">
-              {t('scheduleSend.template')}
+              {template ? t('scheduleSend.template') : t('scheduleSend.message')}
             </p>
-            <p className="text-foreground">{template.name}</p>
+            <p className="text-foreground truncate">
+              {template ? template.name : (messageText ?? '')}
+            </p>
           </div>
           <div>
             <p className="text-muted-foreground text-xs">
@@ -172,7 +187,9 @@ export function Step4ScheduleSend({
             <p className="text-muted-foreground text-xs">
               {t('scheduleSend.language')}
             </p>
-            <p className="text-foreground">{template.language ?? 'en_US'}</p>
+            <p className="text-foreground">
+              {template ? (template.language ?? 'en_US') : '—'}
+            </p>
           </div>
         </div>
       </div>
@@ -240,15 +257,24 @@ export function Step4ScheduleSend({
                   {t('scheduleSend.confirmTitle')}
                 </DialogTitle>
                 <DialogDescription className="text-muted-foreground">
-                  {t.rich('scheduleSend.confirmDesc', {
-                    count: estimatedReach,
-                    template: template.name,
-                    b: (chunks) => (
-                      <span className="text-popover-foreground font-medium">
-                        {chunks}
-                      </span>
-                    ),
-                  })}
+                  {template
+                    ? t.rich('scheduleSend.confirmDesc', {
+                        count: estimatedReach,
+                        template: template.name,
+                        b: (chunks) => (
+                          <span className="text-popover-foreground font-medium">
+                            {chunks}
+                          </span>
+                        ),
+                      })
+                    : t.rich('scheduleSend.confirmDescMessage', {
+                        count: estimatedReach,
+                        b: (chunks) => (
+                          <span className="text-popover-foreground font-medium">
+                            {chunks}
+                          </span>
+                        ),
+                      })}
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>

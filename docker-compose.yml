@@ -48,9 +48,13 @@ services:
 networks:
   # Explicit, named network shared by this file and
   # docker-compose.supabase.yml — every service in both is attached to
-  # it by name (not the implicit default network).
+  # it by name (not the implicit default network). Parametrized so an
+  # isolated replay (`-p wacrm-replay`) gets its OWN network instead of
+  # literally joining this one: two `db` (or `auth`/`rest`/`storage`)
+  # containers sharing one Docker-DNS alias means requests round-robin
+  # between the dev and replay databases — see docs/docker.md.
   wacrm-net:
-    name: wacrm-net
+    name: ${WACRM_NETWORK_NAME:-wacrm-net}
   # Joins the independent cloudflared service's own network instead of
   # creating a new one scoped to this project — otherwise the tunnel
   # container can never reach `app`. That service must already be up.

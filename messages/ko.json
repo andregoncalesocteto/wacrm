@@ -776,7 +776,8 @@
         "delivered": "전달됨",
         "read": "읽음",
         "replied": "응답함",
-        "failed": "실패"
+        "failed": "실패",
+        "unavailableHint": "이 채널은 이 지표를 제공하지 않습니다"
       },
       "toastFailedDelete": "삭제하지 못했습니다: {error}",
       "toastDeleted": "브로드캐스트가 삭제되었습니다",
@@ -795,12 +796,14 @@
       "title": "새 브로드캐스트",
       "subtitle": "연락처에 보낼 브로드캐스트 메시지를 만듭니다.",
       "steps": {
+        "connection": "연결",
         "template": "템플릿",
         "audience": "대상",
         "personalize": "개인화",
         "send": "전송"
       },
       "toastGiveName": "초안을 저장하기 전에 브로드캐스트 이름을 입력하세요.",
+      "toastNoConnection": "초안을 저장하기 전에 연결을 선택하세요.",
       "toastNotSignedIn": "로그인되어 있지 않습니다.",
       "toastNotLinked": "프로필이 계정에 연결되어 있지 않습니다.",
       "toastFailedDraft": "초안 저장 실패: {error}",
@@ -810,12 +813,39 @@
       "next": "다음",
       "back": "뒤로",
       "cancel": "취소",
+      "chooseConnection": {
+        "title": "연결 선택",
+        "subtitle": "이 브로드캐스트를 보낼 연결을 선택하세요.",
+        "label": "연결",
+        "placeholder": "연결을 선택하세요",
+        "emptyTitle": "연결된 채널이 없습니다",
+        "emptyBody": "브로드캐스트를 만들기 전에 채널을 연결하세요.",
+        "emptyCta": "설정 → 채널로 이동",
+        "errorLoad": "연결을 불러오지 못했습니다"
+      },
       "chooseTemplate": {
         "title": "템플릿 선택",
         "subtitle": "브로드캐스트에 사용할 승인된 메시지 템플릿을 선택하세요.",
         "noTemplates": "사용 가능한 템플릿이 없습니다.",
         "createFirst": "먼저 설정에서 템플릿을 만드세요.",
         "errorLoad": "템플릿을 불러오지 못했습니다"
+      },
+      "composeMessage": {
+        "title": "메시지 작성",
+        "subtitle": "이 연결에는 승인된 템플릿이 없습니다 — 보낼 메시지를 직접 작성하세요.",
+        "textLabel": "메시지",
+        "textPlaceholder": "메시지를 입력하세요…",
+        "insertVariable": "변수 삽입",
+        "charCount": "{count}/{max}자",
+        "textTooLong": "메시지가 이 채널의 제한인 {max}자를 초과했습니다.",
+        "mediaLabel": "첨부 파일 (선택 사항)",
+        "uploadButton": "파일 업로드",
+        "removeMedia": "제거",
+        "mediaHint": "선택 사항입니다. 파일 형식과 크기는 선택한 채널에 따라 제한됩니다.",
+        "mediaPreviewAlt": "첨부 파일 미리보기",
+        "unsupportedMedia": "이 채널은 이 종류의 미디어를 지원하지 않습니다",
+        "mediaTooLarge": "파일 크기가 {size}MB입니다 — 이 채널의 제한은 {max}MB입니다.",
+        "uploadFailed": "파일 업로드에 실패했습니다."
       },
       "selectAudience": {
         "title": "대상 선택",
@@ -854,7 +884,8 @@
         "audienceSummary": "대상 요약",
         "estimatedRecipients": "예상 수신자",
         "ineligibleTitle": "{count, plural, other {#명의 연락처는 대상이 아닙니다}}",
-        "ineligibleReason": "WhatsApp 번호 없음 — 이 연락처는 브로드캐스트를 받을 수 없습니다",
+        "ineligibleReasonTemplate": "이 채널에 대한 신원 없음 — 이 연락처는 브로드캐스트를 받을 수 없습니다",
+        "ineligibleReasonConversation": "아직 이 채널과 대화한 적이 없음 — 이 연락처는 브로드캐스트를 받을 수 없습니다",
         "ineligibleUnnamed": "이름 없는 연락처",
         "ineligibleMore": "+{count}명 더",
         "selectTypeForEstimate": "예상치를 보려면 대상 유형을 선택하세요.",
@@ -863,8 +894,10 @@
       "personalize": {
         "title": "변수 개인화",
         "subtitle": "템플릿 변수를 연락처 필드에 매핑하거나 고정 값을 입력하세요.",
+        "subtitleMessage": "변수를 연락처 필드에 매핑하거나 고정 값을 입력하세요.",
         "headerImage": "헤더 이미지",
         "headerImageDesc": "이 템플릿에는 헤더 이미지가 필요합니다.",
+        "attachedMedia": "첨부된 미디어",
         "imageUrl": "이미지 URL",
         "imageUrlPlaceholder": "https://example.com/image.jpg",
         "variables": "변수",
@@ -901,6 +934,7 @@
         "broadcastNamePlaceholder": "예: 여름 프로모션",
         "summary": "요약",
         "template": "템플릿:",
+        "message": "메시지:",
         "audience": "대상:",
         "audienceAll": "전체 연락처",
         "audienceTags": "태그로 필터링됨",
@@ -917,7 +951,8 @@
         "estimatedReach": "예상 도달 수",
         "language": "언어",
         "confirmTitle": "브로드캐스트 확인",
-        "confirmDesc": "<b>{template}</b> 템플릿으로 연락처 <b>{count, number}</b>명에게 이 브로드캐스트를 보내려고 합니다. 이 작업은 되돌릴 수 없습니다."
+        "confirmDesc": "<b>{template}</b> 템플릿으로 연락처 <b>{count, number}</b>명에게 이 브로드캐스트를 보내려고 합니다. 이 작업은 되돌릴 수 없습니다.",
+        "confirmDescMessage": "연락처 <b>{count, number}</b>명에게 이 브로드캐스트를 보내려고 합니다. 이 작업은 되돌릴 수 없습니다."
       }
     }
   },
