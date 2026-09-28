@@ -105,6 +105,10 @@ export default function NewBroadcastPage() {
       toast.error(t('toastGiveName'));
       return;
     }
+    if (!connection) {
+      toast.error(t('toastNoConnection'));
+      return;
+    }
     const supabase = createClient();
     const {
       data: { session },
@@ -122,6 +126,7 @@ export default function NewBroadcastPage() {
     const { error } = await supabase.from('broadcasts').insert({
       user_id: user.id,
       account_id: accountId,
+      connection_id: connection.connectionId,
       name: name.trim(),
       template_name: template ? template.name : null,
       template_language: template ? (template.language ?? 'en_US') : null,

@@ -803,6 +803,7 @@
         "send": "Send"
       },
       "toastGiveName": "Give the broadcast a name before saving a draft.",
+      "toastNoConnection": "Choose a connection before saving a draft.",
       "toastNotSignedIn": "Not signed in.",
       "toastNotLinked": "Your profile is not linked to an account.",
       "toastFailedDraft": "Failed to save draft: {error}",

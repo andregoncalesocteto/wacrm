@@ -803,6 +803,7 @@
         "send": "Enviar"
       },
       "toastGiveName": "Dê um nome ao broadcast antes de salvar um rascunho.",
+      "toastNoConnection": "Escolha uma conexão antes de salvar um rascunho.",
       "toastNotSignedIn": "Você não está conectado.",
       "toastNotLinked": "Seu perfil não está vinculado a uma conta.",
       "toastFailedDraft": "Falha ao salvar o rascunho: {error}",

@@ -803,6 +803,7 @@
         "send": "전송"
       },
       "toastGiveName": "초안을 저장하기 전에 브로드캐스트 이름을 입력하세요.",
+      "toastNoConnection": "초안을 저장하기 전에 연결을 선택하세요.",
       "toastNotSignedIn": "로그인되어 있지 않습니다.",
       "toastNotLinked": "프로필이 계정에 연결되어 있지 않습니다.",
       "toastFailedDraft": "초안 저장 실패: {error}",
