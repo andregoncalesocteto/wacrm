@@ -217,9 +217,16 @@ export async function advanceJourneyStage(
 
   const at = (args.at ?? new Date()).toISOString();
   const terminal = args.stage === 'won' || args.stage === 'lost';
-  // Conditional on `state = 'open'`: of two concurrent closers (Purchase, the
-  // abandonment sweep, two cron runs) only one flips the row and goes on to
-  // move the deal. `lost` is not engagement, so it leaves `last_event_at` be.
+  const targetRank = STAGE_RANK.get(args.stage) ?? -1;
+  const stagesBefore = JOURNEY_STAGES.filter(
+    (s) => (STAGE_RANK.get(s.key) ?? -1) < targetRank
+  ).map((s) => s.key);
+  // Compare-and-swap on the stage read: conditional on `state = 'open'` AND on
+  // the current stage still being BEFORE the target. Of two concurrent closers
+  // (Purchase, the abandonment sweep, two cron runs) only one flips the row,
+  // and of two concurrent advances (AddToCart, InitiateCheckout) the slower
+  // one cannot pull the Journey back. Only the winner goes on to move the
+  // deal. `lost` is not engagement, so it leaves `last_event_at` be.
   const { data: moved, error: upErr } = await db
     .from('journeys')
     .update({
@@ -230,13 +237,16 @@ export async function advanceJourneyStage(
     .eq('id', journey.id)
     .eq('account_id', args.accountId)
     .eq('state', 'open')
+    .in('stage', stagesBefore)
     .select('id');
   if (upErr) throw new Error(`journey advance failed: ${upErr.message}`);
   if (!moved || moved.length === 0) return false;
 
   if (journey.deal_id) {
     const { stageIds } = await ensureJourneyPipeline(db, args);
-    const { error: dealErr } = await db
+    // Same compare-and-swap for the deal, so a slower concurrent advance
+    // cannot leave it behind the Journey. Terminal stages always apply.
+    let dealUpdate = db
       .from('deals')
       .update({
         stage_id: stageIds[args.stage],
@@ -244,6 +254,13 @@ export async function advanceJourneyStage(
       })
       .eq('id', journey.deal_id)
       .eq('account_id', args.accountId);
+    if (!terminal) {
+      dealUpdate = dealUpdate.in(
+        'stage_id',
+        stagesBefore.map((k) => stageIds[k])
+      );
+    }
+    const { error: dealErr } = await dealUpdate;
     if (dealErr)
       throw new Error(`journey deal advance failed: ${dealErr.message}`);
   }

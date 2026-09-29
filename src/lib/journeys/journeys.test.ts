@@ -62,4 +62,57 @@ describe('advanceJourneyStage', () => {
     expect(h.db.journeys).toHaveLength(2);
     expect(h.db.deals.filter((d) => d.status === 'open')).toHaveLength(1);
   });
+
+  it('a slower concurrent advance cannot pull the Journey and the deal back', async () => {
+    const journey = await openOrRenewJourney(db(), args);
+    const stageId = (key: string) =>
+      h.db.pipeline_stages.find((s) => s.system_key === key)!.id;
+
+    // AddToCart read the Journey at `link_sent`; before it writes, an
+    // InitiateCheckout completes on the same Journey and its deal.
+    const real = db();
+    const racing = {
+      ...real,
+      from: (table: string) => {
+        const q = real.from(table) as unknown as {
+          update: (p: Row) => unknown;
+        };
+        if (table === 'journeys') {
+          const update = q.update.bind(q);
+          q.update = (patch: Row) => {
+            q.update = update;
+            h.db.journeys[0].stage = 'checkout';
+            h.db.deals[0].stage_id = stageId('checkout');
+            return update(patch);
+          };
+        }
+        return q;
+      },
+    } as unknown as SupabaseClient;
+
+    const moved = await advanceJourneyStage(racing, {
+      ...args,
+      journeyId: journey.id,
+      stage: 'cart',
+    });
+
+    expect(moved).toBe(false);
+    expect(h.db.journeys[0].stage).toBe('checkout');
+    expect(h.db.deals[0].stage_id).toBe(stageId('checkout'));
+  });
+
+  it('a deal already ahead of the target stage is not moved back', async () => {
+    const journey = await openOrRenewJourney(db(), args);
+    const stageId = (key: string) =>
+      h.db.pipeline_stages.find((s) => s.system_key === key)!.id;
+    h.db.deals[0].stage_id = stageId('checkout');
+
+    await advanceJourneyStage(db(), {
+      ...args,
+      journeyId: journey.id,
+      stage: 'cart',
+    });
+    expect(h.db.journeys[0].stage).toBe('cart');
+    expect(h.db.deals[0].stage_id).toBe(stageId('checkout'));
+  });
 });
