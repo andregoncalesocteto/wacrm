@@ -17,8 +17,9 @@ export function fakeAdmin(h: Harness) {
     private payload: Row = {};
     private filters: ((r: Row) => boolean)[] = [];
     private mode: 'many' | 'maybe' | 'single' = 'many';
-    private sort: { col: string; asc: boolean } | null = null;
+    private sort: { col: string; asc: boolean }[] = [];
     private embedContact = false;
+    private window: [number, number] | null = null;
     constructor(private table: string) {}
     select(c?: string) {
       if (typeof c === 'string' && c.includes('contact:contacts')) {
@@ -70,10 +71,15 @@ export function fakeAdmin(h: Harness) {
       return this;
     }
     order(col: string, opts?: { ascending?: boolean }) {
-      this.sort = { col, asc: opts?.ascending !== false };
+      this.sort.push({ col, asc: opts?.ascending !== false });
       return this;
     }
     limit() {
+      return this;
+    }
+    /** Inclusive `from`..`to` window over the sorted result (`many` only). */
+    range(from: number, to: number) {
+      this.window = [from, to];
       return this;
     }
     maybeSingle() {
@@ -105,15 +111,22 @@ export function fakeAdmin(h: Harness) {
           }));
         }
       }
-      if (this.sort) {
-        const { col, asc } = this.sort;
+      if (this.sort.length) {
         // Numbers or ISO strings (most-recent-first lookups, US-028).
         const cmp = (x: unknown, y: unknown) =>
           typeof x === 'string' || typeof y === 'string'
             ? String(x ?? '').localeCompare(String(y ?? ''))
             : ((x as number) ?? 0) - ((y as number) ?? 0);
-        out = [...out].sort((a, b) => cmp(a[col], b[col]) * (asc ? 1 : -1));
+        const sorts = this.sort;
+        out = [...out].sort((a, b) => {
+          for (const { col, asc } of sorts) {
+            const c = cmp(a[col], b[col]);
+            if (c !== 0) return c * (asc ? 1 : -1);
+          }
+          return 0;
+        });
       }
+      if (this.window) out = out.slice(this.window[0], this.window[1] + 1);
       if (this.mode === 'many') return { data: out, error: null };
       if (this.mode === 'single' && !out[0]) {
         return { data: null, error: { message: 'no rows' } };

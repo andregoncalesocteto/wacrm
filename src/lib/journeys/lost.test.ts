@@ -172,4 +172,82 @@ describe('closeAbandonedJourneys', () => {
     expect(h.db.journeys[0].state).toBe('lost');
     expect(next.state).toBe('open');
   });
+
+  describe('candidates that are never eligible', () => {
+    /** `n` old Journeys whose customer keeps writing, then one truly abandoned. */
+    function seedBacklog(n: number) {
+      h.db.accounts = [{ id: 'acct-1', owner_user_id: 'user-1' }];
+      for (let i = 0; i < n; i++) {
+        h.db.journeys ??= [];
+        h.db.journeys.push({
+          id: `j-chat-${String(i).padStart(3, '0')}`,
+          account_id: 'acct-1',
+          contact_id: `ct-chat-${i}`,
+          conversation_id: `cv-chat-${i}`,
+          connection_id: 'conn-1',
+          state: 'open',
+          stage: 'browsing',
+          link_sent_at: ago(200 - i * 0.01),
+          last_event_at: null,
+        });
+        h.db.messages.push({
+          conversation_id: `cv-chat-${i}`,
+          sender_type: 'customer',
+          created_at: ago(1),
+        });
+      }
+      h.db.journeys.push({
+        id: 'j-abandoned',
+        account_id: 'acct-1',
+        contact_id: 'ct-x',
+        conversation_id: 'cv-x',
+        connection_id: 'conn-1',
+        state: 'open',
+        stage: 'cart',
+        link_sent_at: ago(30),
+        last_event_at: null,
+      });
+    }
+
+    /** The shared fake ignores `limit()`; a real database honours it. */
+    const limiting = () => {
+      const real = db();
+      return {
+        ...real,
+        from: (table: string) => {
+          const q = real.from(table) as unknown as {
+            limit: (n: number) => unknown;
+            range: (a: number, b: number) => unknown;
+          };
+          const limit = q.limit.bind(q);
+          q.limit = (n: number) =>
+            table === 'journeys' ? q.range(0, n - 1) : limit(n);
+          return q;
+        },
+      } as unknown as SupabaseClient;
+    };
+
+    it('does not let more than one page of them hide a newer abandoned Journey', async () => {
+      seedBacklog(120);
+
+      expect(await closeAbandonedJourneys(limiting(), { now: NOW })).toEqual({
+        checked: 121,
+        lost: 1,
+      });
+      expect(h.db.journeys.find((j) => j.id === 'j-abandoned')).toMatchObject({
+        state: 'lost',
+      });
+      expect(h.db.journeys.filter((j) => j.state === 'open')).toHaveLength(120);
+    });
+
+    it('stops at the per-run budget', async () => {
+      seedBacklog(120);
+
+      const res = await closeAbandonedJourneys(db(), {
+        now: NOW,
+        maxExamined: 60,
+      });
+      expect(res).toEqual({ checked: 60, lost: 0 });
+    });
+  });
 });

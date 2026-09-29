@@ -4,8 +4,19 @@ import { advanceJourneyStage, type JourneyRow } from './journeys';
 /** Quiet time after which an open Journey is considered abandoned. */
 export const JOURNEY_LOST_AFTER_MS = 24 * 60 * 60 * 1000;
 
-/** Journeys examined per sweep (the cron already caps its own batch). */
+/** Candidates fetched per page. */
 export const JOURNEY_LOST_BATCH = 50;
+
+/**
+ * Budget of one sweep: it walks the candidates page by page until it has
+ * examined this many, or this much time passed, or there are no more. A
+ * Journey that is quiet on the Journey clocks but not eligible (the customer
+ * keeps writing, a run is still pending) stays a candidate, so a fixed first
+ * page would fill up with them; paging past them is what lets a newer
+ * abandoned Journey be reached.
+ */
+export const JOURNEY_LOST_MAX_EXAMINED = 500;
+export const JOURNEY_LOST_MAX_MS = 20_000;
 
 export interface LostSweepResult {
   /** Open Journeys examined. */
@@ -34,27 +45,64 @@ export interface LostSweepResult {
  */
 export async function closeAbandonedJourneys(
   db: SupabaseClient,
-  opts: { now?: Date; limit?: number } = {}
+  opts: {
+    now?: Date;
+    /** Page size. */
+    limit?: number;
+    maxExamined?: number;
+    maxMs?: number;
+  } = {}
 ): Promise<LostSweepResult> {
   const now = opts.now ?? new Date();
   const cutoff = new Date(now.getTime() - JOURNEY_LOST_AFTER_MS).toISOString();
-
-  // Cheap pre-filter in SQL (both clocks quiet); the message clock and the
-  // pending runs are checked per candidate. Oldest first so no Journey starves.
-  const { data, error } = await db
-    .from('journeys')
-    .select('*')
-    .eq('state', 'open')
-    .lt('link_sent_at', cutoff)
-    .or(`last_event_at.is.null,last_event_at.lt.${cutoff}`)
-    .order('link_sent_at', { ascending: true })
-    .limit(opts.limit ?? JOURNEY_LOST_BATCH);
-  if (error) throw new Error(`journey sweep lookup failed: ${error.message}`);
+  const pageSize = opts.limit ?? JOURNEY_LOST_BATCH;
+  const maxExamined = opts.maxExamined ?? JOURNEY_LOST_MAX_EXAMINED;
+  const deadline = Date.now() + (opts.maxMs ?? JOURNEY_LOST_MAX_MS);
 
   const owners = new Map<string, string | null>();
   const result: LostSweepResult = { checked: 0, lost: 0 };
 
-  for (const journey of (data ?? []) as JourneyRow[]) {
+  // Rows this sweep closed leave the candidate set, so the offset only counts
+  // the ones that stayed (ineligible), which are what the next page skips.
+  let offset = 0;
+  while (result.checked < maxExamined && Date.now() < deadline) {
+    // Cheap pre-filter in SQL (both clocks quiet); the message clock and the
+    // pending runs are checked per candidate. Oldest first.
+    const { data, error } = await db
+      .from('journeys')
+      .select('*')
+      .eq('state', 'open')
+      .lt('link_sent_at', cutoff)
+      .or(`last_event_at.is.null,last_event_at.lt.${cutoff}`)
+      .order('link_sent_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw new Error(`journey sweep lookup failed: ${error.message}`);
+    const page = (data ?? []) as JourneyRow[];
+    if (page.length === 0) break;
+
+    const lostBefore = result.lost;
+    await examine(db, page, { now, cutoff, owners, result, maxExamined });
+    offset += page.length - (result.lost - lostBefore);
+    if (page.length < pageSize) break;
+  }
+  return result;
+}
+
+async function examine(
+  db: SupabaseClient,
+  page: JourneyRow[],
+  ctx: {
+    now: Date;
+    cutoff: string;
+    owners: Map<string, string | null>;
+    result: LostSweepResult;
+    maxExamined: number;
+  }
+): Promise<void> {
+  const { now, cutoff, owners, result } = ctx;
+  for (const journey of page) {
+    if (result.checked >= ctx.maxExamined) return;
     result.checked++;
     try {
       if (!(await isAbandoned(db, journey, cutoff))) continue;
@@ -79,7 +127,6 @@ export async function closeAbandonedJourneys(
       console.error('[journeys] lost sweep failed for', journey.id, err);
     }
   }
-  return result;
 }
 
 async function isAbandoned(
