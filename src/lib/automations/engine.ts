@@ -518,6 +518,9 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<RunStatus> {
         // A failed send inside a branch fails the run; the branch already
         // recorded the step and its error message.
         if (nested === 'failed') status = 'failed'
+        // A wait parked inside the branch is still pending: the run is not
+        // finished, so the log must not end as 'success'.
+        else if (nested === 'partial' && status === 'success') status = 'partial'
         continue
       }
 

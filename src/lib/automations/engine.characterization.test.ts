@@ -1108,6 +1108,22 @@ describe('journey_stage and conversation_unattended conditions', () => {
   }
   const out = () => messages().map((m) => m.content_text);
 
+  it('a wait parked inside a branch leaves the log partial, not success', async () => {
+    stageCase('browsing', { subject: 'journey_stage', operand: 'cart', value: 'before' });
+    h.db.automation_steps = [
+      { id: 'st-1', position: 0, step_type: 'condition', step_config: { subject: 'journey_stage', operand: 'cart', value: 'before' } },
+      { id: 'st-w', position: 0, parent_step_id: 'st-1', branch: 'yes', step_type: 'wait', step_config: { amount: 5, unit: 'minutes' } },
+      { id: 'st-y', position: 1, parent_step_id: 'st-1', branch: 'yes', step_type: 'send_message', step_config: { text: 'Yes' } },
+    ].map((st) => ({ automation_id: 'au-1', parent_step_id: null, branch: null, ...st }));
+
+    await fire();
+
+    expect(
+      h.db.automation_pending_executions.filter((p) => p.status === 'pending')
+    ).toHaveLength(1);
+    expect(log().status).toBe('partial');
+  });
+
   it.each([
     ['link_sent', 'before', 'cart', 'Yes'],
     ['browsing', 'before', 'cart', 'Yes'],
