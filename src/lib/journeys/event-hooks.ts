@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { JourneyStage } from './constants';
+import type { OrderStatusChange } from './orders';
 
 /** What a journey-event trigger needs to know about an accepted event. */
 export interface AcceptedJourneyEvent {
@@ -49,3 +50,19 @@ export async function onJourneyEventAccepted(
     },
   });
 }
+
+/**
+ * THE extension point for "an order changed status" (ticket #8; ticket #11
+ * fires the "order status change" trigger from here). Called once, after the
+ * change is committed, ONLY when the status really changed: a late or repeated
+ * status that was ignored, and a replayed `event_id`, never reach it. It is not
+ * `onJourneyEventAccepted`: `OrderStatusChanged` opens no Journey and does not
+ * go through that hook.
+ *
+ * Today a no-op. Like the other hook it must not throw into the request; the
+ * caller also logs and swallows failures.
+ */
+export async function onOrderStatusChanged(
+  _db: SupabaseClient,
+  _change: OrderStatusChange
+): Promise<void> {}

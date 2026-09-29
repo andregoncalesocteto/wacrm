@@ -162,6 +162,50 @@ export function parsePurchaseProperties(body: unknown): PurchaseProperties {
   return { orderId, currency, value, items };
 }
 
+/**
+ * The closed set of `OrderStatusChanged.properties.status` (contract §5).
+ * `placed` is not one of them: it is the Purchase itself.
+ */
+export const ORDER_EVENT_STATUSES = [
+  'received',
+  'preparing',
+  'finished',
+  'out_for_delivery',
+  'ready_for_pickup',
+  'delivered',
+  'cancelled',
+] as const;
+export type OrderEventStatus = (typeof ORDER_EVENT_STATUSES)[number];
+
+/** `properties` of OrderStatusChanged. */
+export interface OrderStatusProperties {
+  orderId: string;
+  status: OrderEventStatus;
+}
+
+/** Validate `properties` of OrderStatusChanged. */
+export function parseOrderStatusProperties(
+  body: unknown
+): OrderStatusProperties {
+  const properties = isObject(body) ? body.properties : undefined;
+  if (!isObject(properties)) {
+    throw badRequest("'properties' is required and must be an object");
+  }
+  const orderId = requireString(properties, 'order_id', 'properties.order_id');
+  if (orderId.length > MAX_ORDER_ID_LENGTH) {
+    throw badRequest(
+      `'properties.order_id' must have at most ${MAX_ORDER_ID_LENGTH} characters`
+    );
+  }
+  const status = requireString(properties, 'status', 'properties.status');
+  if (!(ORDER_EVENT_STATUSES as readonly string[]).includes(status)) {
+    throw badRequest(
+      `'properties.status' must be one of: ${ORDER_EVENT_STATUSES.join(', ')}`
+    );
+  }
+  return { orderId, status: status as OrderEventStatus };
+}
+
 /** Validate `properties` of AddToCart / InitiateCheckout. */
 export function parseCartProperties(body: unknown): CartProperties {
   const properties = isObject(body) ? body.properties : undefined;

@@ -19,8 +19,10 @@ vi.mock('@/lib/api-keys/store', () => ({
 vi.mock('@/lib/flows/admin-client', () => ({ supabaseAdmin: () => db }));
 
 const hook = vi.hoisted(() => vi.fn());
+const statusHook = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/journeys/event-hooks', () => ({
   onJourneyEventAccepted: hook,
+  onOrderStatusChanged: statusHook,
 }));
 
 const { POST } = await import('./route');
@@ -77,6 +79,7 @@ beforeEach(() => {
   resetWorld();
   n = 0;
   hook.mockReset();
+  statusHook.mockReset();
   __resetRateLimitForTests();
   h.key = keyRow(['events:write']);
   const future = new Date(Date.now() + DAY).toISOString();
@@ -493,6 +496,245 @@ describe('Purchase', () => {
   });
 });
 
+const statusEv = (order_id: string, status: string, extra = {}) =>
+  ev('OrderStatusChanged', { properties: { order_id, status }, ...extra });
+const orderRow = () => orders()[0];
+
+describe('OrderStatusChanged', () => {
+  beforeEach(async () => {
+    await send(ev('Purchase', purchaseProps('PED-1')));
+    hook.mockReset();
+    statusHook.mockReset();
+  });
+
+  it.each([
+    'received',
+    'preparing',
+    'finished',
+    'out_for_delivery',
+    'ready_for_pickup',
+    'delivered',
+    'cancelled',
+  ])('%s updates the order', async (status) => {
+    const res = await send(
+      statusEv('PED-1', status, { occurred_at: '2026-10-02T21:35:00Z' })
+    );
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data).toMatchObject({
+      journey_id: journeys()[0].id,
+      stage: 'won',
+      duplicate: false,
+    });
+    expect(orderRow()).toMatchObject({
+      status,
+      status_changed_at: '2026-10-02T21:35:00.000Z',
+    });
+    expect(orderRow().status_history).toEqual([
+      expect.objectContaining({
+        status,
+        from: 'placed',
+        occurred_at: '2026-10-02T21:35:00.000Z',
+      }),
+    ]);
+    expect(statusHook).toHaveBeenCalledTimes(1);
+    expect(statusHook.mock.calls[0][1]).toMatchObject({
+      accountId: 'acct-1',
+      externalOrderId: 'PED-1',
+      contactId: 'ct-1',
+      previousStatus: 'placed',
+      status,
+    });
+  });
+
+  it('follows the whole delivery path and records every change in order', async () => {
+    for (const status of [
+      'received',
+      'preparing',
+      'finished',
+      'out_for_delivery',
+      'delivered',
+    ]) {
+      expect((await send(statusEv('PED-1', status))).status).toBe(200);
+    }
+    expect(orderRow().status).toBe('delivered');
+    expect(
+      (orderRow().status_history as { status: string }[]).map((h) => h.status)
+    ).toEqual([
+      'received',
+      'preparing',
+      'finished',
+      'out_for_delivery',
+      'delivered',
+    ]);
+    expect(statusHook).toHaveBeenCalledTimes(5);
+  });
+
+  it('follows the pickup path', async () => {
+    for (const status of [
+      'received',
+      'preparing',
+      'finished',
+      'ready_for_pickup',
+      'delivered',
+    ]) {
+      await send(statusEv('PED-1', status));
+    }
+    expect(orderRow().status).toBe('delivered');
+  });
+
+  it('skipping intermediate statuses is accepted', async () => {
+    await send(statusEv('PED-1', 'finished'));
+    expect(orderRow().status).toBe('finished');
+  });
+
+  it('a late or equal status is accepted (200) and ignored with no effects', async () => {
+    await send(statusEv('PED-1', 'finished'));
+    statusHook.mockReset();
+    const before = JSON.stringify(orderRow());
+    for (const status of ['preparing', 'received', 'finished']) {
+      const res = await send(statusEv('PED-1', status));
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.duplicate).toBe(false);
+    }
+    expect(JSON.stringify(orderRow())).toBe(before);
+    expect(statusHook).not.toHaveBeenCalled();
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('out_for_delivery and ready_for_pickup are the same level: the first wins', async () => {
+    await send(statusEv('PED-1', 'out_for_delivery'));
+    statusHook.mockReset();
+    const res = await send(statusEv('PED-1', 'ready_for_pickup'));
+    expect(res.status).toBe(200);
+    expect(orderRow().status).toBe('out_for_delivery');
+    expect(statusHook).not.toHaveBeenCalled();
+
+    // ...and the other way round.
+    orderRow().status = 'finished';
+    orderRow().status_history = [];
+    await send(statusEv('PED-1', 'ready_for_pickup'));
+    await send(statusEv('PED-1', 'out_for_delivery'));
+    expect(orderRow().status).toBe('ready_for_pickup');
+  });
+
+  it('cancelled is accepted at any moment before delivered, and is final', async () => {
+    await send(statusEv('PED-1', 'preparing'));
+    expect((await send(statusEv('PED-1', 'cancelled'))).status).toBe(200);
+    expect(orderRow().status).toBe('cancelled');
+    statusHook.mockReset();
+    for (const status of ['delivered', 'received', 'cancelled']) {
+      expect((await send(statusEv('PED-1', status))).status).toBe(200);
+    }
+    expect(orderRow().status).toBe('cancelled');
+    expect(orderRow().status_history).toHaveLength(2);
+    expect(statusHook).not.toHaveBeenCalled();
+  });
+
+  it('cancelled straight after the Purchase (placed) is accepted', async () => {
+    await send(statusEv('PED-1', 'cancelled'));
+    expect(orderRow().status).toBe('cancelled');
+  });
+
+  it('nothing changes after delivered, not even cancelled', async () => {
+    await send(statusEv('PED-1', 'delivered'));
+    statusHook.mockReset();
+    for (const status of ['cancelled', 'finished']) {
+      expect((await send(statusEv('PED-1', status))).status).toBe(200);
+    }
+    expect(orderRow().status).toBe('delivered');
+    expect(statusHook).not.toHaveBeenCalled();
+  });
+
+  it('opens no Journey or deal and leaves the closed one alone', async () => {
+    const before = JSON.stringify([journeys(), deals()]);
+    await send(statusEv('PED-1', 'preparing'));
+    expect(JSON.stringify([journeys(), deals()])).toBe(before);
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('repeating the same event_id replays it and fires the hook once', async () => {
+    const body = statusEv('PED-1', 'preparing');
+    const first = await send(body);
+    const again = await send(body);
+    expect(again.headers.get('Idempotent-Replayed')).toBe('true');
+    expect((await again.json()).data).toMatchObject({
+      event_id: (await first.json()).data.event_id,
+      duplicate: true,
+    });
+    expect(orderRow().status_history).toHaveLength(1);
+    expect(statusHook).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failing status hook does not fail the accepted event', async () => {
+    statusHook.mockRejectedValueOnce(new Error('boom'));
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await send(statusEv('PED-1', 'received'))).status).toBe(200);
+    spy.mockRestore();
+    expect(orderRow().status).toBe('received');
+  });
+
+  it('400 order_not_found for an unknown order_id, distinct from bad_request', async () => {
+    const res = await send(statusEv('NOPE', 'received'));
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('order_not_found');
+    expect(error.message).toContain('NOPE');
+    expect(orderRow().status).toBe('placed');
+    // Not recorded: sending the Purchase first and retrying works.
+    expect(world.tables.journey_events).toHaveLength(1);
+  });
+
+  it("400 order_not_found for another contact's order, leaking nothing", async () => {
+    world.tables.contacts.push({
+      id: 'ct-2',
+      account_id: 'acct-1',
+      name: 'Joao',
+      phone: '5522',
+    });
+    orderRow().contact_id = 'ct-2';
+    const res = await send(statusEv('PED-1', 'received'));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('order_not_found');
+    expect(JSON.stringify(body)).not.toContain('ct-2');
+    expect(orderRow().status).toBe('placed');
+  });
+
+  it('400 order_not_found for an order of another account', async () => {
+    orderRow().account_id = 'acct-2';
+    const res = await send(statusEv('PED-1', 'received'));
+    expect((await res.json()).error.code).toBe('order_not_found');
+  });
+
+  it('still needs a valid idtrack', async () => {
+    const res = await send(statusEv('PED-1', 'received', { idtrack: 'nope' }));
+    expect(res.status).toBe(404);
+    expect(orderRow().status).toBe('placed');
+  });
+
+  it.each([
+    ['status outside the set', statusEv('PED-1', 'shipped')],
+    ['placed is not a valid status', statusEv('PED-1', 'placed')],
+    ['empty status', statusEv('PED-1', '')],
+    [
+      'missing order_id',
+      ev('OrderStatusChanged', { properties: { status: 'received' } }),
+    ],
+    ['missing properties', ev('OrderStatusChanged')],
+  ])('400 bad_request: %s', async (_label, body) => {
+    const res = await send(body);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe('bad_request');
+    expect(orderRow().status).toBe('placed');
+  });
+
+  it('names the valid statuses in the error', async () => {
+    const res = await send(statusEv('PED-1', 'shipped'));
+    expect((await res.json()).error.message).toContain('out_for_delivery');
+  });
+});
+
 describe('idempotency by event_id', () => {
   it('replays the original response without repeating effects', async () => {
     await send(ev('ViewContent'));
@@ -582,12 +824,10 @@ describe('errors', () => {
     expect(world.tables.journey_events ?? []).toHaveLength(0);
   });
 
-  it('400 for an unknown name, and for names not supported yet', async () => {
-    for (const name of ['Bogus', 'OrderStatusChanged']) {
-      const res = await send(ev(name));
-      expect(res.status).toBe(400);
-      expect((await res.json()).error.code).toBe('bad_request');
-    }
+  it('400 for an unknown name', async () => {
+    const res = await send(ev('Bogus'));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe('bad_request');
     expect(journeys()).toHaveLength(0);
   });
 

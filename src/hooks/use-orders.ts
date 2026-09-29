@@ -25,7 +25,7 @@ export function useOrders({
     createClient()
       .from('orders')
       .select(
-        'id, external_order_id, status, value, currency, items, placed_at'
+        'id, external_order_id, status, value, currency, items, placed_at, status_history'
       )
       .eq(column, id)
       .order('placed_at', { ascending: false })

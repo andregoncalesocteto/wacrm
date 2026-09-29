@@ -2557,6 +2557,7 @@
   "Orders": {
     "title": "Orders",
     "orderNumber": "Order {id}",
+    "history": "Status history",
     "itemQuantity": "{quantity}x",
     "status": {
       "placed": "Placed",

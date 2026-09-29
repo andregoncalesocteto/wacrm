@@ -2545,6 +2545,7 @@
   "Orders": {
     "title": "Pedidos",
     "orderNumber": "Pedido {id}",
+    "history": "Historial de estados",
     "itemQuantity": "{quantity}x",
     "status": {
       "placed": "Realizado",

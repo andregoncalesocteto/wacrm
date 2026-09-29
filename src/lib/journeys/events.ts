@@ -5,18 +5,21 @@ import {
   badRequest,
   idtrackExpired,
   idtrackNotFound,
+  orderNotFound,
 } from '@/lib/api/v1/respond';
 import type { JourneyStage } from './constants';
 import {
   JOURNEY_EVENT_NAMES,
   parseCartProperties,
   parseCommonFields,
+  parseOrderStatusProperties,
   parsePurchaseProperties,
   type CartProperties,
   type CommonEventFields,
+  type OrderStatusProperties,
   type PurchaseProperties,
 } from './event-payload';
-import { onJourneyEventAccepted } from './event-hooks';
+import { onJourneyEventAccepted, onOrderStatusChanged } from './event-hooks';
 import {
   advanceJourneyStage,
   findOpenJourney,
@@ -25,8 +28,11 @@ import {
 } from './journeys';
 import {
   cancelPendingForJourney,
+  changeOrderStatus,
   findCompletedPurchase,
+  findOrderByExternalId,
   recordPurchase,
+  type OrderStatusChange,
 } from './orders';
 import { resolveTrackingToken } from './tokens';
 
@@ -43,7 +49,8 @@ import { resolveTrackingToken } from './tokens';
 
 export interface JourneyEventResult {
   event_id: string;
-  journey_id: string;
+  /** Null only for an order whose Journey row no longer exists. */
+  journey_id: string | null;
   stage: JourneyStage;
   duplicate: boolean;
 }
@@ -78,7 +85,24 @@ interface EventHandler {
     properties: unknown
   ): Promise<{ journeyId: string } | null>;
   /** Apply the event to the (open) Journey and its deal. */
-  handle(ctx: HandlerContext): Promise<void>;
+  handle?(ctx: HandlerContext): Promise<void>;
+  /**
+   * For events about something that already exists (an Order) and so must not
+   * open or touch a Journey. Replaces `handle`; the Journey is only reported.
+   * A `change` is handed to `onOrderStatusChanged` after the response is saved.
+   */
+  handleStandalone?(ctx: StandaloneContext): Promise<{
+    journeyId: string | null;
+    change: OrderStatusChange | null;
+  }>;
+}
+
+interface StandaloneContext {
+  db: SupabaseClient;
+  accountId: string;
+  event: CommonEventFields & { properties: unknown };
+  target: Target;
+  now: Date;
 }
 
 const CLAIM_POLL_MS = 150;
@@ -217,12 +241,45 @@ const purchase: EventHandler = {
   },
 };
 
-/** Events with a handler today. OrderStatusChanged arrives with ticket #7. */
+/**
+ * OrderStatusChanged (ticket #8): the order is found by (account, `order_id`)
+ * and must belong to the contact of the token, else `order_not_found` (400)
+ * without saying whether another contact owns it. The status only moves
+ * forward (`changeOrderStatus`); an older / equal one is accepted, answered
+ * 200 and ignored: no write, no hook. The Journey is not touched (it closed
+ * with the Purchase) and never opened.
+ */
+const orderStatusChanged: EventHandler = {
+  parseProperties: parseOrderStatusProperties,
+  async handleStandalone(ctx) {
+    const props = ctx.event.properties as OrderStatusProperties;
+    const order = await findOrderByExternalId(
+      ctx.db,
+      ctx.accountId,
+      props.orderId
+    );
+    if (!order || order.contact_id !== ctx.target.contactId) {
+      throw orderNotFound(props.orderId);
+    }
+    const change = await changeOrderStatus(ctx.db, {
+      accountId: ctx.accountId,
+      order,
+      status: props.status,
+      occurredAt: ctx.event.occurredAt,
+      eventId: ctx.event.eventId,
+      now: ctx.now,
+    });
+    return { journeyId: order.journey_id, change };
+  },
+};
+
+/** Events with a handler today. */
 const EVENT_HANDLERS: Record<string, EventHandler> = {
   ViewContent: viewContent,
   AddToCart: cartHandler('cart', 'last_add_to_cart_at'),
   InitiateCheckout: cartHandler('checkout', 'checkout_started_at'),
   Purchase: purchase,
+  OrderStatusChanged: orderStatusChanged,
 };
 
 function handlerFor(name: string): EventHandler {
@@ -385,12 +442,49 @@ export async function processJourneyEvent(
       return result;
     }
 
-    const userId = await args.resolveUserId();
     const target: Target = {
       contactId: token.contactId,
       conversationId: token.conversationId,
       connectionId: token.connectionId,
     };
+
+    if (handler.handleStandalone) {
+      const { journeyId, change } = await handler.handleStandalone({
+        db,
+        accountId,
+        event,
+        target,
+        now,
+      });
+      let stage: JourneyStage = 'won';
+      if (journeyId) {
+        const { data: j, error: jErr } = await db
+          .from('journeys')
+          .select('stage')
+          .eq('id', journeyId)
+          .eq('account_id', accountId)
+          .maybeSingle();
+        if (jErr) throw new Error(`journey lookup failed: ${jErr.message}`);
+        stage = (j as { stage: JourneyStage } | null)?.stage ?? stage;
+      }
+      const result: JourneyEventResult = {
+        event_id: event.eventId,
+        journey_id: journeyId,
+        stage,
+        duplicate: false,
+      };
+      await saveResponse(db, accountId, claim.claimId, result, now);
+      if (change) {
+        try {
+          await onOrderStatusChanged(db, change);
+        } catch (hookErr) {
+          console.error('[journeys] onOrderStatusChanged failed:', hookErr);
+        }
+      }
+      return result;
+    }
+
+    const userId = await args.resolveUserId();
     // Reuse the open Journey; with none (closed, or never opened) start a new
     // one. openOrRenewJourney is NOT used on an open one: it would count a
     // link that was never sent.
@@ -405,7 +499,7 @@ export async function processJourneyEvent(
         linkSentAt: now,
       }));
 
-    await handler.handle({ db, accountId, userId, event, journey, now });
+    await handler.handle?.({ db, accountId, userId, event, journey, now });
 
     const { data: after, error } = await db
       .from('journeys')

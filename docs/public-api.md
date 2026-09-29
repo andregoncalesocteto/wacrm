@@ -290,12 +290,33 @@ curl -X POST https://your-crm.example.com/api/v1/journey/events \
 # → 200 { "data": { "event_id": "b6d2…", "journey_id": "…", "stage": "cart", "duplicate": false } }
 ```
 
-- `event_id`, `name`, `idtrack`, `occurred_at` (ISO 8601 UTC) are required. Supported `name`s in this version: `ViewContent`, `AddToCart`, `InitiateCheckout`; any other name (including `Purchase` and `OrderStatusChanged`, not available yet) is a `400 bad_request`.
+- `event_id`, `name`, `idtrack`, `occurred_at` (ISO 8601 UTC) are required. Supported `name`s in this version: `ViewContent`, `AddToCart`, `InitiateCheckout`, `Purchase`, `OrderStatusChanged`; any other name is a `400 bad_request`.
 - `AddToCart` and `InitiateCheckout` require `properties.currency` (3 letters) and `properties.cart { value, items[] }` with the **whole cart at that moment**. Each item: `id`, `quantity` (integer ≥ 1), `unit_price` (≥ 0), optional `name`.
 - **The deal only moves forward:** `ViewContent` → _Navegando_ (first time; repeats only count), `AddToCart` → _Carrinho_, `InitiateCheckout` → _Checkout_. An `AddToCart` after `InitiateCheckout` refreshes the cart but never moves the stage back; a late event never overwrites a newer cart (compared by `occurred_at`).
 - The `idtrack` is resolved to the contact, conversation and connection that received the link. With no open Journey for it (for example after a purchase), the event opens a new Journey and deal.
 - **Idempotency:** `event_id` is unique per account. Re-sending it returns the original response with `"duplicate": true` and the header `Idempotent-Replayed: true`, and repeats no effect. Two simultaneous requests with the same `event_id` are applied once. If the first is still running when the second waits too long, the second gets a retryable `500` (`internal`): re-send the same `event_id`. Rejected events (4xx) are not recorded, so fixing and re-sending works.
-- **Errors:** `400 bad_request` (invalid body, unknown or not-yet-supported `name`), `401 unauthorized`, `403 forbidden` (no `events:write`), `404 idtrack_not_found`, `410 idtrack_expired` (the customer needs a new link), `429 rate_limited` (120/min per key, honour `Retry-After`).
+- **Errors:** `400 bad_request` (invalid body, unknown `name`, `status` outside the set), `400 order_not_found` (see below), `401 unauthorized`, `403 forbidden` (no `events:write`), `404 idtrack_not_found`, `410 idtrack_expired` (the customer needs a new link), `429 rate_limited` (120/min per key, honour `Retry-After`).
+
+#### `OrderStatusChanged`
+
+Reports the progress of an order created by a `Purchase`. Use the `idtrack` stored with the order.
+
+```json
+{
+  "event_id": "d78a…",
+  "name": "OrderStatusChanged",
+  "idtrack": "<token>",
+  "occurred_at": "2026-10-02T21:35:00Z",
+  "properties": { "order_id": "PED-2026-104233", "status": "preparing" }
+}
+```
+
+- `status` is one of `received`, `preparing`, `finished`, `out_for_delivery`, `ready_for_pickup`, `delivered`, `cancelled`; anything else is `400 bad_request`.
+- The order is found by `order_id` in your account and must belong to the contact of the `idtrack`. Otherwise (unknown id, or an order of another contact) the answer is `400` with `error.code = "order_not_found"`, the same for both cases; it is distinct from `bad_request` so you can tell "send the Purchase first" from "fix the body". Rejected events are not recorded, so re-sending after the Purchase works.
+- **The status only moves forward:** `received` → `preparing` → `finished` → `out_for_delivery` **or** `ready_for_pickup` → `delivered` (a step may be skipped). The two last-mile statuses are the same level: the first to arrive wins and the other is ignored. `cancelled` is accepted at any moment; `delivered` and `cancelled` are final.
+- A status that is older than, equal to, or after a final status than the current one is accepted (`200`) but **ignored**: nothing is written and nothing fires (no automation, no message). Only a real change does.
+- The response is the usual `{ event_id, journey_id, stage, duplicate }`, with the order's Journey (already `won`); the event opens no Journey and creates no deal. Repeating an `event_id` replays the original response.
+- The current status and the change history (with the time each happened) show on the conversation panel and on the deal.
 
 ### `POST /api/v1/broadcasts`
 

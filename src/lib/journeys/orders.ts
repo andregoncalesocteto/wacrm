@@ -38,7 +38,139 @@ export interface OrderRow {
   currency: string;
   items: unknown;
   placed_at: string;
+  status_history: OrderStatusHistoryEntry[];
   [column: string]: unknown;
+}
+
+/** One applied status change (`orders.status_history`, oldest first). */
+export interface OrderStatusHistoryEntry {
+  status: OrderStatus;
+  from: OrderStatus;
+  /** When it happened on the Digital menu (`occurred_at` of the event). */
+  occurred_at: string;
+  /** When the CRM applied it. */
+  recorded_at: string;
+  event_id: string;
+}
+
+/**
+ * "Only moves forward" (ticket #8). Equal rank means "same level": whichever of
+ * `out_for_delivery` / `ready_for_pickup` arrives first wins and the other is
+ * then ignored (an order is either delivered or picked up, never both).
+ * `cancelled` is outside the ladder: see `canChangeOrderStatus`.
+ */
+const STATUS_RANK: Record<Exclude<OrderStatus, 'cancelled'>, number> = {
+  placed: 0,
+  received: 1,
+  preparing: 2,
+  finished: 3,
+  out_for_delivery: 4,
+  ready_for_pickup: 4,
+  delivered: 5,
+};
+
+/**
+ * Whether an incoming status changes an order that is at `current`.
+ * `delivered` and `cancelled` are final; `cancelled` is accepted from any
+ * other status; otherwise the incoming rank must be strictly higher.
+ */
+export function canChangeOrderStatus(
+  current: OrderStatus,
+  incoming: OrderStatus
+): boolean {
+  if (current === 'cancelled' || current === 'delivered') return false;
+  if (incoming === 'cancelled') return true;
+  if (incoming === 'placed') return false;
+  return STATUS_RANK[incoming] > STATUS_RANK[current];
+}
+
+/** What `onOrderStatusChanged` receives (see event-hooks.ts). */
+export interface OrderStatusChange {
+  accountId: string;
+  orderId: string;
+  externalOrderId: string;
+  contactId: string;
+  conversationId: string | null;
+  connectionId: string | null;
+  journeyId: string | null;
+  dealId: string | null;
+  previousStatus: OrderStatus;
+  status: OrderStatus;
+  occurredAt: Date;
+  eventId: string;
+}
+
+/**
+ * Apply `status` to `order` if it moves the order forward. Returns the change
+ * (for the hook) or null when the status was older/equal/after a final one
+ * and was ignored: then NOTHING is written. The write is a compare-and-swap on
+ * the status read, so two concurrent events cannot both apply; the loser
+ * re-reads and re-evaluates.
+ */
+export async function changeOrderStatus(
+  db: SupabaseClient,
+  args: {
+    accountId: string;
+    order: OrderRow;
+    status: OrderStatus;
+    occurredAt: Date;
+    eventId: string;
+    now: Date;
+  }
+): Promise<OrderStatusChange | null> {
+  const { accountId, status } = args;
+  let order = args.order;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (!canChangeOrderStatus(order.status, status)) return null;
+    const from = order.status;
+    const history = Array.isArray(order.status_history)
+      ? order.status_history
+      : [];
+    const entry: OrderStatusHistoryEntry = {
+      status,
+      from,
+      occurred_at: args.occurredAt.toISOString(),
+      recorded_at: args.now.toISOString(),
+      event_id: args.eventId,
+    };
+    const { data, error } = await db
+      .from('orders')
+      .update({
+        status,
+        status_changed_at: entry.occurred_at,
+        status_history: [...history, entry],
+      })
+      .eq('id', order.id)
+      .eq('account_id', accountId)
+      .eq('status', from)
+      .select('id');
+    if (error) throw new Error(`order status update failed: ${error.message}`);
+    if (Array.isArray(data) && data.length > 0) {
+      return {
+        accountId,
+        orderId: order.id,
+        externalOrderId: order.external_order_id,
+        contactId: order.contact_id,
+        conversationId: order.conversation_id,
+        connectionId: order.connection_id,
+        journeyId: order.journey_id,
+        dealId: order.deal_id,
+        previousStatus: from,
+        status,
+        occurredAt: args.occurredAt,
+        eventId: args.eventId,
+      };
+    }
+    // Lost the race: look at the order again.
+    const fresh = await findOrderByExternalId(
+      db,
+      accountId,
+      order.external_order_id
+    );
+    if (!fresh) return null;
+    order = fresh;
+  }
+  throw new Error('order status update kept conflicting; retry');
 }
 
 export async function findOrderByExternalId(

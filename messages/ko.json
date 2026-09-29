@@ -2557,6 +2557,7 @@
   "Orders": {
     "title": "주문",
     "orderNumber": "주문 {id}",
+    "history": "상태 이력",
     "itemQuantity": "{quantity}개",
     "status": {
       "placed": "주문 완료",
