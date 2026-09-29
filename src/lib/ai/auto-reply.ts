@@ -12,9 +12,11 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import {
   MenuLinkError,
   hasMenuLinkVariable,
+  loadJourneyHandoffState,
   recordMenuLinkSent,
   replaceMenuLinkVariable,
   resolveMenuLink,
+  type JourneyHandoffState,
   type ResolvedMenuLink,
 } from '@/lib/journeys'
 
@@ -162,9 +164,24 @@ export async function dispatchInboundToAiReply(
     // Pauses the bot on this thread, routes to the handoff agent (if any)
     // and leaves the internal note. `reason` is appended to the note.
     const handOff = async (reason?: string) => {
+      // Best-effort: a failed Journey read leaves the plain note.
+      let journey: JourneyHandoffState | null = null
+      try {
+        journey = await loadJourneyHandoffState(db, {
+          accountId,
+          contactId: args.contactId,
+          conversationId,
+        })
+      } catch (err) {
+        console.error(
+          `[ai auto-reply] journey state unavailable for handoff note (conversation ${conversationId}):`,
+          err,
+        )
+      }
       const summary = buildHandoffSummary({
         messages,
         replyCount: conv.ai_reply_count ?? 0,
+        journey,
       })
       const update: Record<string, unknown> = {
         ai_autoreply_disabled: true,

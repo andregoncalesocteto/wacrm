@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   showTyping: vi.fn(),
   resolveMenuLink: vi.fn(),
   recordMenuLinkSent: vi.fn(),
+  loadJourneyHandoffState: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     autoResponders: [] as { id: string }[],
@@ -34,6 +35,7 @@ vi.mock('@/lib/journeys', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   resolveMenuLink: h.resolveMenuLink,
   recordMenuLinkSent: h.recordMenuLinkSent,
+  loadJourneyHandoffState: h.loadJourneyHandoffState,
 }))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
@@ -114,6 +116,7 @@ beforeEach(() => {
   h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
   h.sendOutbound.mockResolvedValue({ externalMessageId: 'm1' })
   h.showTyping.mockResolvedValue(undefined)
+  h.loadJourneyHandoffState.mockResolvedValue(null)
 })
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
@@ -273,6 +276,50 @@ describe('dispatchInboundToAiReply — typing indicator (#527)', () => {
     expect(h.showTyping).not.toHaveBeenCalled()
   })
 })
+
+describe('dispatchInboundToAiReply — handoff note with Journey state', () => {
+  beforeEach(() => {
+    h.generateReply.mockResolvedValue({ text: '', handoff: true });
+  });
+
+  it('adds the Journey, order and last event to the note', async () => {
+    h.loadJourneyHandoffState.mockResolvedValue({
+      stageName: 'Carrinho',
+      state: 'open',
+      cart: { itemsCount: 2, value: 89.8, currency: 'USD' },
+      order: null,
+      lastEventName: 'AddToCart',
+    });
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.loadJourneyHandoffState).toHaveBeenCalledWith(expect.anything(), {
+      accountId: 'acct-1',
+      contactId: 'contact-1',
+      conversationId: 'conv-1',
+    });
+    expect(h.state.updatePayload?.ai_handoff_summary).toBe(
+      '🤖 AI agent handed off without replying. Journey: Carrinho (2 items, $89.80). Last event: AddToCart. Last customer message: “hi”'
+    );
+  });
+
+  it('keeps the plain note when there is no Journey', async () => {
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.state.updatePayload?.ai_handoff_summary).toBe(
+      '🤖 AI agent handed off without replying. Last customer message: “hi”'
+    );
+  });
+
+  it('still hands off with the plain note when the Journey read fails', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    h.loadJourneyHandoffState.mockRejectedValue(new Error('db down'));
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.state.updatePayload).toMatchObject({
+      ai_autoreply_disabled: true,
+      ai_handoff_summary:
+        '🤖 AI agent handed off without replying. Last customer message: “hi”',
+    });
+    spy.mockRestore();
+  });
+});
 
 describe('dispatchInboundToAiReply — handoff', () => {
   it('disables auto-reply, writes a summary, and does not send on handoff', async () => {

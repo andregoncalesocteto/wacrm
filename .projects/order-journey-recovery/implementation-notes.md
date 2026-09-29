@@ -99,3 +99,11 @@ Memória entre tickets, na branch `feat/order-journey-recovery`. Cada ticket acr
 - Construtor: o passo `send_message` ganhou o bloco `fallback_template` (seletor de template + variáveis fixas, uma por linha; vazio remove o campo). Chaves `Automations.builder.config.fallback*`.
 - Docs: `docs/docker.md` e `.env.local.example` pedem o agendador externo a cada 1 a 2 minutos.
 - Não feito: `abandoned_cart` (#10) e `resumption_10_sent_at` / `resumption_30_sent_at` (as colunas de `journeys` seguem sem uso; o #14/#10 pode gravá-las); a Journey "Perdido" por tempo; o texto por canal é o de cada automação (o #14 cria uma por canal/idioma). O preset em si é do #14.
+
+## #12 Nota de transbordo com o estado da Journey e do pedido
+
+- Sem migration nem texto de UI (nenhuma chave i18n). A nota (`conversations.ai_handoff_summary`) já era texto fixo em inglês, gravado no banco e não localizado; a parte nova segue o mesmo padrão (inglês fixo) e é composta sem LLM.
+- `loadJourneyHandoffState(db, {accountId, contactId, conversationId})` em `src/lib/journeys/handoff-state.ts` (exportada por `@/lib/journeys`): somente leitura, tudo filtrado por `account_id`. Conexão = `conversations.connection_id`; Journey aberta, senão a mais recente (`link_sent_at`); nome da etapa vem da etapa do deal (respeita renomeação), com o nome padrão de `JOURNEY_STAGES` de reserva; pedido = mais recente da Journey, senão o mais recente do contato na conexão; último evento = último `journey_events.name` da Journey por `occurred_at`, ignorando `OrderStatusChanged`. Devolve `JourneyHandoffState | null`; lança em erro de leitura.
+- `buildHandoffSummary` (`src/lib/ai/handoff.ts`) ganhou `journey?`, `now?`, `locale?`. Sem `journey` a saída é idêntica à anterior (teste de regressão). Ex.: "… Journey: Carrinho (2 items, R$89.80). Order PED-1042: preparing since 40 min. Last event: AddToCart. Last customer message: …". O carrinho só aparece com a Journey aberta e itens > 0. Tempo: `N min`, `H h M min`, `N d`.
+- `auto-reply.ts` chama a leitura dentro de `handOff` (todos os caminhos de transbordo, inclusive falha de link); erro é logado e a nota fica a antiga.
+- `formatCurrency` (`src/lib/currency.ts`) ganhou o 4o parâmetro opcional `fractionDigits` (padrão 0, comportamento anterior intacto) para mostrar centavos na nota.
