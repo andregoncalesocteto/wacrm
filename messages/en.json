@@ -623,7 +623,8 @@
     "card": {
       "noContact": "No contact",
       "won": "Won",
-      "lost": "Lost"
+      "lost": "Lost",
+      "cartItems": "{count, plural, =1 {# item} other {# items}}"
     },
     "form": {
       "editDeal": "Edit Deal",
@@ -706,6 +707,35 @@
       "lostThisMonth": "Lost This Month",
       "lostThisMonthTooltip": "Deals marked as Lost since the first day of the current month.",
       "howCalculated": "How {label} is calculated"
+    },
+    "journey": {
+      "filters": {
+        "channel": "Channel",
+        "store": "Store",
+        "allChannels": "All channels",
+        "allStores": "All stores"
+      },
+      "stages": {
+        "link_sent": "Link sent",
+        "browsing": "Browsing",
+        "cart": "Cart",
+        "checkout": "Checkout",
+        "won": "Purchased",
+        "lost": "Lost"
+      },
+      "funnel": {
+        "title": "Journey conversion",
+        "description": "Journeys that reached each step (in it or beyond) and the rate from link sent to purchase.",
+        "overall": "Overall",
+        "byChannel": "By channel",
+        "byStore": "By store",
+        "group": "Group",
+        "allJourneys": "All Journeys",
+        "conversion": "Link to purchase",
+        "noData": "-",
+        "empty": "No Journeys yet.",
+        "error": "Could not load the Journey funnel."
+      }
     }
   },
   "Broadcasts": {

@@ -1,7 +1,7 @@
 'use client';
 
 import type { Deal, PipelineStage } from '@/types';
-import { Calendar, Check, X } from 'lucide-react';
+import { Calendar, Check, ShoppingCart, X } from 'lucide-react';
 import { formatCurrency } from '@/lib/currency';
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { useContactDisplay } from '@/hooks/use-contact-display';
@@ -90,6 +90,25 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
           </span>
         )}
       </div>
+
+      {deal.journey && deal.journey.cart_items_count > 0 && (
+        <div
+          className="text-muted-foreground mt-2 flex items-center gap-1 text-[11px]"
+          data-testid="deal-cart-summary"
+        >
+          <ShoppingCart className="h-3 w-3" />
+          <span>
+            {t('cartItems', { count: deal.journey.cart_items_count })}
+            {' · '}
+            {formatCurrency(
+              deal.journey.cart_value,
+              deal.journey.cart_currency ?? deal.currency,
+              locale,
+              2
+            )}
+          </span>
+        </div>
+      )}
 
       {assigneeLabel && (
         <div className="mt-2 flex items-center justify-end">

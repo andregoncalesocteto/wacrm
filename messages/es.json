@@ -623,7 +623,8 @@
     "card": {
       "noContact": "Sin contacto",
       "won": "Ganado",
-      "lost": "Perdido"
+      "lost": "Perdido",
+      "cartItems": "{count, plural, =1 {# artículo} other {# artículos}}"
     },
     "form": {
       "editDeal": "Editar negocio",
@@ -706,6 +707,35 @@
       "lostThisMonth": "Perdidos este mes",
       "lostThisMonthTooltip": "Negocios marcados como perdidos desde el primer día del mes actual.",
       "howCalculated": "Cómo se calcula {label}"
+    },
+    "journey": {
+      "filters": {
+        "channel": "Canal",
+        "store": "Tienda",
+        "allChannels": "Todos los canales",
+        "allStores": "Todas las tiendas"
+      },
+      "stages": {
+        "link_sent": "Enlace enviado",
+        "browsing": "Navegando",
+        "cart": "Carrito",
+        "checkout": "Checkout",
+        "won": "Compró",
+        "lost": "Perdido"
+      },
+      "funnel": {
+        "title": "Conversión del Journey",
+        "description": "Journeys que llegaron a cada etapa (en ella o más allá) y la tasa desde el enlace enviado hasta la compra.",
+        "overall": "General",
+        "byChannel": "Por canal",
+        "byStore": "Por tienda",
+        "group": "Grupo",
+        "allJourneys": "Todos los Journeys",
+        "conversion": "Enlace a compra",
+        "noData": "-",
+        "empty": "Aún no hay Journeys.",
+        "error": "No se pudo cargar el embudo del Journey."
+      }
     }
   },
   "Broadcasts": {

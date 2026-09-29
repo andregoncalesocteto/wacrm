@@ -386,6 +386,8 @@ export interface Pipeline {
   id: string;
   user_id: string;
   name: string;
+  /** CRM-managed pipeline key (`order_journey`); null for user pipelines. */
+  system_key?: string | null;
   created_at: string;
 }
 
@@ -411,6 +413,14 @@ export interface Deal {
    */
   contact_id: string | null;
   conversation_id?: string;
+  /** Connection of the order Journey that opened the deal (channel + store). */
+  connection_id?: string | null;
+  /** Cart snapshot of the order Journey behind the deal, when there is one. */
+  journey?: {
+    cart_items_count: number;
+    cart_value: number;
+    cart_currency: string | null;
+  } | null;
   assigned_to?: string;
   title: string;
   value: number;
