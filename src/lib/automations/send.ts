@@ -1,5 +1,5 @@
 import { sendOutbound } from '@/lib/channels/send';
-import type { OutboundMessage } from '@/lib/channels/types';
+import type { OutboundMessage, TemplateMessage } from '@/lib/channels/types';
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive';
 import { supabaseAdmin } from './admin-client';
 
@@ -26,7 +26,8 @@ interface BaseArgs {
 async function send(
   args: BaseArgs,
   message: OutboundMessage,
-  fallbackPreview?: string
+  fallbackPreview?: string,
+  windowPolicy?: { fallbackTemplate?: TemplateMessage | null }
 ): Promise<{ whatsapp_message_id: string }> {
   const r = await sendOutbound({
     accountId: args.accountId,
@@ -34,15 +35,24 @@ async function send(
     message,
     actor: { type: 'automation' },
     fallbackPreview,
+    windowPolicy,
     db: supabaseAdmin(),
   });
   return { whatsapp_message_id: r.externalMessageId };
 }
 
 export function engineSendText(
-  args: BaseArgs & { text: string }
+  args: BaseArgs & {
+    text: string;
+    /** Template sent instead of the text when the channel's reply window is closed. */
+    fallbackTemplate?: TemplateMessage | null;
+  }
 ): Promise<{ whatsapp_message_id: string }> {
-  return send(args, { type: 'text', text: args.text });
+  // Automation texts are window-aware: text inside the window, the step's
+  // template outside it, a visible `window_closed` failure without one.
+  return send(args, { type: 'text', text: args.text }, undefined, {
+    fallbackTemplate: args.fallbackTemplate,
+  });
 }
 
 export function engineSendTemplate(

@@ -93,7 +93,15 @@ function seed() {
       { secrets_encrypted: 'cipher', secrets_format: 'wa_token_v0' },
     ],
     message_templates: [],
-    messages: [],
+    messages: [
+      // Reply window open (automation texts are window-aware): one recent
+      // customer message per conversation. Assertions use the sent-only view.
+      ...['cv-1', 'cv-other'].map((id) => ({
+        conversation_id: id,
+        sender_type: 'customer',
+        created_at: new Date().toISOString(),
+      })),
+    ],
     automations: [
       {
         id: 'au-1',
@@ -129,7 +137,8 @@ const fire = (context: Row = { conversation_id: 'cv-1' }) =>
     context,
   });
 
-const messages = () => h.db.messages;
+const messages = () =>
+  h.db.messages.filter((m) => m.sender_type !== 'customer');
 const conv = (id = 'cv-1') => h.db.conversations.find((c) => c.id === id)!;
 const log = () => h.db.automation_logs[0];
 

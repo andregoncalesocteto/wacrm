@@ -569,6 +569,15 @@ export type AutomationTriggerConfig =
 
 export interface SendMessageStepConfig {
   text: string;
+  /**
+   * Template sent instead of `text` when the channel's reply window (WhatsApp
+   * 24 h) is closed. Without it, a send outside the window fails visibly.
+   */
+  fallback_template?: {
+    name: string;
+    language?: string;
+    variables?: Record<string, string>;
+  };
 }
 
 /**

@@ -80,7 +80,14 @@ function fakeDb(): SupabaseClient {
       this.filters.push((r) => r[col] === v);
       return this;
     }
-    order() {
+    private orderBy: { col: string; asc: boolean } | null = null;
+    private max = Infinity;
+    order(col: string, opts?: { ascending?: boolean }) {
+      this.orderBy = { col, asc: opts?.ascending !== false };
+      return this;
+    }
+    limit(n: number) {
+      this.max = n;
       return this;
     }
     maybeSingle() {
@@ -103,6 +110,14 @@ function fakeDb(): SupabaseClient {
         out = [row];
       } else {
         out = rows.filter((r) => this.filters.every((f) => f(r)));
+        if (this.orderBy) {
+          const { col, asc } = this.orderBy;
+          out = [...out].sort(
+            (a, b) =>
+              (String(a[col]) < String(b[col]) ? -1 : 1) * (asc ? 1 : -1)
+          );
+        }
+        out = out.slice(0, this.max);
         if (this.op === 'update') {
           for (const r of out) Object.assign(r, this.payload);
         } else if (this.table === 'conversations') {
@@ -779,5 +794,91 @@ describe('sendOutbound disabled connection (US-078)', () => {
       })
     ).rejects.toBeInstanceOf(ConnectionDisabledError);
     expect(typingMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('sendOutbound reply window (windowPolicy)', () => {
+  const hoursAgo = (n: number) =>
+    new Date(Date.now() - n * 3_600_000).toISOString();
+  const inbound = (n: number) =>
+    h.db.messages.push({
+      conversation_id: 'cv-1',
+      sender_type: 'customer',
+      created_at: hoursAgo(n),
+    });
+  const fallbackTemplate = {
+    name: 'order_update',
+    language: 'en',
+    provider: { params: ['A1', 'today'] },
+  };
+  const auto = { actor: { type: 'automation' as const } };
+
+  it('inside the window: sends the text as is', async () => {
+    inbound(30);
+    inbound(2);
+    await send({ ...auto, windowPolicy: { fallbackTemplate } });
+    expect(sendMock.mock.calls[0][2]).toMatchObject({
+      type: 'text',
+      text: 'hi',
+    });
+    expect(h.db.messages.at(-1)).toMatchObject({
+      content_type: 'text',
+      status: 'sent',
+    });
+  });
+
+  it('outside the window with a template: sends the template instead', async () => {
+    h.db.message_templates = [TPL_ROW];
+    inbound(25);
+    await send({ ...auto, windowPolicy: { fallbackTemplate } });
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(sendMock.mock.calls[0][2]).toMatchObject({
+      type: 'template',
+      template: { name: 'order_update' },
+    });
+    expect(h.db.messages.at(-1)).toMatchObject({
+      content_type: 'template',
+      template_name: 'order_update',
+      content_text: 'Order A1 ships today',
+    });
+  });
+
+  it('outside the window without a template: fails visibly, sends nothing', async () => {
+    inbound(25);
+    const err = await send({ ...auto, windowPolicy: {} }).catch((e) => e);
+    expect(err).toBeInstanceOf(ChannelError);
+    expect(err).toMatchObject({ code: 'window_closed' });
+    expect(err.message).toMatch(/24-hour reply window/);
+    expect(sendMock).not.toHaveBeenCalled();
+    const failed = h.db.messages.at(-1);
+    expect(failed).toMatchObject({
+      status: 'failed',
+      error_title: 'Reply window closed',
+      error_details: err.message,
+    });
+    expect(h.db.conversations[0].last_message_text).toBe('old');
+  });
+
+  it('no inbound at all counts as a closed window', async () => {
+    await expect(send({ ...auto, windowPolicy: {} })).rejects.toMatchObject({
+      code: 'window_closed',
+    });
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it('a channel without a window (Telegram) always sends the text', async () => {
+    resetRegistryForTests();
+    registerProvider(
+      provider({ capabilities: { ...caps, replyWindowHours: null } })
+    );
+    inbound(500);
+    await send({ ...auto, windowPolicy: {} });
+    expect(sendMock.mock.calls[0][2]).toMatchObject({ type: 'text' });
+  });
+
+  it('without windowPolicy nothing changes (inbox, broadcasts, AI)', async () => {
+    inbound(500);
+    await send();
+    expect(sendMock.mock.calls[0][2]).toMatchObject({ type: 'text' });
   });
 });

@@ -434,6 +434,14 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         conversationId,
         contactId: args.contactId,
         text,
+        fallbackTemplate: cfg.fallback_template?.name
+          ? {
+              name: cfg.fallback_template.name,
+              // '' = unspecified: the core resolves it from the template row.
+              language: cfg.fallback_template.language ?? '',
+              provider: { params: templateParams(cfg.fallback_template.variables) },
+            }
+          : null,
       })
       return `sent via Meta (${whatsapp_message_id})`
     }
@@ -466,24 +474,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('send_template needs a contact')
       if (!cfg.template_name) throw new Error('send_template needs template_name')
       const conversationId = await resolveConversationId(args, 'templates')
-      // Meta templates use positional {{1}}, {{2}}, … placeholders, so
-      // we MUST emit params in strict numeric order. Lexicographic sort
-      // of "1", "2", …, "10" yields "1", "10", "2", … which silently
-      // scrambles every template with ≥10 variables.
-      const params = cfg.variables
-        ? Object.keys(cfg.variables)
-            .sort((a, b) => {
-              const na = Number(a)
-              const nb = Number(b)
-              const aNum = Number.isFinite(na)
-              const bNum = Number.isFinite(nb)
-              if (aNum && bNum) return na - nb
-              if (aNum) return -1
-              if (bNum) return 1
-              return a.localeCompare(b)
-            })
-            .map((k) => String(cfg.variables![k]))
-        : []
+      const params = templateParams(cfg.variables)
       const { whatsapp_message_id } = await engineSendTemplate({
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
@@ -913,6 +904,26 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
     default:
       return false
   }
+}
+
+// Meta templates use positional {{1}}, {{2}}, … placeholders, so we MUST emit
+// params in strict numeric order. Lexicographic sort of "1", "2", …, "10"
+// yields "1", "10", "2", … which silently scrambles every template with ≥10
+// variables.
+function templateParams(variables: Record<string, string> | undefined): string[] {
+  if (!variables) return []
+  return Object.keys(variables)
+    .sort((a, b) => {
+      const na = Number(a)
+      const nb = Number(b)
+      const aNum = Number.isFinite(na)
+      const bNum = Number.isFinite(nb)
+      if (aNum && bNum) return na - nb
+      if (aNum) return -1
+      if (bNum) return 1
+      return a.localeCompare(b)
+    })
+    .map((k) => String(variables[k]))
 }
 
 function waitMs(cfg: WaitStepConfig): number {

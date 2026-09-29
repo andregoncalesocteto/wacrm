@@ -81,6 +81,9 @@ function registerNoTemplateChannel() {
   } as unknown as ChannelProvider);
 }
 
+const sent = () =>
+  h.db.messages.filter((m) => m.sender_type !== 'customer');
+
 function seed() {
   h.db = {
     contacts: [{ id: 'ct-1', account_id: 'acct-1', phone: '+15551234567' }],
@@ -118,7 +121,15 @@ function seed() {
       { secrets_encrypted: 'cipher', secrets_format: 'wa_token_v0' },
     ],
     message_templates: [],
-    messages: [],
+    messages: [
+      // Reply window open (automation texts are window-aware): one recent
+      // customer message per conversation. Assertions use the sent-only view.
+      ...['cv-old-wa', 'cv-new-wa'].map((id) => ({
+        conversation_id: id,
+        sender_type: 'customer',
+        created_at: new Date().toISOString(),
+      })),
+    ],
     contact_identities: [],
     automations: [
       {
@@ -220,8 +231,8 @@ describe('wait step saves the conversation', () => {
       pending as unknown as Parameters<typeof resumePendingExecution>[0]
     );
 
-    expect(h.db.messages).toHaveLength(1);
-    expect(h.db.messages[0]).toMatchObject({
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0]).toMatchObject({
       conversation_id: 'cv-new-wa',
       sender_type: 'bot',
       content_text: 'Later',
@@ -238,8 +249,8 @@ describe('triggers without a conversation', () => {
 
     await fire();
 
-    expect(h.db.messages).toHaveLength(1);
-    expect(h.db.messages[0].conversation_id).toBe('cv-new-wa');
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0].conversation_id).toBe('cv-new-wa');
     expect(conv('cv-old-wa').last_message_text).toBe('old');
     expect(log().status).toBe('success');
   });
@@ -256,7 +267,7 @@ describe('triggers without a conversation', () => {
     await fire();
 
     expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
-    expect(h.db.messages[0].conversation_id).toBe('cv-old-wa');
+    expect(sent()[0].conversation_id).toBe('cv-old-wa');
     expect(log().status).toBe('success');
   });
 
@@ -275,7 +286,7 @@ describe('triggers without a conversation', () => {
 
     expect(h.sendTemplateMessage).not.toHaveBeenCalled();
     expect(h.sendTextMessage).not.toHaveBeenCalled();
-    expect(h.db.messages).toHaveLength(0);
+    expect(sent()).toHaveLength(0);
     // Not a failure and not silent: the log says it was ignored, and why.
     expect(log().status).toBe('success');
     expect(log().steps_executed).toEqual([
@@ -298,7 +309,7 @@ describe('disabled connection (US-078)', () => {
     await fire({ conversation_id: 'cv-old-wa' });
 
     expect(h.sendTextMessage).not.toHaveBeenCalled();
-    expect(h.db.messages).toHaveLength(0);
+    expect(sent()).toHaveLength(0);
     expect(conv('cv-old-wa').last_message_text).toBe('old');
     expect(log().status).toBe('failed');
     expect(String(log().error_message)).toMatch(/disabled/i);
@@ -330,7 +341,7 @@ describe('channel capabilities (US-051, real telegram provider)', () => {
     await fire({ conversation_id: 'cv-new-wa' });
 
     expect(h.sendTemplateMessage).not.toHaveBeenCalled();
-    expect(h.db.messages).toHaveLength(0);
+    expect(sent()).toHaveLength(0);
     expect(log().status).toBe('failed');
     expect(log().steps_executed).toEqual([
       expect.objectContaining({
@@ -352,7 +363,7 @@ describe('channel capabilities (US-051, real telegram provider)', () => {
 
     await fire();
 
-    expect(h.db.messages).toHaveLength(0);
+    expect(sent()).toHaveLength(0);
     expect(log().steps_executed).toEqual([
       expect.objectContaining({
         status: 'skipped',
@@ -374,8 +385,8 @@ describe('channel capabilities (US-051, real telegram provider)', () => {
 
     await fire();
 
-    expect(h.db.messages).toHaveLength(1);
-    expect(h.db.messages[0].conversation_id).toBe('cv-old-wa');
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0].conversation_id).toBe('cv-old-wa');
     expect(log().status).toBe('success');
   });
 
@@ -387,7 +398,7 @@ describe('channel capabilities (US-051, real telegram provider)', () => {
     await fire();
 
     expect(h.sendTextMessage).not.toHaveBeenCalled();
-    expect(h.db.messages).toHaveLength(0);
+    expect(sent()).toHaveLength(0);
     expect(log().steps_executed).toEqual([
       expect.objectContaining({ status: 'skipped' }),
     ]);
