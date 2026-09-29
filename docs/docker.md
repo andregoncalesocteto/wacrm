@@ -135,3 +135,13 @@ docker run -d --env-file .env.local -e PORT=3000 -p 3000:3000 wacrm
   `GET /api/channels/cron/health` (same header and secret) to detect a
   stalled channel connection without traffic; without it, connection
   state is updated only by events.
+- Order-Journey Resumptions (the messages sent 10 and 30 minutes after
+  the menu link if the customer went quiet) are Wait steps too, so they
+  leave only as often as that scheduler calls
+  `GET /api/automations/cron`. Run it **every 1 to 2 minutes**; with a
+  5-minute interval a "10 minute" Resumption can go out up to 5 minutes
+  late. The conditions (customer replied, Journey still before the
+  cart, no agent assigned, no AI handoff) are checked when the cron
+  resumes the step, not when the link was sent. Applying migration `060`
+  is needed for a renewed link to cancel the previous link's parked
+  Resumptions.

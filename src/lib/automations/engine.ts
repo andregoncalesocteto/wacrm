@@ -19,6 +19,7 @@ import type {
   CreateDealStepConfig,
   AssignConversationStepConfig,
 } from '@/types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from './admin-client'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
@@ -34,6 +35,7 @@ import {
   resolveMenuLink,
   recordMenuLinkSent,
   findOpenJourney,
+  JOURNEY_STAGES,
   type JourneyRow,
   type ResolvedMenuLink,
 } from '@/lib/journeys'
@@ -68,6 +70,9 @@ export interface AutomationContext {
   journey_stage?: string
   /** Connection the Journey runs on. */
   connection_id?: string
+  /** When the menu link was sent, for menu_link_sent. Its presence marks a run
+   *  born from a link send (a `{{menu_link}}` step in it would loop). */
+  menu_link_sent_at?: string
 }
 
 export interface DispatchInput {
@@ -134,6 +139,11 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
     for (const automation of automations as Automation[]) {
       if (!triggerMatches(automation, input.context)) continue
       try {
+        // A renewed link starts the automation's timers over: park-and-resume
+        // runs from the previous link must not also fire.
+        if (input.triggerType === 'menu_link_sent' && input.contactId) {
+          await supersedePendingRuns(db, automation, input.contactId)
+        }
         await executeAutomation(automation, input)
       } catch (err) {
         console.error('[automations] execute failed:', automation.id, err)
@@ -195,6 +205,7 @@ export async function resumePendingExecution(pending: {
       startPosition: pending.next_step_position,
       logId: pending.log_id,
       triggerEvent: 'resumed_wait',
+      resumeRoot: true,
     })
     await markPending(pending.id, 'done')
   } catch (err) {
@@ -206,6 +217,22 @@ export async function resumePendingExecution(pending: {
 // ------------------------------------------------------------
 // Internal execution
 // ------------------------------------------------------------
+
+/** Cancel the automation's parked (not yet claimed) runs for this contact. */
+async function supersedePendingRuns(
+  db: SupabaseClient,
+  automation: Automation,
+  contactId: string,
+) {
+  const { error } = await db
+    .from('automation_pending_executions')
+    .update({ status: 'cancelled' })
+    .eq('automation_id', automation.id)
+    .eq('account_id', automation.account_id)
+    .eq('contact_id', contactId)
+    .eq('status', 'pending')
+  if (error) console.error('[automations] supersede pending failed:', error)
+}
 
 async function executeAutomation(automation: Automation, input: DispatchInput) {
   const db = supabaseAdmin()
@@ -276,9 +303,14 @@ interface ExecuteArgs {
   startPosition: number
   logId: string | null
   triggerEvent: string
+  /** First scope of a run resumed from a wait: it owns the log's final status
+   *  even when the wait was inside a branch (parentStepId !== null). */
+  resumeRoot?: boolean
 }
 
-async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
+type RunStatus = 'success' | 'partial' | 'failed'
+
+async function executeStepsFrom(args: ExecuteArgs): Promise<RunStatus> {
   const db = supabaseAdmin()
 
   const baseQuery = db
@@ -297,13 +329,13 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
 
   if (stepsErr) {
     await finalizeLog(args.logId, 'failed', stepsErr.message)
-    return
+    return 'failed'
   }
   if (!steps || steps.length === 0) {
-    if (args.parentStepId === null && args.logId) {
+    if ((args.parentStepId === null || args.resumeRoot) && args.logId) {
       await finalizeLog(args.logId, 'success', null)
     }
-    return
+    return 'success'
   }
 
   const results: AutomationLogStepResult[] = []
@@ -379,7 +411,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
       })
       status = 'partial'
       await appendResults(args.logId, results, status, errorMessage)
-      return
+      return 'partial'
     }
 
     try {
@@ -394,13 +426,17 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
         })
         // Recurse into the chosen branch at position 0 (children use their
         // own ordering within the branch scope).
-        await executeStepsFrom({
+        const nested = await executeStepsFrom({
           ...args,
           parentStepId: step.id,
           branch: taken ? 'yes' : 'no',
           startPosition: 0,
           logId: args.logId,
+          resumeRoot: false,
         })
+        // A failed send inside a branch fails the run; the branch already
+        // recorded the step and its error message.
+        if (nested === 'failed') status = 'failed'
         continue
       }
 
@@ -436,12 +472,13 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
     }
   }
 
-  if (args.parentStepId === null) {
+  if (args.parentStepId === null || args.resumeRoot) {
     await appendResults(args.logId, results, status, errorMessage)
   } else {
     // Nested branch — just append results; parent scope decides final status.
     await appendResults(args.logId, results, null, errorMessage)
   }
+  return status
 }
 
 async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string> {
@@ -455,6 +492,10 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       // and mints/renews the Tracking token BEFORE the send; a failure there
       // throws, so nothing is sent. The Journey opens only after the send.
       const usesMenuLink = hasMenuLinkVariable(cfg.text)
+      if (usesMenuLink && args.context.menu_link_sent_at) {
+        // Sending a link fires menu_link_sent: this run would trigger itself.
+        throw new Error('{{menu_link}} is not allowed in a menu_link_sent automation')
+      }
       const preText = usesMenuLink ? cfg.text : interpolate(cfg.text, args)
       if (!preText.trim()) throw new Error('send_message has empty text')
       const conversationId = await resolveConversationId(args, 'text')
@@ -967,6 +1008,25 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       const journey = await currentJourney(args)
       return journey?.state === 'open'
     }
+    case 'journey_stage': {
+      // The Journey's funnel position NOW ("is X" / "is before X"). A closed
+      // Journey sits at won/lost, past every open stage, so "before cart" also
+      // means it is still open.
+      const journey = await currentJourney(args)
+      if (!journey) return false
+      const target = stageRank(cfg.operand)
+      const current = stageRank(journey.stage)
+      if (target < 0 || current < 0) return false
+      if (cfg.value === 'is') return current === target
+      if (cfg.value === 'before') return current < target
+      return false
+    }
+    case 'conversation_unattended': {
+      // No human owns the conversation and the AI has not handed it off.
+      const conv = await conditionConversation(args)
+      if (!conv) return false
+      return !conv.assigned_agent_id && !conv.ai_autoreply_disabled
+    }
     case 'customer_replied_since': {
       // Both sides are read from the database NOW (this runs when the step
       // executes, also after a wait resumes), never from a scheduling snapshot.
@@ -991,32 +1051,44 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
   }
 }
 
+interface ConditionConversation {
+  id: string
+  connection_id: string | null
+  assigned_agent_id: string | null
+  ai_autoreply_disabled: boolean | null
+}
+
+/** Position of a stage in the funnel, or -1 when it is not one. */
+function stageRank(stage: string | undefined): number {
+  return JOURNEY_STAGES.findIndex((s) => s.key === stage)
+}
+
 /** Conversation (and its connection) the journey conditions look at. */
 async function conditionConversation(
   args: ExecuteArgs,
-): Promise<{ id: string; connection_id: string | null } | null> {
+): Promise<ConditionConversation | null> {
   const db = supabaseAdmin()
   const accountId = args.automation.account_id
   const fromCtx = args.context.conversation_id
   if (fromCtx) {
     const { data } = await db
       .from('conversations')
-      .select('id, connection_id')
+      .select('id, connection_id, assigned_agent_id, ai_autoreply_disabled')
       .eq('id', fromCtx)
       .eq('account_id', accountId)
       .maybeSingle()
-    return (data as { id: string; connection_id: string | null } | null) ?? null
+    return (data as ConditionConversation | null) ?? null
   }
   if (!args.contactId) return null
   const { data } = await db
     .from('conversations')
-    .select('id, connection_id')
+    .select('id, connection_id, assigned_agent_id, ai_autoreply_disabled')
     .eq('account_id', accountId)
     .eq('contact_id', args.contactId)
     .order('last_message_at', { ascending: false })
     .limit(1)
     .maybeSingle()
-  return (data as { id: string; connection_id: string | null } | null) ?? null
+  return (data as ConditionConversation | null) ?? null
 }
 
 /**

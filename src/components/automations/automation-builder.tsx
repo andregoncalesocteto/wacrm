@@ -74,8 +74,72 @@ import {
 } from "@/lib/automations/builder-tree"
 import { cn } from "@/lib/utils"
 import { JOURNEY_TRIGGER_EVENTS } from "@/lib/automations/trigger-meta"
+import { JOURNEY_STAGES } from "@/lib/journeys/constants"
 import { StepWarnings } from "@/components/channels/step-warnings"
 import { stepRequirements } from "@/lib/channels/step-capabilities"
+
+/**
+ * `fallback_template` of a `send_message` step: the template sent instead of
+ * the text when the channel's reply window (WhatsApp 24 h) is closed. Left
+ * empty, a send outside the window fails visibly. Variables are fixed values,
+ * one per line, in order ({{1}}, {{2}}, ...).
+ */
+function FallbackTemplateFields({
+  value,
+  onChange,
+  t,
+}: {
+  value: { name: string; language?: string; variables?: Record<string, string> } | undefined
+  onChange: (
+    v: { name: string; language?: string; variables?: Record<string, string> } | undefined,
+  ) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const variables = value?.variables ?? {}
+  const lines = Object.keys(variables)
+    .sort((a, b) => Number(a) - Number(b))
+    .map((k) => variables[k])
+    .join("\n")
+  return (
+    <div className="mt-3 space-y-2 rounded-md border border-border p-2">
+      <p className="text-xs font-medium text-muted-foreground">
+        {t("config.fallbackTemplateLabel")}
+      </p>
+      <SendTemplateFields
+        templateName={value?.name ?? ""}
+        language={value?.language ?? ""}
+        onChange={(patch) =>
+          onChange(
+            patch.template_name
+              ? {
+                  name: patch.template_name,
+                  language: patch.language,
+                  ...(value?.variables ? { variables: value.variables } : {}),
+                }
+              : undefined,
+          )
+        }
+        t={t}
+      />
+      {value?.name && (
+        <FieldBlock label={t("config.fallbackVariablesLabel")}>
+          <Textarea
+            value={lines}
+            onChange={(e) => {
+              const vals = e.target.value.split("\n")
+              onChange({
+                ...value,
+                variables: Object.fromEntries(vals.map((v, i) => [String(i + 1), v])),
+              })
+            }}
+            className="min-h-16 bg-muted font-mono text-xs text-foreground"
+          />
+        </FieldBlock>
+      )}
+      <p className="text-[11px] text-muted-foreground">{t("config.fallbackTemplateHint")}</p>
+    </div>
+  )
+}
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -151,6 +215,7 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "conversation_assigned" },
   { value: "tag_added" },
   { value: "journey_event" },
+  { value: "menu_link_sent" },
   { value: "time_based" },
 ]
 
@@ -1364,6 +1429,15 @@ function StepEditor({
             <code className="rounded bg-muted px-1">{"{{menu_link}}"}</code>{" "}
             {t("config.menuLinkHint")}
           </p>
+          <FallbackTemplateFields
+            value={
+              cfg.fallback_template as
+                | { name: string; language?: string; variables?: Record<string, string> }
+                | undefined
+            }
+            onChange={(fallback) => set({ fallback_template: fallback })}
+            t={t}
+          />
         </FieldBlock>
       )
     case "send_buttons":
@@ -1506,7 +1580,13 @@ function StepEditor({
                 // has no operand.
                 set({
                   subject,
-                  operand: subject === "customer_replied_since" ? "link_sent" : "",
+                  operand:
+                    subject === "customer_replied_since"
+                      ? "link_sent"
+                      : subject === "journey_stage"
+                        ? "cart"
+                        : "",
+                  ...(subject === "journey_stage" ? { value: "before" } : {}),
                 })
               }}
               className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
@@ -1519,10 +1599,49 @@ function StepEditor({
                 {t("config.subjects.customer_replied_since")}
               </option>
               <option value="journey_open">{t("config.subjects.journey_open")}</option>
+              <option value="journey_stage">{t("config.subjects.journey_stage")}</option>
+              <option value="conversation_unattended">
+                {t("config.subjects.conversation_unattended")}
+              </option>
             </select>
           </FieldBlock>
           {cfg.subject === "journey_open" && (
             <p className="text-xs text-muted-foreground">{t("config.journeyOpenHint")}</p>
+          )}
+          {cfg.subject === "conversation_unattended" && (
+            <p className="text-xs text-muted-foreground">
+              {t("config.conversationUnattendedHint")}
+            </p>
+          )}
+          {cfg.subject === "journey_stage" && (
+            <>
+              <FieldBlock label={t("config.stageComparisonLabel")}>
+                <select
+                  value={(cfg.value as string) || "before"}
+                  onChange={(e) => set({ value: e.target.value })}
+                  className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+                >
+                  <option value="before">{t("config.stageComparisons.before")}</option>
+                  <option value="is">{t("config.stageComparisons.is")}</option>
+                </select>
+              </FieldBlock>
+              <FieldBlock label={t("config.stageLabel")}>
+                <select
+                  value={(cfg.operand as string) || "cart"}
+                  onChange={(e) => set({ operand: e.target.value })}
+                  className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+                >
+                  {JOURNEY_STAGES.map((st) => (
+                    <option key={st.key} value={st.key}>
+                      {t(`config.stages.${st.key}`)}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {t("config.stageHint")}
+                </p>
+              </FieldBlock>
+            </>
           )}
           {cfg.subject === "customer_replied_since" && (
             <FieldBlock label={t("config.replyReferenceLabel")}>
@@ -1539,7 +1658,10 @@ function StepEditor({
               </p>
             </FieldBlock>
           )}
-          {cfg.subject !== "journey_open" && cfg.subject !== "customer_replied_since" && (
+          {cfg.subject !== "journey_open" &&
+            cfg.subject !== "customer_replied_since" &&
+            cfg.subject !== "journey_stage" &&
+            cfg.subject !== "conversation_unattended" && (
           <FieldBlock label={t("config.operandLabel")}>
             <Input
               placeholder={

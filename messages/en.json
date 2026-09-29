@@ -1081,6 +1081,10 @@
           "label": "Journey Event",
           "hint": "When a customer's order Journey records an event (view, add to cart, checkout, purchase)"
         },
+        "menu_link_sent": {
+          "label": "Menu link sent",
+          "hint": "When a menu link is sent (by an automation or the AI reply) and the order Journey opens or renews. Start of the 10 and 30 minute Resumptions."
+        },
         "new_contact_created": {
           "label": "New Contact Created",
           "hint": "When a contact is auto-created from an incoming message"
@@ -1202,7 +1206,9 @@
           "message_content": "Message content",
           "time_of_day": "Time of day",
           "customer_replied_since": "Customer replied since",
-          "journey_open": "Journey is open"
+          "journey_open": "Journey is open",
+          "journey_stage": "Journey stage",
+          "conversation_unattended": "No human and no AI handoff"
         },
         "replyReferenceLabel": "Reference instant",
         "replyReferences": {
@@ -1213,6 +1219,25 @@
         "journeyOpenHint": "True while the customer's Journey is still open when the step runs (false once it is won or lost).",
         "journeyEventsLabel": "Journey events",
         "journeyEventsHint": "Fires when any of the checked events is accepted for the customer's Journey.",
+        "conversationUnattendedHint": "True while no agent is assigned to the conversation and the AI has not handed it off. Checked when the step runs, including after a wait.",
+        "stageComparisonLabel": "Comparison",
+        "stageComparisons": {
+          "before": "is before",
+          "is": "is"
+        },
+        "stageLabel": "Stage",
+        "stages": {
+          "link_sent": "Link sent",
+          "browsing": "Browsing",
+          "cart": "Cart",
+          "checkout": "Checkout",
+          "won": "Purchased",
+          "lost": "Lost"
+        },
+        "stageHint": "Checked when the step runs. \"Is before Cart\" is true only while the Journey is still open and has not reached the cart.",
+        "fallbackTemplateLabel": "Template outside the 24 h window (WhatsApp)",
+        "fallbackVariablesLabel": "Template variables (one per line, in order)",
+        "fallbackTemplateHint": "Sent instead of the text when the customer's last message is over 24 h old. Without a template, that send fails and shows in the automation log. Variables are fixed values.",
         "operandLabel": "Operand",
         "placeholderTime": "HH:mm-HH:mm",
         "placeholderContact": "name / email / company",

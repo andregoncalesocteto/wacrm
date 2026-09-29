@@ -7,7 +7,7 @@
  * parks the run, and the resume after the wait sends through the
  * contact's conversation. Only the Meta HTTP senders are stubbed.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { whatsappConnectionRow } from '@/lib/channels/credentials-admin.fake';
 
 import { phoneVariants } from '@/lib/whatsapp/phone-utils';
@@ -729,5 +729,381 @@ describe('journey_event trigger and journey conditions', () => {
       await fire();
       expect(sent()).toEqual(['No']);
     });
+  });
+});
+
+function customerSays(atMs: number) {
+  h.db.messages.push({
+    conversation_id: 'cv-1',
+    sender_type: 'customer',
+    created_at: new Date(atMs).toISOString(),
+  });
+}
+
+describe('menu_link_sent Resumption chain (wait 10 -> checks -> R1 -> wait 20 -> checks -> R2)', () => {
+  const MIN = 60_000;
+  const T0 = Date.parse('2026-09-29T12:00:00Z');
+  const at = (ms: number) => new Date(ms).toISOString();
+
+  /** The three checks every Resumption re-evaluates when it is due. */
+  function checks(startId: number, position: number, send: Row): Row[] {
+    const a = startId; // unattended
+    const b = startId + 1; // stage before cart
+    const c = startId + 2; // replied since the link (the "no" branch sends)
+    return [
+      {
+        id: `st-${a}`,
+        position,
+        step_type: 'condition',
+        step_config: { subject: 'conversation_unattended' },
+      },
+      {
+        id: `st-${b}`,
+        parent_step_id: `st-${a}`,
+        branch: 'yes',
+        position: 0,
+        step_type: 'condition',
+        step_config: { subject: 'journey_stage', operand: 'cart', value: 'before' },
+      },
+      {
+        id: `st-${c}`,
+        parent_step_id: `st-${b}`,
+        branch: 'yes',
+        position: 0,
+        step_type: 'condition',
+        step_config: { subject: 'customer_replied_since', operand: 'link_sent' },
+      },
+      {
+        ...send,
+        parent_step_id: `st-${c}`,
+        branch: 'no',
+        position: 0,
+      },
+    ];
+  }
+
+  function chain(r1: Row = { text: 'R1' }, r2: Row = { text: 'R2' }) {
+    // st-1 wait 10 | st-2..st-5 checks + R1 (st-5) | R1's scope continues with
+    // wait 20 (st-6) and the second round of checks + R2.
+    const round1 = checks(2, 1, {
+      id: 'st-5',
+      step_type: 'send_message',
+      step_config: r1,
+    });
+    const rest: Row[] = [
+      {
+        id: 'st-6',
+        parent_step_id: 'st-4',
+        branch: 'no',
+        position: 1,
+        step_type: 'wait',
+        step_config: { amount: 20, unit: 'minutes' },
+      },
+      ...checks(7, 2, {
+        id: 'st-10',
+        step_type: 'send_message',
+        step_config: r2,
+      }).map((st) =>
+        // the second round lives in the same scope as the wait (st-4 / no)
+        st.id === 'st-7' ? { ...st, parent_step_id: 'st-4', branch: 'no' } : st
+      ),
+    ];
+    h.db.automation_steps = [
+      {
+        id: 'st-1',
+        position: 0,
+        parent_step_id: null,
+        branch: null,
+        step_type: 'wait',
+        step_config: { amount: 10, unit: 'minutes' },
+      },
+      ...round1,
+      ...rest,
+    ].map((st) => ({ automation_id: 'au-1', parent_step_id: null, branch: null, ...st }));
+  }
+
+  const pending = () =>
+    h.db.automation_pending_executions.filter((p) => p.status === 'pending');
+  const sent = () => messages().map((m) => m.content_text);
+
+  /** Link sent at `T0`: journey open, customer last wrote before it. */
+  async function linkSent(journey: Row = {}, context: Row = {}) {
+    vi.setSystemTime(T0);
+    h.db.automations[0].trigger_type = 'menu_link_sent';
+    h.db.automations[0].trigger_config = {};
+    conv().connection_id = 'conn-acct-1';
+    for (const m of h.db.messages) m.created_at = at(T0 - 5 * MIN);
+    h.db.journeys = [
+      {
+        id: 'jr-1',
+        account_id: 'acct-1',
+        contact_id: 'ct-1',
+        connection_id: 'conn-acct-1',
+        state: 'open',
+        stage: 'link_sent',
+        link_sent_at: at(T0),
+        ...journey,
+      },
+    ];
+    await runAutomationsForTrigger({
+      accountId: 'acct-1',
+      triggerType: 'menu_link_sent',
+      contactId: 'ct-1',
+      context: {
+        conversation_id: 'cv-1',
+        connection_id: 'conn-acct-1',
+        journey_id: 'jr-1',
+        menu_link_sent_at: at(T0),
+        ...context,
+      },
+    });
+  }
+
+  /** Advance the clock and run the parked step, as the cron would. */
+  async function tick(minutes: number) {
+    vi.setSystemTime(T0 + minutes * MIN);
+    const due = pending().filter((p) => Date.parse(p.run_at as string) <= Date.now());
+    for (const p of due) {
+      await resumePendingExecution(
+        p as unknown as Parameters<typeof resumePendingExecution>[0]
+      );
+    }
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    chain();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('parks the first Resumption 10 minutes after the link', async () => {
+    await linkSent();
+    expect(sent()).toEqual([]);
+    expect(pending()).toHaveLength(1);
+    expect(Date.parse(pending()[0].run_at as string) - T0).toBe(10 * MIN);
+    await tick(9);
+    expect(sent()).toEqual([]);
+  });
+
+  it('without a reply, sends R1 at 10 min and R2 at 30 min', async () => {
+    await linkSent();
+    await tick(10);
+    expect(sent()).toEqual(['R1']);
+    expect(pending()).toHaveLength(1);
+    expect(Date.parse(pending()[0].run_at as string) - T0).toBe(30 * MIN);
+
+    await tick(29);
+    expect(sent()).toEqual(['R1']);
+    await tick(30);
+    expect(sent()).toEqual(['R1', 'R2']);
+    expect(pending()).toHaveLength(0);
+  });
+
+  it('a reply before 10 min suppresses both', async () => {
+    await linkSent();
+    customerSays(T0 + 4 * MIN);
+    await tick(10);
+    expect(sent()).toEqual([]);
+    expect(pending()).toHaveLength(0);
+  });
+
+  it('a reply between R1 and 30 min suppresses only R2', async () => {
+    await linkSent();
+    await tick(10);
+    customerSays(T0 + 15 * MIN);
+    await tick(30);
+    expect(sent()).toEqual(['R1']);
+  });
+
+  it.each(['cart', 'checkout'])(
+    'reaching %s before the due time suppresses the Resumption',
+    async (stage) => {
+      await linkSent();
+      h.db.journeys[0].stage = stage;
+      await tick(10);
+      expect(sent()).toEqual([]);
+    }
+  );
+
+  it('browsing (ViewContent) does not interrupt', async () => {
+    await linkSent();
+    h.db.journeys[0].stage = 'browsing';
+    await tick(10);
+    expect(sent()).toEqual(['R1']);
+  });
+
+  it('reaching the cart after R1 suppresses R2', async () => {
+    await linkSent();
+    await tick(10);
+    h.db.journeys[0].stage = 'cart';
+    await tick(30);
+    expect(sent()).toEqual(['R1']);
+  });
+
+  it('a Purchase (Journey won) during the wait suppresses both', async () => {
+    await linkSent();
+    Object.assign(h.db.journeys[0], { state: 'won', stage: 'won' });
+    await tick(10);
+    expect(sent()).toEqual([]);
+  });
+
+  it('an agent assigned during the wait suppresses the Resumption', async () => {
+    await linkSent();
+    conv().assigned_agent_id = 'agent-1';
+    await tick(10);
+    expect(sent()).toEqual([]);
+  });
+
+  it('an AI handoff during the wait suppresses the Resumption', async () => {
+    await linkSent();
+    conv().ai_autoreply_disabled = true;
+    await tick(10);
+    expect(sent()).toEqual([]);
+  });
+
+  it('a handoff after R1 suppresses R2 (checked again at 30 min)', async () => {
+    await linkSent();
+    await tick(10);
+    conv().ai_autoreply_disabled = true;
+    await tick(30);
+    expect(sent()).toEqual(['R1']);
+  });
+
+  it('a renewed link supersedes the parked run of the previous link', async () => {
+    await linkSent();
+    const first = pending()[0];
+    vi.setSystemTime(T0 + 3 * MIN);
+    h.db.journeys[0].link_sent_at = at(T0 + 3 * MIN);
+    await runAutomationsForTrigger({
+      accountId: 'acct-1',
+      triggerType: 'menu_link_sent',
+      contactId: 'ct-1',
+      context: {
+        conversation_id: 'cv-1',
+        journey_id: 'jr-1',
+        menu_link_sent_at: at(T0 + 3 * MIN),
+      },
+    });
+    expect(first.status).toBe('cancelled');
+    expect(pending()).toHaveLength(1);
+    await tick(10);
+    expect(sent()).toEqual([]);
+    await tick(13);
+    expect(sent()).toEqual(['R1']);
+  });
+
+  it('outside the 24 h window, sends the fallback template', async () => {
+    chain({
+      text: 'R1',
+      fallback_template: { name: 'resume_tpl', language: 'en_US', variables: { '1': 'x' } },
+    });
+    h.db.message_templates = [
+      {
+        id: 'tpl-1',
+        account_id: 'acct-1',
+        user_id: 'u-1',
+        name: 'resume_tpl',
+        category: 'Utility',
+        language: 'en_US',
+        body_text: 'Still there? {{1}}',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ];
+    await linkSent();
+    for (const m of h.db.messages) m.created_at = at(T0 - 30 * 60 * MIN);
+    await tick(10);
+    expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('outside the 24 h window without a template, fails visibly', async () => {
+    await linkSent();
+    for (const m of h.db.messages) m.created_at = at(T0 - 30 * 60 * MIN);
+    await tick(10);
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(log().status).toBe('failed');
+    expect(String(log().error_message)).toMatch(/window/i);
+  });
+
+  it('refuses {{menu_link}} inside a menu_link_sent run (it would loop)', async () => {
+    h.db.automation_steps = [
+      {
+        id: 'st-1',
+        automation_id: 'au-1',
+        position: 0,
+        parent_step_id: null,
+        branch: null,
+        step_type: 'send_message',
+        step_config: { text: 'Again {{menu_link}}' },
+      },
+    ];
+    await linkSent();
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(log().status).toBe('failed');
+  });
+});
+
+describe('journey_stage and conversation_unattended conditions', () => {
+  function stageCase(stage: string, cfg: Row) {
+    conv().connection_id = 'conn-acct-1';
+    h.db.journeys = [
+      {
+        id: 'jr-1',
+        account_id: 'acct-1',
+        contact_id: 'ct-1',
+        connection_id: 'conn-acct-1',
+        state: 'open',
+        stage,
+      },
+    ];
+    h.db.automation_steps = [
+      { id: 'st-1', position: 0, step_type: 'condition', step_config: cfg },
+      { id: 'st-y', position: 0, parent_step_id: 'st-1', branch: 'yes', step_type: 'send_message', step_config: { text: 'Yes' } },
+      { id: 'st-n', position: 0, parent_step_id: 'st-1', branch: 'no', step_type: 'send_message', step_config: { text: 'No' } },
+    ].map((st) => ({ automation_id: 'au-1', parent_step_id: null, branch: null, ...st }));
+  }
+  const out = () => messages().map((m) => m.content_text);
+
+  it.each([
+    ['link_sent', 'before', 'cart', 'Yes'],
+    ['browsing', 'before', 'cart', 'Yes'],
+    ['cart', 'before', 'cart', 'No'],
+    ['checkout', 'before', 'cart', 'No'],
+    ['lost', 'before', 'cart', 'No'],
+    ['cart', 'is', 'cart', 'Yes'],
+    ['browsing', 'is', 'cart', 'No'],
+    ['browsing', 'bogus', 'cart', 'No'],
+    ['browsing', 'before', 'bogus', 'No'],
+  ])('stage %s %s %s -> %s', async (stage, value, operand, expected) => {
+    stageCase(stage, { subject: 'journey_stage', operand, value });
+    await fire();
+    expect(out()).toEqual([expected]);
+  });
+
+  it('journey_stage is false without a Journey', async () => {
+    stageCase('browsing', { subject: 'journey_stage', operand: 'cart', value: 'before' });
+    h.db.journeys = [];
+    await fire();
+    expect(out()).toEqual(['No']);
+  });
+
+  it('conversation_unattended: true with no agent and no handoff', async () => {
+    stageCase('link_sent', { subject: 'conversation_unattended' });
+    await fire();
+    expect(out()).toEqual(['Yes']);
+  });
+
+  it('conversation_unattended: false with an agent', async () => {
+    stageCase('link_sent', { subject: 'conversation_unattended' });
+    conv().assigned_agent_id = 'agent-1';
+    await fire();
+    expect(out()).toEqual(['No']);
+  });
+
+  it('conversation_unattended: false after an AI handoff', async () => {
+    stageCase('link_sent', { subject: 'conversation_unattended' });
+    conv().ai_autoreply_disabled = true;
+    await fire();
+    expect(out()).toEqual(['No']);
   });
 });

@@ -1081,6 +1081,10 @@
           "label": "Evento de Journey",
           "hint": "Cuando la Journey de pedido de un cliente registra un evento (vista, carrito, checkout, compra)"
         },
+        "menu_link_sent": {
+          "label": "Enlace del menú enviado",
+          "hint": "Cuando se envía un enlace del menú (por una automatización o la respuesta de la IA) y la Journey de pedido se abre o se renueva. Inicio de los recordatorios de 10 y 30 minutos."
+        },
         "new_contact_created": {
           "label": "Nuevo contacto creado",
           "hint": "Cuando un contacto se crea automáticamente a partir de un mensaje entrante"
@@ -1202,7 +1206,9 @@
           "message_content": "Contenido del mensaje",
           "time_of_day": "Hora del día",
           "customer_replied_since": "Cliente respondió desde",
-          "journey_open": "Journey abierta"
+          "journey_open": "Journey abierta",
+          "journey_stage": "Etapa de la Journey",
+          "conversation_unattended": "Sin humano y sin traspaso de la IA"
         },
         "replyReferenceLabel": "Instante de referencia",
         "replyReferences": {
@@ -1213,6 +1219,25 @@
         "journeyOpenHint": "Verdadero mientras la Journey del cliente siga abierta cuando se ejecuta el paso (falso una vez ganada o perdida).",
         "journeyEventsLabel": "Eventos de Journey",
         "journeyEventsHint": "Se dispara cuando se acepta cualquiera de los eventos marcados para la Journey del cliente.",
+        "conversationUnattendedHint": "Verdadero mientras no haya un agente asignado a la conversación y la IA no la haya traspasado. Se comprueba cuando se ejecuta el paso, también después de una espera.",
+        "stageComparisonLabel": "Comparación",
+        "stageComparisons": {
+          "before": "es anterior a",
+          "is": "es"
+        },
+        "stageLabel": "Etapa",
+        "stages": {
+          "link_sent": "Enlace enviado",
+          "browsing": "Navegando",
+          "cart": "Carrito",
+          "checkout": "Checkout",
+          "won": "Compró",
+          "lost": "Perdido"
+        },
+        "stageHint": "Se comprueba cuando se ejecuta el paso. \"Es anterior a Carrito\" solo es verdadero mientras la Journey sigue abierta y aún no llegó al carrito.",
+        "fallbackTemplateLabel": "Template fuera de la ventana de 24 h (WhatsApp)",
+        "fallbackVariablesLabel": "Variables del template (una por línea, en orden)",
+        "fallbackTemplateHint": "Se envía en lugar del texto cuando el último mensaje del cliente tiene más de 24 h. Sin template, ese envío falla y aparece en el registro de la automatización. Las variables son valores fijos.",
         "operandLabel": "Operando",
         "placeholderTime": "HH:mm-HH:mm",
         "placeholderContact": "name / email / company",

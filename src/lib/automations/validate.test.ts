@@ -330,6 +330,23 @@ describe("validateStepsForActivation — journey conditions", () => {
     expect(cond({ subject: "customer_replied_since", operand: "x" })).toHaveLength(1);
   });
 
+  it("conversation_unattended needs no operand", () => {
+    expect(cond({ subject: "conversation_unattended" })).toEqual([]);
+  });
+
+  it("journey_stage needs a known stage and an is/before comparison", () => {
+    expect(cond({ subject: "journey_stage", operand: "cart", value: "before" })).toEqual([]);
+    expect(cond({ subject: "journey_stage", operand: "browsing", value: "is" })).toEqual([]);
+    expect(cond({ subject: "journey_stage", value: "before" }).map((i) => i.path)).toEqual([
+      "steps[0].operand",
+    ]);
+    expect(cond({ subject: "journey_stage", operand: "nope", value: "before" })).toHaveLength(1);
+    expect(cond({ subject: "journey_stage", operand: "cart" }).map((i) => i.path)).toEqual([
+      "steps[0].value",
+    ]);
+    expect(cond({ subject: "journey_stage", operand: "cart", value: "after" })).toHaveLength(1);
+  });
+
   it("other subjects still require an operand", () => {
     expect(cond({ subject: "tag_presence" })).toHaveLength(1);
   });

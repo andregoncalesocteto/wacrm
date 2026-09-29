@@ -1081,6 +1081,10 @@
           "label": "Journey 이벤트",
           "hint": "고객의 주문 Journey에 이벤트(조회, 장바구니, 체크아웃, 구매)가 기록될 때"
         },
+        "menu_link_sent": {
+          "label": "메뉴 링크 발송",
+          "hint": "자동화 또는 AI 답변으로 메뉴 링크가 발송되어 주문 Journey가 열리거나 갱신될 때. 10분·30분 재안내의 시작점입니다."
+        },
         "new_contact_created": {
           "label": "새 연락처 생성됨",
           "hint": "수신 메시지로 연락처가 자동 생성되었을 때"
@@ -1202,7 +1206,9 @@
           "message_content": "메시지 내용",
           "time_of_day": "시간대",
           "customer_replied_since": "고객이 답장한 시점 이후",
-          "journey_open": "Journey 진행 중"
+          "journey_open": "Journey 진행 중",
+          "journey_stage": "Journey 단계",
+          "conversation_unattended": "담당자 없음, AI 이관 없음"
         },
         "replyReferenceLabel": "기준 시점",
         "replyReferences": {
@@ -1213,6 +1219,25 @@
         "journeyOpenHint": "단계가 실행될 때 고객의 Journey가 아직 진행 중이면 참입니다(성공 또는 실패로 종료되면 거짓).",
         "journeyEventsLabel": "Journey 이벤트",
         "journeyEventsHint": "고객의 Journey에 대해 선택한 이벤트 중 하나라도 수락되면 실행됩니다.",
+        "conversationUnattendedHint": "대화에 배정된 상담원이 없고 AI가 이관하지 않은 동안 참입니다. 단계가 실행될 때(대기 이후 포함) 확인합니다.",
+        "stageComparisonLabel": "비교",
+        "stageComparisons": {
+          "before": "이전 단계",
+          "is": "같음"
+        },
+        "stageLabel": "단계",
+        "stages": {
+          "link_sent": "링크 발송",
+          "browsing": "둘러보는 중",
+          "cart": "장바구니",
+          "checkout": "결제",
+          "won": "구매 완료",
+          "lost": "이탈"
+        },
+        "stageHint": "단계가 실행될 때 확인합니다. \"장바구니 이전\"은 Journey가 아직 열려 있고 장바구니에 도달하기 전일 때만 참입니다.",
+        "fallbackTemplateLabel": "24시간 창 밖에서 보낼 템플릿 (WhatsApp)",
+        "fallbackVariablesLabel": "템플릿 변수 (한 줄에 하나, 순서대로)",
+        "fallbackTemplateHint": "고객의 마지막 메시지가 24시간을 넘었을 때 텍스트 대신 발송됩니다. 템플릿이 없으면 해당 발송은 실패하고 자동화 로그에 표시됩니다. 변수는 고정 값입니다.",
         "operandLabel": "피연산자",
         "placeholderTime": "HH:mm-HH:mm",
         "placeholderContact": "이름 / 이메일 / 회사",

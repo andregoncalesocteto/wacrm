@@ -1,6 +1,7 @@
 export * from './constants';
 export * from './menu-link';
 export * from './menu-link-send';
+export * from './link-hooks';
 export * from './journeys';
 export * from './pipeline';
 export * from './tokens';

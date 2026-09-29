@@ -514,7 +514,10 @@ export type AutomationTriggerType =
   | 'interactive_reply'
   /** A behaviour event of an order Journey (ViewContent, AddToCart, ...) was
    *  accepted by `POST /api/v1/journey/events`. */
-  | 'journey_event';
+  | 'journey_event'
+  /** A menu link was sent (by an automation step or the AI reply) and the
+   *  Journey was opened or renewed; the anchor of the Resumption chain. */
+  | 'menu_link_sent';
 
 export type AutomationStepType =
   | 'send_message'
@@ -645,7 +648,11 @@ export type ConditionSubject =
   /** Customer sent a message after a reference instant (`operand`). */
   | 'customer_replied_since'
   /** The contact's Journey (conversation's connection) is open right now. */
-  | 'journey_open';
+  | 'journey_open'
+  /** The Journey's funnel stage is / is before a stage (`operand`, `value`). */
+  | 'journey_stage'
+  /** No human is assigned and the AI has not handed the conversation off. */
+  | 'conversation_unattended';
 
 /** `customer_replied_since` reference instants (the condition's `operand`). */
 export type ReplyReference = 'link_sent' | 'run_start';
@@ -655,7 +662,8 @@ export interface ConditionStepConfig {
   /** e.g. field name, tag id, substring, "HH:mm-HH:mm", or (for
    *  `customer_replied_since`) a `ReplyReference`; unused by `journey_open`. */
   operand?: string;
-  /** For contact_field equals / message_content contains — comparison value */
+  /** For contact_field equals / message_content contains — comparison value;
+   *  for `journey_stage`, `is` or `before`. */
   value?: string;
 }
 

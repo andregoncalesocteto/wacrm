@@ -1,5 +1,6 @@
 import type { AutomationTriggerType } from '@/types'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
+import { JOURNEY_STAGES } from '@/lib/journeys/constants'
 import { JOURNEY_TRIGGER_EVENTS } from './trigger-meta'
 
 // ------------------------------------------------------------
@@ -125,6 +126,21 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       }
       if (c.subject === 'journey_open') {
         // Reads the Journey's current state; nothing to configure.
+      } else if (c.subject === 'conversation_unattended') {
+        // Reads the conversation's assignment and AI handoff; nothing to configure.
+      } else if (c.subject === 'journey_stage') {
+        if (!JOURNEY_STAGES.some((s) => s.key === c.operand)) {
+          issues.push({
+            path: `${path}.operand`,
+            message: `stage must be among: ${JOURNEY_STAGES.map((s) => s.key).join(', ')}`,
+          })
+        }
+        if (c.value !== 'is' && c.value !== 'before') {
+          issues.push({
+            path: `${path}.value`,
+            message: 'stage comparison must be "is" or "before"',
+          })
+        }
       } else if (c.subject === 'customer_replied_since') {
         if (c.operand !== 'link_sent' && c.operand !== 'run_start') {
           issues.push({

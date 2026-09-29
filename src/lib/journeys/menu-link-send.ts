@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildMenuUrl } from './menu-link';
 import { openOrRenewJourney, type JourneyRow } from './journeys';
+import { onMenuLinkSent } from './link-hooks';
 import { issueTrackingToken } from './tokens';
 
 /** The menu link cannot be produced; the message must NOT be sent. */
@@ -113,13 +114,14 @@ export async function resolveMenuLink(
 
 /**
  * Phase 2, AFTER the message carrying the link was sent: open (or reuse) the
- * Journey, put its deal at "Link enviado" and stamp `link_sent_at`.
+ * Journey, put its deal at "Link enviado", stamp `link_sent_at` and fire the
+ * `menu_link_sent` automations.
  */
-export function recordMenuLinkSent(
+export async function recordMenuLinkSent(
   db: SupabaseClient,
   args: MenuLinkArgs & { connectionId: string; sentAt?: Date }
 ): Promise<JourneyRow> {
-  return openOrRenewJourney(db, {
+  const journey = await openOrRenewJourney(db, {
     accountId: args.accountId,
     userId: args.userId,
     contactId: args.contactId,
@@ -127,4 +129,13 @@ export function recordMenuLinkSent(
     connectionId: args.connectionId,
     linkSentAt: args.sentAt,
   });
+  // The trigger of the Resumption chain (automations on `menu_link_sent`).
+  await onMenuLinkSent(db, {
+    accountId: args.accountId,
+    contactId: args.contactId,
+    conversationId: args.conversationId,
+    connectionId: args.connectionId,
+    journey,
+  });
+  return journey;
 }

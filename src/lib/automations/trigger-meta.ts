@@ -40,6 +40,9 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
   journey_event: {
     pillClass: 'border-orange-500/30 bg-orange-500/10 text-orange-300',
   },
+  menu_link_sent: {
+    pillClass: 'border-lime-500/30 bg-lime-500/10 text-lime-300',
+  },
 }
 
 /** Journey event names a `journey_event` trigger can listen to. */
