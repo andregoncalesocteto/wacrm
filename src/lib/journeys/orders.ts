@@ -317,14 +317,17 @@ export async function isJourneyOpen(
 
 /**
  * Cancel whatever is still scheduled for a Journey that has just closed.
- * Today nothing is scheduled per Journey (resumptions arrive with #9/#10, and
- * they check `isJourneyOpen` when they fire), so this has nothing to delete
- * and returns 0. It is the one place where a persisted schedule of those
- * tickets must be removed, so closing a Journey stays a single call site.
+ * Nothing is scheduled per Journey: Resumptions and the abandoned-cart message
+ * are automation runs that re-check the Journey when they fire (a won or lost
+ * Journey sends nothing), so this has nothing to delete and returns 0. It
+ * stays as the single call site where a persisted per-Journey schedule would
+ * be removed.
  */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 export async function cancelPendingForJourney(
   _db: SupabaseClient,
   _args: { accountId: string; journeyId: string }
 ): Promise<number> {
   return 0;
 }
+/* eslint-enable @typescript-eslint/no-unused-vars */

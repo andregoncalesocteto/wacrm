@@ -109,6 +109,10 @@ class Query {
     this.filters.push((r) => (r[c] as string | number) >= v);
     return this;
   }
+  lte(c: string, v: string | number) {
+    this.filters.push((r) => (r[c] as string | number) <= v);
+    return this;
+  }
   lt(c: string, v: string | number) {
     this.filters.push((r) => (r[c] as string | number) < v);
     return this;
