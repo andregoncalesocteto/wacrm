@@ -1077,6 +1077,10 @@
           "label": "버튼 / 목록 응답",
           "hint": "고객이 id가 일치하는 버튼이나 목록 행을 탭했을 때 — 자동화 간 메뉴를 연결할 수 있습니다"
         },
+        "journey_event": {
+          "label": "Journey 이벤트",
+          "hint": "고객의 주문 Journey에 이벤트(조회, 장바구니, 체크아웃, 구매)가 기록될 때"
+        },
         "new_contact_created": {
           "label": "새 연락처 생성됨",
           "hint": "수신 메시지로 연락처가 자동 생성되었을 때"
@@ -1196,8 +1200,19 @@
           "tag_presence": "태그 존재 여부",
           "contact_field": "연락처 필드",
           "message_content": "메시지 내용",
-          "time_of_day": "시간대"
+          "time_of_day": "시간대",
+          "customer_replied_since": "고객이 답장한 시점 이후",
+          "journey_open": "Journey 진행 중"
         },
+        "replyReferenceLabel": "기준 시점",
+        "replyReferences": {
+          "link_sent": "메뉴 링크 전송 시점",
+          "run_start": "이 실행의 시작 시점"
+        },
+        "replyReferenceHint": "고객이 이 시점 이후에 메시지를 보냈으면 참입니다. 단계가 실행될 때(대기 후 재개 포함) 평가됩니다.",
+        "journeyOpenHint": "단계가 실행될 때 고객의 Journey가 아직 진행 중이면 참입니다(성공 또는 실패로 종료되면 거짓).",
+        "journeyEventsLabel": "Journey 이벤트",
+        "journeyEventsHint": "고객의 Journey에 대해 선택한 이벤트 중 하나라도 수락되면 실행됩니다.",
         "operandLabel": "피연산자",
         "placeholderTime": "HH:mm-HH:mm",
         "placeholderContact": "이름 / 이메일 / 회사",
@@ -2538,5 +2553,20 @@
   "Ui": {
     "close": "닫기",
     "gatedReadOnly": "읽기 전용 — 내 역할로는 {reason} 할 수 없습니다"
+  },
+  "Orders": {
+    "title": "주문",
+    "orderNumber": "주문 {id}",
+    "itemQuantity": "{quantity}개",
+    "status": {
+      "placed": "주문 완료",
+      "received": "접수됨",
+      "preparing": "준비 중",
+      "finished": "준비 완료",
+      "out_for_delivery": "배달 중",
+      "ready_for_pickup": "픽업 준비 완료",
+      "delivered": "전달 완료",
+      "cancelled": "취소됨"
+    }
   }
 }

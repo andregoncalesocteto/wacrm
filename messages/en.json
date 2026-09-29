@@ -1077,6 +1077,10 @@
           "label": "Button / List Reply",
           "hint": "Customer taps a button or list row whose id matches — chain menus across automations"
         },
+        "journey_event": {
+          "label": "Journey Event",
+          "hint": "When a customer's order Journey records an event (view, add to cart, checkout, purchase)"
+        },
         "new_contact_created": {
           "label": "New Contact Created",
           "hint": "When a contact is auto-created from an incoming message"
@@ -1196,8 +1200,19 @@
           "tag_presence": "Tag presence",
           "contact_field": "Contact field",
           "message_content": "Message content",
-          "time_of_day": "Time of day"
+          "time_of_day": "Time of day",
+          "customer_replied_since": "Customer replied since",
+          "journey_open": "Journey is open"
         },
+        "replyReferenceLabel": "Reference instant",
+        "replyReferences": {
+          "link_sent": "Menu link sent",
+          "run_start": "Start of this run"
+        },
+        "replyReferenceHint": "True if the customer sent a message after this instant. Checked when the step runs, including after a wait.",
+        "journeyOpenHint": "True while the customer's Journey is still open when the step runs (false once it is won or lost).",
+        "journeyEventsLabel": "Journey events",
+        "journeyEventsHint": "Fires when any of the checked events is accepted for the customer's Journey.",
         "operandLabel": "Operand",
         "placeholderTime": "HH:mm-HH:mm",
         "placeholderContact": "name / email / company",
@@ -2538,5 +2553,20 @@
   "Ui": {
     "close": "Close",
     "gatedReadOnly": "Read-only — your role can't {reason}"
+  },
+  "Orders": {
+    "title": "Orders",
+    "orderNumber": "Order {id}",
+    "itemQuantity": "{quantity}x",
+    "status": {
+      "placed": "Placed",
+      "received": "Received",
+      "preparing": "Preparing",
+      "finished": "Finished",
+      "out_for_delivery": "Out for delivery",
+      "ready_for_pickup": "Ready for pickup",
+      "delivered": "Delivered",
+      "cancelled": "Cancelled"
+    }
   }
 }

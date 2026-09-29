@@ -27,6 +27,8 @@ import {
   primaryIdentity,
 } from "@/lib/contacts/display-name";
 import { ContactConversations } from "./contact-conversations";
+import { OrderList } from "@/components/orders/order-list";
+import { useOrders } from "@/hooks/use-orders";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -49,6 +51,7 @@ export function ContactSidebar({
   const { accountId } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const orders = useOrders({ contactId: contact?.id });
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
@@ -295,6 +298,14 @@ export function ContactSidebar({
               )}
             </div>
           </div>
+
+          {/* Orders placed on the Digital menu (hidden when none) */}
+          {orders.length > 0 && (
+            <>
+              <div className="my-4 border-t border-border" />
+              <OrderList orders={orders} />
+            </>
+          )}
 
           {/* Divider */}
           <div className="my-4 border-t border-border" />

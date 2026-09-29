@@ -81,13 +81,43 @@ export function parseCommonFields(body: unknown): CommonEventFields {
   return { eventId, name, idtrack, occurredAt };
 }
 
-/** Validate `properties` of AddToCart / InitiateCheckout. */
-export function parseCartProperties(body: unknown): CartProperties {
-  const properties = isObject(body) ? body.properties : undefined;
-  if (!isObject(properties)) {
-    throw badRequest("'properties' is required and must be an object");
+function parseItems(raw: unknown, path: string, hint = ''): CartItem[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw badRequest(`'${path}' must be a non-empty array${hint}`);
+  }
+  if (raw.length > MAX_CART_ITEMS) {
+    throw badRequest(`'${path}' must have at most ${MAX_CART_ITEMS} items`);
   }
 
+  return raw.map((entry, i): CartItem => {
+    const at = `${path}[${i}]`;
+    if (!isObject(entry)) throw badRequest(`'${at}' must be an object`);
+    const id = requireString(entry, 'id', `${at}.id`);
+    const quantity = entry.quantity;
+    if (
+      typeof quantity !== 'number' ||
+      !Number.isInteger(quantity) ||
+      quantity < 1
+    ) {
+      throw badRequest(`'${at}.quantity' must be an integer >= 1`);
+    }
+    const unitPrice = entry.unit_price;
+    if (
+      typeof unitPrice !== 'number' ||
+      !Number.isFinite(unitPrice) ||
+      unitPrice < 0
+    ) {
+      throw badRequest(`'${at}.unit_price' must be a number >= 0`);
+    }
+    const name =
+      typeof entry.name === 'string' && entry.name.trim()
+        ? entry.name.trim()
+        : null;
+    return { id, name, quantity, unit_price: unitPrice };
+  });
+}
+
+function parseCurrency(properties: Record<string, unknown>): string {
   const currency = requireString(
     properties,
     'currency',
@@ -98,6 +128,48 @@ export function parseCartProperties(body: unknown): CartProperties {
       "'properties.currency' must be a 3-letter ISO 4217 code, e.g. BRL"
     );
   }
+  return currency;
+}
+
+/** `properties` of Purchase: the order as the Digital menu placed it. */
+export interface PurchaseProperties {
+  orderId: string;
+  currency: string;
+  value: number;
+  items: CartItem[];
+}
+
+const MAX_ORDER_ID_LENGTH = 200;
+
+/** Validate `properties` of Purchase. */
+export function parsePurchaseProperties(body: unknown): PurchaseProperties {
+  const properties = isObject(body) ? body.properties : undefined;
+  if (!isObject(properties)) {
+    throw badRequest("'properties' is required and must be an object");
+  }
+  const orderId = requireString(properties, 'order_id', 'properties.order_id');
+  if (orderId.length > MAX_ORDER_ID_LENGTH) {
+    throw badRequest(
+      `'properties.order_id' must have at most ${MAX_ORDER_ID_LENGTH} characters`
+    );
+  }
+  const currency = parseCurrency(properties);
+  const value = properties.value;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw badRequest("'properties.value' must be a number >= 0");
+  }
+  const items = parseItems(properties.items, 'properties.items');
+  return { orderId, currency, value, items };
+}
+
+/** Validate `properties` of AddToCart / InitiateCheckout. */
+export function parseCartProperties(body: unknown): CartProperties {
+  const properties = isObject(body) ? body.properties : undefined;
+  if (!isObject(properties)) {
+    throw badRequest("'properties' is required and must be an object");
+  }
+
+  const currency = parseCurrency(properties);
 
   const cart = properties.cart;
   if (!isObject(cart)) {
@@ -107,42 +179,11 @@ export function parseCartProperties(body: unknown): CartProperties {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     throw badRequest("'properties.cart.value' must be a number >= 0");
   }
-  const rawItems = cart.items;
-  if (!Array.isArray(rawItems) || rawItems.length === 0) {
-    throw badRequest(
-      "'properties.cart.items' must be a non-empty array (send the whole cart)"
-    );
-  }
-  if (rawItems.length > MAX_CART_ITEMS) {
-    throw badRequest(
-      `'properties.cart.items' must have at most ${MAX_CART_ITEMS} items`
-    );
-  }
-
-  const items = rawItems.map((raw, i): CartItem => {
-    const at = `properties.cart.items[${i}]`;
-    if (!isObject(raw)) throw badRequest(`'${at}' must be an object`);
-    const id = requireString(raw, 'id', `${at}.id`);
-    const quantity = raw.quantity;
-    if (
-      typeof quantity !== 'number' ||
-      !Number.isInteger(quantity) ||
-      quantity < 1
-    ) {
-      throw badRequest(`'${at}.quantity' must be an integer >= 1`);
-    }
-    const unitPrice = raw.unit_price;
-    if (
-      typeof unitPrice !== 'number' ||
-      !Number.isFinite(unitPrice) ||
-      unitPrice < 0
-    ) {
-      throw badRequest(`'${at}.unit_price' must be a number >= 0`);
-    }
-    const name =
-      typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : null;
-    return { id, name, quantity, unit_price: unitPrice };
-  });
+  const items = parseItems(
+    cart.items,
+    'properties.cart.items',
+    ' (send the whole cart)'
+  );
 
   return { currency, cart: { value, items } };
 }

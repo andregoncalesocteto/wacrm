@@ -244,6 +244,255 @@ describe('happy path: the deal only moves forward', () => {
   });
 });
 
+const purchaseProps = (order_id = 'PED-1', extra = {}) => ({
+  properties: {
+    order_id,
+    currency: 'BRL',
+    value: 89.8,
+    items: [item('pizza', 1, 59.9), item('refri', 1, 29.9)],
+    ...extra,
+  },
+});
+const orders = () => world.tables.orders ?? [];
+
+describe('Purchase', () => {
+  it('creates the order, closes the Journey as won and moves the deal to Comprou', async () => {
+    await send(ev('AddToCart', cart(89.8)));
+    const res = await send(
+      ev('Purchase', {
+        occurred_at: '2026-10-02T21:22:11Z',
+        ...purchaseProps(),
+      })
+    );
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data).toMatchObject({ stage: 'won', duplicate: false });
+
+    expect(orders()).toHaveLength(1);
+    expect(orders()[0]).toMatchObject({
+      account_id: 'acct-1',
+      external_order_id: 'PED-1',
+      contact_id: 'ct-1',
+      conversation_id: 'cv-1',
+      connection_id: 'conn-1',
+      journey_id: journeys()[0].id,
+      deal_id: deals()[0].id,
+      idtrack: 'tok-live',
+      status: 'placed',
+      value: 89.8,
+      currency: 'BRL',
+      placed_at: '2026-10-02T21:22:11.000Z',
+    });
+    expect(orders()[0].items).toHaveLength(2);
+
+    expect(journeys()).toHaveLength(1);
+    expect(journeys()[0]).toMatchObject({
+      state: 'won',
+      stage: 'won',
+      purchased_at: '2026-10-02T21:22:11.000Z',
+    });
+    expect(journeys()[0].closed_at).toBeTruthy();
+    expect(deals()[0]).toMatchObject({
+      status: 'won',
+      value: 89.8,
+      currency: 'BRL',
+    });
+    expect(stageKey(deals()[0].stage_id)).toBe('won');
+    expect(
+      world.tables.pipeline_stages.find((st) => st.id === deals()[0].stage_id)
+        ?.name
+    ).toBe('Comprou');
+  });
+
+  it('records the contact last purchase date and never moves it back', async () => {
+    await send(
+      ev('Purchase', {
+        occurred_at: '2026-10-02T21:22:11Z',
+        ...purchaseProps('A'),
+      })
+    );
+    expect(world.tables.contacts[0].last_purchase_at).toBe(
+      '2026-10-02T21:22:11.000Z'
+    );
+    await send(
+      ev('Purchase', {
+        occurred_at: '2026-10-01T10:00:00Z',
+        ...purchaseProps('B'),
+      })
+    );
+    expect(world.tables.contacts[0].last_purchase_at).toBe(
+      '2026-10-02T21:22:11.000Z'
+    );
+  });
+
+  it('a Purchase with no prior events opens a Journey and closes it as won', async () => {
+    const res = await send(ev('Purchase', purchaseProps()));
+    expect(res.status).toBe(200);
+    expect(journeys()).toHaveLength(1);
+    expect(journeys()[0].state).toBe('won');
+    expect(deals()).toHaveLength(1);
+    expect(deals()[0].status).toBe('won');
+    expect(orders()).toHaveLength(1);
+  });
+
+  it('repeating the same event_id replays and creates nothing again', async () => {
+    const body = ev('Purchase', purchaseProps());
+    await send(body);
+    const again = await send(body);
+    expect(again.status).toBe(200);
+    expect(again.headers.get('Idempotent-Replayed')).toBe('true');
+    expect(orders()).toHaveLength(1);
+    expect(journeys()).toHaveLength(1);
+    expect(deals()).toHaveLength(1);
+    expect(hook).toHaveBeenCalledTimes(1);
+  });
+
+  it('a second Purchase with the same order_id and another event_id is a duplicate', async () => {
+    const first = await send(ev('Purchase', purchaseProps('PED-1')));
+    const firstData = (await first.json()).data;
+    const res = await send(ev('Purchase', purchaseProps('PED-1')));
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data).toMatchObject({
+      journey_id: firstData.journey_id,
+      stage: 'won',
+      duplicate: true,
+    });
+    expect(orders()).toHaveLength(1);
+    expect(journeys()).toHaveLength(1);
+    expect(deals()).toHaveLength(1);
+    expect(hook).toHaveBeenCalledTimes(1);
+    // the duplicate event_id is itself idempotent afterwards
+    expect(world.tables.journey_events).toHaveLength(2);
+  });
+
+  it('the same order_id is unique per account, not global', async () => {
+    world.tables.orders = [
+      {
+        id: 'o-x',
+        account_id: 'acct-2',
+        external_order_id: 'PED-1',
+        journey_id: 'j-x',
+      },
+    ];
+    const res = await send(ev('Purchase', purchaseProps('PED-1')));
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.duplicate).toBe(false);
+    expect(orders()).toHaveLength(2);
+  });
+
+  it('a new event on the same token after the Purchase opens a new Journey and deal', async () => {
+    await send(ev('Purchase', purchaseProps()));
+    const res = await send(ev('ViewContent'));
+    expect(res.status).toBe(200);
+    expect(journeys()).toHaveLength(2);
+    expect(deals()).toHaveLength(2);
+    expect(journeys()[1]).toMatchObject({ state: 'open', stage: 'browsing' });
+    expect(deals()[1].status).toBe('open');
+    expect(deals()[0].status).toBe('won');
+    expect(orders()).toHaveLength(1);
+  });
+
+  it('a Purchase on a lost Journey opens a new one and wins it, leaving the lost one alone', async () => {
+    await send(ev('ViewContent'));
+    journeys()[0].state = 'lost';
+    journeys()[0].stage = 'lost';
+    deals()[0].status = 'lost';
+    const res = await send(ev('Purchase', purchaseProps()));
+    expect(res.status).toBe(200);
+    expect(journeys()).toHaveLength(2);
+    expect(journeys()[0]).toMatchObject({ state: 'lost', stage: 'lost' });
+    expect(deals()[0].status).toBe('lost');
+    expect(journeys()[1]).toMatchObject({ state: 'won', stage: 'won' });
+    expect(deals()[1].status).toBe('won');
+    expect(orders()[0].journey_id).toBe(journeys()[1].id);
+  });
+
+  it('a failure before the Journey closes is finished by the retry, once', async () => {
+    const body = ev('Purchase', purchaseProps());
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const realUpdate = db.from.bind(db);
+    // Fail the deal update once, after the order was inserted.
+    let failed = false;
+    const fromSpy = vi.spyOn(db, 'from').mockImplementation(((t: string) => {
+      const q = realUpdate(t);
+      if (t === 'deals' && !failed) {
+        const update = q.update.bind(q);
+        q.update = ((p: Record<string, unknown>) => {
+          if ('value' in p && !failed) {
+            failed = true;
+            throw new Error('boom');
+          }
+          return update(p);
+        }) as typeof q.update;
+      }
+      return q;
+    }) as typeof db.from);
+    expect((await send(body)).status).toBe(500);
+    fromSpy.mockRestore();
+    spy.mockRestore();
+    expect(orders()).toHaveLength(1);
+    expect(journeys()[0].state).toBe('open');
+
+    const res = await send(body);
+    expect(res.status).toBe(200);
+    expect(orders()).toHaveLength(1);
+    expect(journeys()).toHaveLength(1);
+    expect(journeys()[0].state).toBe('won');
+    expect(deals()[0]).toMatchObject({ status: 'won', value: 89.8 });
+  });
+
+  it('calls the accepted-event hook with the order properties', async () => {
+    await send(ev('Purchase', purchaseProps()));
+    expect(hook.mock.calls[0][1]).toMatchObject({
+      name: 'Purchase',
+      stage: 'won',
+    });
+  });
+
+  it.each([
+    ['no properties', ev('Purchase'), 'properties'],
+    [
+      'missing order_id',
+      ev('Purchase', purchaseProps('', {})),
+      'properties.order_id',
+    ],
+    [
+      'bad currency',
+      ev('Purchase', purchaseProps('P', { currency: 'REAL' })),
+      'properties.currency',
+    ],
+    [
+      'string value',
+      ev('Purchase', purchaseProps('P', { value: '9' })),
+      'properties.value',
+    ],
+    [
+      'negative value',
+      ev('Purchase', purchaseProps('P', { value: -1 })),
+      'properties.value',
+    ],
+    [
+      'no items',
+      ev('Purchase', purchaseProps('P', { items: [] })),
+      'properties.items',
+    ],
+    [
+      'bad item quantity',
+      ev('Purchase', purchaseProps('P', { items: [item('a', 0)] })),
+      'properties.items[0].quantity',
+    ],
+  ])('400 with a clear message: %s', async (_l, body, field) => {
+    const res = await send(body);
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('bad_request');
+    expect(error.message).toContain(field);
+    expect(orders()).toHaveLength(0);
+    expect(journeys()).toHaveLength(0);
+  });
+});
+
 describe('idempotency by event_id', () => {
   it('replays the original response without repeating effects', async () => {
     await send(ev('ViewContent'));
@@ -334,7 +583,7 @@ describe('errors', () => {
   });
 
   it('400 for an unknown name, and for names not supported yet', async () => {
-    for (const name of ['Bogus', 'Purchase', 'OrderStatusChanged']) {
+    for (const name of ['Bogus', 'OrderStatusChanged']) {
       const res = await send(ev(name));
       expect(res.status).toBe(400);
       expect((await res.json()).error.code).toBe('bad_request');

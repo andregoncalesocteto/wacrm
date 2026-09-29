@@ -1077,6 +1077,10 @@
           "label": "Respuesta de botón / lista",
           "hint": "El cliente toca un botón o fila de lista cuyo id coincide; encadena menús entre automatizaciones"
         },
+        "journey_event": {
+          "label": "Evento de Journey",
+          "hint": "Cuando la Journey de pedido de un cliente registra un evento (vista, carrito, checkout, compra)"
+        },
         "new_contact_created": {
           "label": "Nuevo contacto creado",
           "hint": "Cuando un contacto se crea automáticamente a partir de un mensaje entrante"
@@ -1196,8 +1200,19 @@
           "tag_presence": "Presencia de etiqueta",
           "contact_field": "Campo del contacto",
           "message_content": "Contenido del mensaje",
-          "time_of_day": "Hora del día"
+          "time_of_day": "Hora del día",
+          "customer_replied_since": "Cliente respondió desde",
+          "journey_open": "Journey abierta"
         },
+        "replyReferenceLabel": "Instante de referencia",
+        "replyReferences": {
+          "link_sent": "Enlace del menú enviado",
+          "run_start": "Inicio de esta ejecución"
+        },
+        "replyReferenceHint": "Verdadero si el cliente envió un mensaje después de este instante. Se evalúa cuando se ejecuta el paso, también tras una espera.",
+        "journeyOpenHint": "Verdadero mientras la Journey del cliente siga abierta cuando se ejecuta el paso (falso una vez ganada o perdida).",
+        "journeyEventsLabel": "Eventos de Journey",
+        "journeyEventsHint": "Se dispara cuando se acepta cualquiera de los eventos marcados para la Journey del cliente.",
         "operandLabel": "Operando",
         "placeholderTime": "HH:mm-HH:mm",
         "placeholderContact": "name / email / company",
@@ -2526,5 +2541,20 @@
   "Ui": {
     "close": "Cerrar",
     "gatedReadOnly": "Solo lectura — tu rol no puede {reason}"
+  },
+  "Orders": {
+    "title": "Pedidos",
+    "orderNumber": "Pedido {id}",
+    "itemQuantity": "{quantity}x",
+    "status": {
+      "placed": "Realizado",
+      "received": "Recibido",
+      "preparing": "En preparación",
+      "finished": "Finalizado",
+      "out_for_delivery": "En camino",
+      "ready_for_pickup": "Listo para recoger",
+      "delivered": "Entregado",
+      "cancelled": "Cancelado"
+    }
   }
 }

@@ -34,6 +34,8 @@ import {
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 import { useContactDisplay } from '@/hooks/use-contact-display';
+import { OrderList } from '@/components/orders/order-list';
+import { useOrders } from '@/hooks/use-orders';
 import {
   CONTACT_IDENTITIES_EMBED,
   withIdentities,
@@ -62,6 +64,7 @@ export function DealForm({
   const display = useContactDisplay();
   const supabase = createClient();
   const { accountId, defaultCurrency } = useAuth();
+  const orders = useOrders({ dealId: open ? deal?.id : null });
 
   const [title, setTitle] = useState('');
   const [value, setValue] = useState('');
@@ -397,6 +400,8 @@ export function DealForm({
                 className="border-border bg-muted text-foreground min-h-[100px]"
               />
             </div>
+
+            <OrderList orders={orders} />
 
             {deal && (
               <div className="border-border bg-muted/50 space-y-2 rounded-lg border p-3">

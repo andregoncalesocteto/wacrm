@@ -11,8 +11,10 @@ import {
   JOURNEY_EVENT_NAMES,
   parseCartProperties,
   parseCommonFields,
+  parsePurchaseProperties,
   type CartProperties,
   type CommonEventFields,
+  type PurchaseProperties,
 } from './event-payload';
 import { onJourneyEventAccepted } from './event-hooks';
 import {
@@ -21,6 +23,11 @@ import {
   openOrRenewJourney,
   type JourneyRow,
 } from './journeys';
+import {
+  cancelPendingForJourney,
+  findCompletedPurchase,
+  recordPurchase,
+} from './orders';
 import { resolveTrackingToken } from './tokens';
 
 /**
@@ -59,6 +66,17 @@ interface HandlerContext {
 
 interface EventHandler {
   parseProperties(body: unknown): unknown;
+  /**
+   * Runs before any Journey is looked up or opened. Returns the Journey the
+   * event was already applied to when it is a duplicate under another
+   * `event_id` (Purchase with a known `order_id`): the event is then answered
+   * 200 and nothing else happens.
+   */
+  findDuplicate?(
+    db: SupabaseClient,
+    accountId: string,
+    properties: unknown
+  ): Promise<{ journeyId: string } | null>;
   /** Apply the event to the (open) Journey and its deal. */
   handle(ctx: HandlerContext): Promise<void>;
 }
@@ -163,11 +181,48 @@ function cartHandler(
   };
 }
 
-/** Events with a handler today. Purchase / OrderStatusChanged arrive later. */
+/**
+ * Purchase: creates the Order and closes the Journey as won (its deal moves to
+ * "Comprou" and is marked won). The Journey is closed LAST: a failure before
+ * that leaves it open, and the retry finishes the job (see `recordPurchase`).
+ * A Purchase on a lost Journey never reaches here with that Journey: only an
+ * open one is reused, so a fresh Journey is opened for it.
+ */
+const purchase: EventHandler = {
+  parseProperties: parsePurchaseProperties,
+  findDuplicate: (db, accountId, properties) =>
+    findCompletedPurchase(
+      db,
+      accountId,
+      (properties as PurchaseProperties).orderId
+    ),
+  async handle(ctx) {
+    const props = ctx.event.properties as PurchaseProperties;
+    const { duplicate } = await recordPurchase(ctx.db, {
+      accountId: ctx.accountId,
+      journey: ctx.journey,
+      idtrack: ctx.event.idtrack,
+      occurredAt: ctx.event.occurredAt,
+      purchase: props,
+    });
+    if (duplicate) return;
+    await updateJourney(ctx, {
+      purchased_at: ctx.event.occurredAt.toISOString(),
+    });
+    await moveTo(ctx, 'won');
+    await cancelPendingForJourney(ctx.db, {
+      accountId: ctx.accountId,
+      journeyId: ctx.journey.id,
+    });
+  },
+};
+
+/** Events with a handler today. OrderStatusChanged arrives with ticket #7. */
 const EVENT_HANDLERS: Record<string, EventHandler> = {
   ViewContent: viewContent,
   AddToCart: cartHandler('cart', 'last_add_to_cart_at'),
   InitiateCheckout: cartHandler('checkout', 'checkout_started_at'),
+  Purchase: purchase,
 };
 
 function handlerFor(name: string): EventHandler {
@@ -257,6 +312,25 @@ async function claimEvent(
   );
 }
 
+async function saveResponse(
+  db: SupabaseClient,
+  accountId: string,
+  claimId: string,
+  result: JourneyEventResult,
+  now: Date
+): Promise<void> {
+  const { error } = await db
+    .from('journey_events')
+    .update({
+      journey_id: result.journey_id,
+      response: result,
+      completed_at: now.toISOString(),
+    })
+    .eq('id', claimId)
+    .eq('account_id', accountId);
+  if (error) throw new Error(`journey event save failed: ${error.message}`);
+}
+
 /** Accept one behaviour event. Throws `ApiError` for every 4xx. */
 export async function processJourneyEvent(
   db: SupabaseClient,
@@ -295,6 +369,22 @@ export async function processJourneyEvent(
   if ('replay' in claim) return claim.replay;
 
   try {
+    const duplicateOf = await handler.findDuplicate?.(
+      db,
+      accountId,
+      event.properties
+    );
+    if (duplicateOf) {
+      const result: JourneyEventResult = {
+        event_id: event.eventId,
+        journey_id: duplicateOf.journeyId,
+        stage: 'won',
+        duplicate: true,
+      };
+      await saveResponse(db, accountId, claim.claimId, result, now);
+      return result;
+    }
+
     const userId = await args.resolveUserId();
     const target: Target = {
       contactId: token.contactId,
@@ -332,17 +422,7 @@ export async function processJourneyEvent(
       stage,
       duplicate: false,
     };
-    const { error: doneErr } = await db
-      .from('journey_events')
-      .update({
-        journey_id: journey.id,
-        response: result,
-        completed_at: now.toISOString(),
-      })
-      .eq('id', claim.claimId)
-      .eq('account_id', accountId);
-    if (doneErr)
-      throw new Error(`journey event save failed: ${doneErr.message}`);
+    await saveResponse(db, accountId, claim.claimId, result, now);
 
     try {
       await onJourneyEventAccepted(db, {
@@ -353,6 +433,7 @@ export async function processJourneyEvent(
         journeyId: journey.id,
         ...target,
         stage,
+        properties: event.properties as Record<string, unknown>,
       });
     } catch (hookErr) {
       console.error('[journeys] onJourneyEventAccepted failed:', hookErr);

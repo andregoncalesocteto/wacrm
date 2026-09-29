@@ -338,6 +338,20 @@ BEGIN
     RAISE EXCEPTION 'journey_events unique (account_id, event_id) is missing (migration 057)';
   END IF;
 
+  -- 058: orders (Purchase) + contacts.last_purchase_at.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'orders_external_key'
+  ) THEN
+    RAISE EXCEPTION 'orders unique (account_id, external_order_id) is missing (migration 058)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'contacts'
+      AND column_name = 'last_purchase_at'
+  ) THEN
+    RAISE EXCEPTION 'contacts.last_purchase_at is missing (migration 058)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;
