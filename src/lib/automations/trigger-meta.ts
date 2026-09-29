@@ -43,6 +43,9 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
   menu_link_sent: {
     pillClass: 'border-lime-500/30 bg-lime-500/10 text-lime-300',
   },
+  order_status_changed: {
+    pillClass: 'border-sky-500/30 bg-sky-500/10 text-sky-300',
+  },
 }
 
 /** Journey event names a `journey_event` trigger can listen to. */
@@ -51,6 +54,21 @@ export const JOURNEY_TRIGGER_EVENTS = [
   'AddToCart',
   'InitiateCheckout',
   'Purchase',
+] as const
+
+/**
+ * Order statuses an `order_status_changed` trigger can listen to: what the menu
+ * reports (`ORDER_EVENT_STATUSES`, a test keeps them equal). `placed` is the
+ * Purchase itself and is handled by `journey_event`.
+ */
+export const ORDER_TRIGGER_STATUSES = [
+  'received',
+  'preparing',
+  'finished',
+  'out_for_delivery',
+  'ready_for_pickup',
+  'delivered',
+  'cancelled',
 ] as const
 
 export function isKnownTrigger(t: string): t is AutomationTriggerType {

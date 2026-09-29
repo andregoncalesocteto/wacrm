@@ -7,6 +7,7 @@ import type {
   KeywordMatchTriggerConfig,
   InteractiveReplyTriggerConfig,
   JourneyEventTriggerConfig,
+  OrderStatusChangedTriggerConfig,
   TagTriggerConfig,
   SendMessageStepConfig,
   SendButtonsStepConfig,
@@ -45,6 +46,8 @@ import {
   type ResolvedMenuLink,
 } from '@/lib/journeys'
 
+import { orderVariable, type AutomationOrderContext } from './order-vars'
+
 // ------------------------------------------------------------
 // Public API
 // ------------------------------------------------------------
@@ -78,6 +81,9 @@ export interface AutomationContext {
   /** When the menu link was sent, for menu_link_sent. Its presence marks a run
    *  born from a link send (a `{{menu_link}}` step in it would loop). */
   menu_link_sent_at?: string
+  /** The order this run is about: order_status_changed (status change) or a
+   *  Purchase journey_event. Feeds `{{order_id}}`/`{{order_status}}`/`{{order_value}}`. */
+  order?: AutomationOrderContext
 }
 
 export interface DispatchInput {
@@ -970,6 +976,16 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
     return cfg.event_names.includes(name)
   }
 
+  // Fires for the status the order just moved to (any one of the configured).
+  if (automation.trigger_type === 'order_status_changed') {
+    const cfg = automation.trigger_config as OrderStatusChangedTriggerConfig
+    const status = ctx?.order?.status
+    if (!status || !Array.isArray(cfg?.statuses) || cfg.statuses.length === 0) {
+      return false
+    }
+    return cfg.statuses.includes(status)
+  }
+
   if (automation.trigger_type === 'tag_added') {
     const cfg = automation.trigger_config as TagTriggerConfig
     const tagId = ctx?.tag_id
@@ -1213,6 +1229,13 @@ function interpolate(s: string, args: ExecuteArgs): string {
     const [ns, prop] = String(key).split('.')
     if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
     if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
+    if (key === 'order_id' || key === 'order_status' || key === 'order_value') {
+      return orderVariable(
+        args.context.order,
+        key,
+        process.env.NEXT_PUBLIC_APP_LOCALE || 'en',
+      )
+    }
     return ''
   })
 }

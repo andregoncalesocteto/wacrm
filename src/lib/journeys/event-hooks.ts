@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { JourneyStage } from './constants';
+import type { AutomationOrderContext } from '@/lib/automations/order-vars';
 import type { OrderStatusChange } from './orders';
 
 /** What a journey-event trigger needs to know about an accepted event. */
@@ -33,6 +34,26 @@ export async function onJourneyEventAccepted(
   _db: SupabaseClient,
   event: AcceptedJourneyEvent
 ): Promise<void> {
+  // A Purchase carries the order: expose it to `{{order_id}}` and friends so the
+  // thank-you message can mention it. Other events have no order.
+  const p = event.properties as
+    | {
+        orderId?: unknown;
+        value?: unknown;
+        currency?: unknown;
+        items?: unknown;
+      }
+    | undefined;
+  const order: AutomationOrderContext | undefined =
+    event.name === 'Purchase' && typeof p?.orderId === 'string'
+      ? {
+          external_id: p.orderId,
+          status: 'placed',
+          value: typeof p.value === 'number' ? p.value : null,
+          currency: typeof p.currency === 'string' ? p.currency : null,
+          items: Array.isArray(p.items) ? p.items : [],
+        }
+      : undefined;
   // Loaded lazily: the engine imports this module's package (`@/lib/journeys`).
   const { runAutomationsForTrigger } = await import('@/lib/automations/engine');
   await runAutomationsForTrigger({
@@ -47,22 +68,66 @@ export async function onJourneyEventAccepted(
       journey_event_name: event.name,
       journey_event_properties: event.properties ?? {},
       journey_stage: event.stage,
+      ...(order ? { order } : {}),
     },
   });
 }
 
 /**
- * THE extension point for "an order changed status" (ticket #8; ticket #11
- * fires the "order status change" trigger from here). Called once, after the
- * change is committed, ONLY when the status really changed: a late or repeated
- * status that was ignored, and a replayed `event_id`, never reach it. It is not
- * `onJourneyEventAccepted`: `OrderStatusChanged` opens no Journey and does not
- * go through that hook.
+ * THE extension point for "an order changed status" (ticket #8). Called once,
+ * after the change is committed, ONLY when the status really changed: a late or
+ * repeated status that was ignored, and a replayed `event_id`, never reach it.
+ * It is not `onJourneyEventAccepted`: `OrderStatusChanged` opens no Journey and
+ * does not go through that hook.
  *
- * Today a no-op. Like the other hook it must not throw into the request; the
- * caller also logs and swallows failures.
+ * It fires the automations whose trigger is `order_status_changed` and lists
+ * the new status (ticket #11), on the conversation/connection of the order.
+ * The engine only looks at the order's account, and no automation is configured
+ * for a status means nothing is sent.
+ *
+ * Like the other hook it must not throw into the request; the caller also logs
+ * and swallows failures.
  */
 export async function onOrderStatusChanged(
-  _db: SupabaseClient,
-  _change: OrderStatusChange
-): Promise<void> {}
+  db: SupabaseClient,
+  change: OrderStatusChange
+): Promise<void> {
+  // Value and items are not in the change: read them from the order (account-scoped).
+  const { data, error } = await db
+    .from('orders')
+    .select('value, currency, items')
+    .eq('id', change.orderId)
+    .eq('account_id', change.accountId)
+    .maybeSingle();
+  if (error) {
+    console.error('[journeys] order read for status trigger failed:', error);
+  }
+  const row = data as {
+    value: number | null;
+    currency: string | null;
+    items: AutomationOrderContext['items'];
+  } | null;
+
+  // Loaded lazily: the engine imports this module's package (`@/lib/journeys`).
+  const { runAutomationsForTrigger } = await import('@/lib/automations/engine');
+  await runAutomationsForTrigger({
+    accountId: change.accountId,
+    triggerType: 'order_status_changed',
+    contactId: change.contactId,
+    context: {
+      ...(change.conversationId
+        ? { conversation_id: change.conversationId }
+        : {}),
+      ...(change.connectionId ? { connection_id: change.connectionId } : {}),
+      ...(change.journeyId ? { journey_id: change.journeyId } : {}),
+      order: {
+        external_id: change.externalOrderId,
+        status: change.status,
+        previous_status: change.previousStatus,
+        value: row?.value ?? null,
+        currency: row?.currency ?? null,
+        items: Array.isArray(row?.items) ? row.items : [],
+      },
+    },
+  });
+}

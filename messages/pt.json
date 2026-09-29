@@ -1085,6 +1085,10 @@
           "label": "Link do cardápio enviado",
           "hint": "Quando um link do cardápio é enviado (por uma automação ou pela resposta da IA) e a Journey de pedido é aberta ou renovada. Início das retomadas de 10 e 30 minutos."
         },
+        "order_status_changed": {
+          "label": "Status do pedido alterado",
+          "hint": "Quando um pedido passa para um novo status informado pelo cardápio (recebido, em preparo, entregue, cancelado...). Envia ao cliente a notificação do status."
+        },
         "new_contact_created": {
           "label": "Novo contato criado",
           "hint": "Quando um contato é criado automaticamente a partir de uma mensagem recebida"
@@ -1220,6 +1224,9 @@
         "journeyOpenHint": "Verdadeiro enquanto a Journey do cliente ainda estiver aberta quando o passo executa (falso depois de ganha ou perdida).",
         "journeyEventsLabel": "Eventos de Journey",
         "journeyEventsHint": "Dispara quando qualquer um dos eventos marcados é aceito para a Journey do cliente.",
+        "orderStatusesLabel": "Status do pedido",
+        "orderStatusesHint": "Dispara quando o pedido passa para qualquer um dos status marcados. Um status sem automação não envia nada.",
+        "orderVariablesHint": "inserem os dados do pedido (id, código do status e valor) no texto. Disponíveis neste gatilho e nas automações de Evento de Journey para Purchase.",
         "conversationUnattendedHint": "Verdadeiro enquanto nenhum agente está atribuído à conversa e a IA não fez o transbordo. Verificado quando o passo executa, inclusive depois de uma espera.",
         "journeyFlagLabel": "Marca",
         "journeyFlags": {

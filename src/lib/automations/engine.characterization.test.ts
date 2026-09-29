@@ -1441,3 +1441,213 @@ describe('Abandoned cart chain (journey_event AddToCart/InitiateCheckout -> wait
     });
   });
 });
+
+describe('Order notifications (order_status_changed and the Purchase thank-you)', () => {
+  const order = (status: string, extra: Row = {}) => ({
+    external_id: 'PED-1042',
+    status,
+    previous_status: 'placed',
+    value: 89.8,
+    currency: 'BRL',
+    items: [{ id: 'sku-1', name: 'Pizza', quantity: 2, unit_price: 44.9 }],
+    ...extra,
+  });
+
+  /** One automation per status, as the preset (#14) will create them. */
+  function statusAutomation(id: string, statuses: string[], text: string, account = 'acct-1', cfg: Row = {}) {
+    h.db.automations.push({
+      id,
+      account_id: account,
+      user_id: 'user-1',
+      trigger_type: 'order_status_changed',
+      trigger_config: { statuses },
+      is_active: true,
+    });
+    h.db.automation_steps.push({
+      id: `${id}-send`,
+      automation_id: id,
+      parent_step_id: null,
+      branch: null,
+      position: 0,
+      step_type: 'send_message',
+      step_config: { text, ...cfg },
+    });
+  }
+
+  const changed = (status: string, account = 'acct-1', extra: Row = {}) =>
+    runAutomationsForTrigger({
+      accountId: account,
+      triggerType: 'order_status_changed',
+      contactId: 'ct-1',
+      context: { conversation_id: 'cv-1', connection_id: 'conn-acct-1', order: order(status), ...extra },
+    });
+  const sent = () => messages().map((m) => m.content_text);
+
+  beforeEach(() => {
+    h.db.automations = [];
+    h.db.automation_steps = [];
+  });
+
+  it.each([
+    ['received', 'Recebemos'],
+    ['preparing', 'Preparando'],
+    ['finished', 'Pronto'],
+    ['out_for_delivery', 'Saiu'],
+    ['ready_for_pickup', 'Retire'],
+    ['delivered', 'Entregue'],
+    ['cancelled', 'Cancelado'],
+  ])('%s fires only the message configured for it, on the conversation channel', async (status, text) => {
+    for (const [s, t] of [
+      ['received', 'Recebemos'],
+      ['preparing', 'Preparando'],
+      ['finished', 'Pronto'],
+      ['out_for_delivery', 'Saiu'],
+      ['ready_for_pickup', 'Retire'],
+      ['delivered', 'Entregue'],
+      ['cancelled', 'Cancelado'],
+    ]) {
+      statusAutomation(`au-${s}`, [s], t);
+    }
+    await changed(status);
+    expect(sent()).toEqual([text]);
+    expect(messages()[0]).toMatchObject({ conversation_id: 'cv-1', sender_type: 'bot' });
+    expect(h.sendTextMessage).toHaveBeenCalledWith(expect.objectContaining({ phoneNumberId: 'pn-1', text }));
+  });
+
+  it('a status with no automation configured sends nothing', async () => {
+    statusAutomation('au-a', ['preparing'], 'Preparando');
+    await changed('delivered');
+    expect(sent()).toEqual([]);
+    expect(h.db.automation_logs).toHaveLength(0);
+  });
+
+  it('an inactive automation sends nothing', async () => {
+    statusAutomation('au-a', ['preparing'], 'Preparando');
+    h.db.automations[0].is_active = false;
+    await changed('preparing');
+    expect(sent()).toEqual([]);
+  });
+
+  it('one automation can cover several statuses', async () => {
+    statusAutomation('au-a', ['received', 'preparing'], 'Andamento');
+    await changed('preparing');
+    await changed('delivered');
+    expect(sent()).toEqual(['Andamento']);
+  });
+
+  it('interpolates {{order_id}}, {{order_status}} and {{order_value}} (locale-formatted, account currency of the order)', async () => {
+    statusAutomation('au-a', ['preparing'], 'Pedido {{order_id}} está {{ order_status }}: {{order_value}}');
+    await changed('preparing');
+    expect(sent()).toEqual([expect.stringMatching(/^Pedido PED-1042 está preparing: R\$\s?89\.80$/)]);
+  });
+
+  it('formats the value with the app locale', async () => {
+    const prev = process.env.NEXT_PUBLIC_APP_LOCALE;
+    process.env.NEXT_PUBLIC_APP_LOCALE = 'pt';
+    try {
+      statusAutomation('au-a', ['preparing'], 'Total {{order_value}}');
+      await changed('preparing');
+      expect(sent()[0]).toMatch(/R\$\s89,80/);
+    } finally {
+      if (prev === undefined) delete process.env.NEXT_PUBLIC_APP_LOCALE;
+      else process.env.NEXT_PUBLIC_APP_LOCALE = prev;
+    }
+  });
+
+  it('order variables are empty outside an order run', async () => {
+    h.db.automations.push({
+      id: 'au-n',
+      account_id: 'acct-1',
+      user_id: 'user-1',
+      trigger_type: 'new_contact_created',
+      trigger_config: {},
+      is_active: true,
+    });
+    h.db.automation_steps.push({
+      id: 'n1',
+      automation_id: 'au-n',
+      parent_step_id: null,
+      branch: null,
+      position: 0,
+      step_type: 'send_message',
+      step_config: { text: 'Pedido [{{order_id}}]' },
+    });
+    await fire();
+    expect(sent()).toEqual(['Pedido []']);
+  });
+
+  it('only runs the automations of the order account', async () => {
+    statusAutomation('au-mine', ['preparing'], 'Minha');
+    statusAutomation('au-theirs', ['preparing'], 'Alheia', 'acct-2');
+    await changed('preparing');
+    expect(sent()).toEqual(['Minha']);
+    // A forged account: the contact is not theirs, so nothing runs at all.
+    h.db.messages = h.db.messages.filter((m) => m.sender_type === 'customer');
+    await changed('preparing', 'acct-2');
+    expect(sent()).toEqual([]);
+  });
+
+  it('outside the 24 h window sends the status template', async () => {
+    statusAutomation('au-a', ['out_for_delivery'], 'Saiu {{order_id}}', 'acct-1', {
+      fallback_template: { name: 'order_out', language: 'pt_BR', variables: { '1': 'PED' } },
+    });
+    h.db.message_templates = [
+      {
+        id: 'tpl-1',
+        account_id: 'acct-1',
+        user_id: 'u-1',
+        name: 'order_out',
+        category: 'Utility',
+        language: 'pt_BR',
+        body_text: 'Seu pedido saiu {{1}}',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ];
+    for (const m of h.db.messages) m.created_at = '2020-01-01T00:00:00Z';
+    await changed('out_for_delivery');
+    expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('outside the 24 h window without a template fails visibly', async () => {
+    statusAutomation('au-a', ['out_for_delivery'], 'Saiu');
+    for (const m of h.db.messages) m.created_at = '2020-01-01T00:00:00Z';
+    await changed('out_for_delivery');
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(log().status).toBe('failed');
+    expect(String(log().error_message)).toMatch(/window/i);
+  });
+
+  describe('Purchase thank-you (journey_event)', () => {
+    it('fires on Purchase only and can use the order variables', async () => {
+      h.db.automations.push({
+        id: 'au-thx',
+        account_id: 'acct-1',
+        user_id: 'user-1',
+        trigger_type: 'journey_event',
+        trigger_config: { event_names: ['Purchase'] },
+        is_active: true,
+      });
+      h.db.automation_steps.push({
+        id: 'thx1',
+        automation_id: 'au-thx',
+        parent_step_id: null,
+        branch: null,
+        position: 0,
+        step_type: 'send_message',
+        step_config: { text: 'Obrigado! Pedido {{order_id}} ({{order_status}})' },
+      });
+      const ev = (name: string, extra: Row = {}) =>
+        runAutomationsForTrigger({
+          accountId: 'acct-1',
+          triggerType: 'journey_event',
+          contactId: 'ct-1',
+          context: { conversation_id: 'cv-1', journey_event_name: name, ...extra },
+        });
+      await ev('AddToCart');
+      expect(sent()).toEqual([]);
+      await ev('Purchase', { order: order('placed') });
+      expect(sent()).toEqual(['Obrigado! Pedido PED-1042 (placed)']);
+    });
+  });
+});

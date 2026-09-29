@@ -308,6 +308,21 @@ describe("validateTriggerForActivation", () => {
     ).toHaveLength(1);
   });
 
+  it("requires known order statuses on order_status_changed triggers", () => {
+    expect(validateTriggerForActivation("order_status_changed", {})).toEqual([
+      { path: "trigger.statuses", message: "at least one order status is required" },
+    ]);
+    expect(
+      validateTriggerForActivation("order_status_changed", { statuses: ["preparing", "cancelled"] }),
+    ).toEqual([]);
+    expect(
+      validateTriggerForActivation("order_status_changed", { statuses: ["placed"] }),
+    ).toHaveLength(1);
+    expect(
+      validateTriggerForActivation("order_status_changed", { statuses: [1] }),
+    ).toHaveLength(1);
+  });
+
   it("does not flag unknown trigger types (handled elsewhere)", () => {
     expect(validateTriggerForActivation("some_future_trigger", {})).toEqual([]);
   });

@@ -73,7 +73,7 @@ import {
   type StepPath,
 } from "@/lib/automations/builder-tree"
 import { cn } from "@/lib/utils"
-import { JOURNEY_TRIGGER_EVENTS } from "@/lib/automations/trigger-meta"
+import { JOURNEY_TRIGGER_EVENTS, ORDER_TRIGGER_STATUSES } from "@/lib/automations/trigger-meta"
 import { JOURNEY_STAGES } from "@/lib/journeys/constants"
 import { StepWarnings } from "@/components/channels/step-warnings"
 import { stepRequirements } from "@/lib/channels/step-capabilities"
@@ -216,6 +216,7 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "tag_added" },
   { value: "journey_event" },
   { value: "menu_link_sent" },
+  { value: "order_status_changed" },
   { value: "time_based" },
 ]
 
@@ -933,6 +934,9 @@ function TriggerCard({
             {type === "journey_event" && (
               <JourneyEventConfig config={config} onChange={onConfigChange} t={t} />
             )}
+            {type === "order_status_changed" && (
+              <OrderStatusesConfig config={config} onChange={onConfigChange} t={t} />
+            )}
             {type === "tag_added" && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -1094,6 +1098,45 @@ function JourneyEventConfig({
         ))}
       </div>
       <p className="mt-1 text-[11px] text-muted-foreground">{t("config.journeyEventsHint")}</p>
+    </div>
+  )
+}
+
+function OrderStatusesConfig({
+  config,
+  onChange,
+  t,
+}: {
+  config: Record<string, unknown>
+  onChange: (c: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const tStatus = useTranslations("Orders.status")
+  const selected = (config?.statuses as string[] | undefined) ?? []
+  function toggle(status: string, checked: boolean) {
+    const next = ORDER_TRIGGER_STATUSES.filter((n) =>
+      n === status ? checked : selected.includes(n),
+    )
+    onChange({ ...config, statuses: next })
+  }
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+        {t("config.orderStatusesLabel")}
+      </label>
+      <div className="space-y-1">
+        {ORDER_TRIGGER_STATUSES.map((status) => (
+          <label key={status} className="flex items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={selected.includes(status)}
+              onChange={(e) => toggle(status, e.target.checked)}
+            />
+            <span>{tStatus(status)}</span>
+          </label>
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground">{t("config.orderStatusesHint")}</p>
     </div>
   )
 }
@@ -1428,6 +1471,12 @@ function StepEditor({
           <p className="mt-1 text-[10px] text-muted-foreground">
             <code className="rounded bg-muted px-1">{"{{menu_link}}"}</code>{" "}
             {t("config.menuLinkHint")}
+          </p>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            <code className="rounded bg-muted px-1">{"{{order_id}}"}</code>{" "}
+            <code className="rounded bg-muted px-1">{"{{order_status}}"}</code>{" "}
+            <code className="rounded bg-muted px-1">{"{{order_value}}"}</code>{" "}
+            {t("config.orderVariablesHint")}
           </p>
           <FallbackTemplateFields
             value={

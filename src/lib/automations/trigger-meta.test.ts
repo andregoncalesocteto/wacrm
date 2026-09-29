@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { formatRelative } from './trigger-meta'
+import { ORDER_EVENT_STATUSES } from '@/lib/journeys/event-payload'
+import { formatRelative, ORDER_TRIGGER_STATUSES } from './trigger-meta'
 
 const t = (key: string) => key
 
@@ -13,5 +14,11 @@ describe('formatRelative absolute-date branch', () => {
   it('keeps the historical numeric en output', () => {
     expect(formatRelative(old, t, 'en')).toBe('1/5/2026')
     expect(formatRelative(old, t)).toBe('1/5/2026')
+  })
+})
+
+describe('ORDER_TRIGGER_STATUSES', () => {
+  it('is the vocabulary OrderStatusChanged accepts', () => {
+    expect([...ORDER_TRIGGER_STATUSES]).toEqual([...ORDER_EVENT_STATUSES])
   })
 })

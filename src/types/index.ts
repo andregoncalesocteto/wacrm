@@ -517,7 +517,10 @@ export type AutomationTriggerType =
   | 'journey_event'
   /** A menu link was sent (by an automation step or the AI reply) and the
    *  Journey was opened or renewed; the anchor of the Resumption chain. */
-  | 'menu_link_sent';
+  | 'menu_link_sent'
+  /** An order moved to a new status (`OrderStatusChanged`, only when the
+   *  status really changed). Fires the customer's status notification. */
+  | 'order_status_changed';
 
 export type AutomationStepType =
   | 'send_message'
@@ -570,6 +573,11 @@ export interface JourneyEventTriggerConfig {
   event_names: string[];
 }
 
+export interface OrderStatusChangedTriggerConfig {
+  /** Order statuses to match; any one fires. */
+  statuses: string[];
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
@@ -577,6 +585,7 @@ export type AutomationTriggerConfig =
   | TimeBasedTriggerConfig
   | InteractiveReplyTriggerConfig
   | JourneyEventTriggerConfig
+  | OrderStatusChangedTriggerConfig
   | Record<string, unknown>;
 
 export interface SendMessageStepConfig {

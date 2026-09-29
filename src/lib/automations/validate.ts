@@ -2,7 +2,7 @@ import type { AutomationTriggerType } from '@/types'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { JOURNEY_STAGES } from '@/lib/journeys/constants'
 import { JOURNEY_FLAGS, isJourneyFlag } from '@/lib/journeys/flags'
-import { JOURNEY_TRIGGER_EVENTS } from './trigger-meta'
+import { JOURNEY_TRIGGER_EVENTS, ORDER_TRIGGER_STATUSES } from './trigger-meta'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -243,6 +243,23 @@ export function validateTriggerForActivation(
       issues.push({
         path: 'trigger.event_names',
         message: `event names must be among: ${JOURNEY_TRIGGER_EVENTS.join(', ')}`,
+      })
+    }
+  } else if (triggerType === 'order_status_changed') {
+    const statuses = cfg.statuses
+    if (!Array.isArray(statuses) || statuses.length === 0) {
+      issues.push({
+        path: 'trigger.statuses',
+        message: 'at least one order status is required',
+      })
+    } else if (
+      statuses.some(
+        (v) => typeof v !== 'string' || !(ORDER_TRIGGER_STATUSES as readonly string[]).includes(v),
+      )
+    ) {
+      issues.push({
+        path: 'trigger.statuses',
+        message: `order statuses must be among: ${ORDER_TRIGGER_STATUSES.join(', ')}`,
       })
     }
   } else if (triggerType === 'interactive_reply') {
