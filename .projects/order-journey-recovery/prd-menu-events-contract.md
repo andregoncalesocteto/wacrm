@@ -189,6 +189,7 @@ Ramifique pelo `error.code` (estável); a `message` é para leitura humana e pod
 | --- | --- | --- | --- |
 | 200 | (sucesso) | Evento aceito, inclusive repetição de `event_id` e status antigo ignorado | Nada. |
 | 400 | `bad_request` | Corpo malformado, campo ausente, `status` fora do conjunto, `name` desconhecido | Corrigir o seu envio. **Não** repita igual. |
+| 400 | `order_not_found` | `OrderStatusChanged` para um `order_id` que o CRM não conhece para esse `idtrack` (por exemplo, o `Purchase` ainda está na sua fila de saída e não chegou) | **Reenvie** com espera crescente: o status é aceito depois que o `Purchase` chegar. Se persistir por horas, investigue. |
 | 401 | `unauthorized` | Chave ausente, inválida, revogada ou expirada | Verificar a chave. |
 | 403 | `forbidden` | A chave não tem o escopo `events:write` | Pedir a quem administra o CRM. |
 | 404 | `idtrack_not_found` | O `idtrack` não corresponde a nenhum link enviado | Corrigir o link/parâmetro. **Não** repita. |
@@ -210,7 +211,7 @@ Hoje o backend do cardápio não tem fila nem reenvio. Sem isso, qualquer falha 
 **Fila de saída mínima para `Purchase` e `OrderStatusChanged`.** No momento em que o pedido é gravado (e a cada mudança de estado), grave também, na mesma transação, uma linha de evento pendente com o `event_id`, o corpo e o número de tentativas. Um processo separado envia as pendentes e as marca como enviadas ao receber `200`.
 
 - **Reenvie** em `429`, `5xx` e falhas de rede/timeout, com o **mesmo** `event_id` e espera crescente (por exemplo 30s, 2min, 10min, 1h, 6h, até 24 h).
-- **Não reenvie** em `400`, `401`, `403`, `404` e `410`: o mesmo corpo vai falhar do mesmo jeito; registre o erro para investigação.
+- **Não reenvie** em `400` (exceto `order_not_found`, veja a seção 7), `401`, `403`, `404` e `410`: o mesmo corpo vai falhar do mesmo jeito; registre o erro para investigação.
 - O CRM executa os efeitos uma vez por `event_id`, então reenviar é sempre seguro.
 - Os eventos de comportamento (`ViewContent`, `AddToCart`, `InitiateCheckout`) devem sair de forma assíncrona: o cliente nunca espera pelo CRM.
 
@@ -239,7 +240,7 @@ O time do cardápio considera a integração pronta quando, em ambiente de teste
 
 - Envio de vários eventos em uma chamada (lote).
 - Eventos além dos cinco listados.
-- Status de pedido além dos seis fechados.
+- Status de pedido além dos sete fechados.
 - Consulta do estado da jornada ou do pedido pelo cardápio.
 - Recuperação por inatividade de 30 dias e régua de recorrência (fase seguinte, no CRM; não exige nada do cardápio além dos eventos acima).
 
