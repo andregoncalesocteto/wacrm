@@ -361,6 +361,21 @@ BEGIN
     RAISE EXCEPTION 'orders.status_history is missing (migration 059)';
   END IF;
 
+  -- 061: automations.preset_key + unique (account_id, preset_key).
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'automations'
+      AND column_name = 'preset_key'
+  ) THEN
+    RAISE EXCEPTION 'automations.preset_key is missing (migration 061)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'automations_account_preset_key'
+  ) THEN
+    RAISE EXCEPTION 'automations_account_preset_key index is missing (migration 061)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

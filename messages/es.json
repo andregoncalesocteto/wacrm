@@ -993,6 +993,79 @@
     }
   },
   "Automations": {
+    "journeyPreset": {
+      "title": "Journey del pedido",
+      "description": "Crea, listas para editar, las automatizaciones del recorrido del pedido: recordatorios tras el enlace del menú (10 y 30 min), carrito abandonado, agradecimiento y un aviso por estado del pedido. Todo se crea apagado; revisa los textos y actívalo en la lista.",
+      "install": "Añadir el preset Journey del pedido",
+      "installAgain": "Añadir automatizaciones que faltan",
+      "toastCreated": "{created, plural, =0 {Nada nuevo que añadir} one {# automatización creada} other {# automatizaciones creadas}}; {existing} ya existían.",
+      "toastError": "No se pudo añadir el preset.",
+      "loadError": "No se pudo cargar el estado del preset.",
+      "statusTitle": "Lo que aún falta",
+      "installedCount": "{installed} de {total} automatizaciones añadidas.",
+      "allSet": "No falta nada: todas las automatizaciones están activas, todas las tiendas tienen enlace del menú y todo paso de envío tiene plantilla de respaldo.",
+      "inactive": "{count, plural, one {# automatización sigue apagada} other {# automatizaciones siguen apagadas}}. Revisa los textos y actívalas en la lista de abajo.",
+      "storesMissing": "{count, plural, one {# tienda no tiene} other {# tiendas no tienen}} enlace del menú: {names}. El enlace del menú no se envía para ellas.",
+      "storesLink": "Configurar el enlace del menú en Ajustes",
+      "templatesMissing": "{count, plural, one {# mensaje no tiene} other {# mensajes no tienen}} plantilla de respaldo de WhatsApp. WhatsApp exige una plantilla fuera de la ventana de 24 horas; sin ella el envío falla (visible en el registro de la automatización y en la conversación).",
+      "templatesLink": "Abrir {name}",
+      "selectionNote": "También se añade la de entregado: déjala apagada si no quieres avisar al cliente en la entrega.",
+      "automations": {
+        "resumption": {
+          "name": "Journey del pedido: recordatorios tras el enlace del menú",
+          "description": "Recordatorios 10 y 30 minutos después del enlace del menú, si el cliente no respondió, no llegó al carrito y nadie lo atiende."
+        },
+        "abandoned_cart": {
+          "name": "Journey del pedido: carrito abandonado",
+          "description": "10 minutos después del último evento de carrito o checkout, un mensaje por recorrido si el cliente dejó de responder."
+        },
+        "thank_you": {
+          "name": "Journey del pedido: agradecimiento",
+          "description": "Agradece al cliente cuando se realiza el pedido."
+        },
+        "status_received": {
+          "name": "Journey del pedido: pedido recibido",
+          "description": "Avisa al cliente cuando se recibe el pedido."
+        },
+        "status_preparing": {
+          "name": "Journey del pedido: en preparación",
+          "description": "Avisa al cliente cuando el pedido pasa a preparación."
+        },
+        "status_finished": {
+          "name": "Journey del pedido: pedido terminado",
+          "description": "Avisa al cliente cuando el pedido está terminado."
+        },
+        "status_out_for_delivery": {
+          "name": "Journey del pedido: salió a entrega",
+          "description": "Avisa al cliente cuando el pedido sale a entrega."
+        },
+        "status_ready_for_pickup": {
+          "name": "Journey del pedido: listo para recoger",
+          "description": "Avisa al cliente cuando el pedido está listo para recoger."
+        },
+        "status_delivered": {
+          "name": "Journey del pedido: entregado",
+          "description": "Avisa al cliente cuando se entrega el pedido."
+        },
+        "status_cancelled": {
+          "name": "Journey del pedido: cancelado",
+          "description": "Avisa al cliente cuando se cancela el pedido."
+        }
+      },
+      "texts": {
+        "resumption1": "¡Hola! ¿Te quedó alguna duda sobre tu pedido? Responde por aquí y te ayudamos.",
+        "resumption2": "¡Hola! Tu pedido sigue esperándote. ¿Necesitas ayuda para elegir? Responde por aquí.",
+        "abandonedCart": "¡Hola! Vimos que dejaste productos en el carrito. ¿Quieres terminar tu pedido? Si necesitas ayuda, responde por aquí.",
+        "thankYou": "¡Gracias por tu pedido {{order_id}}! Te avisaremos en cada etapa.",
+        "status_received": "¡Recibimos tu pedido {{order_id}}! Pronto empezamos a prepararlo.",
+        "status_preparing": "Tu pedido {{order_id}} está en preparación.",
+        "status_finished": "¡Tu pedido {{order_id}} está listo!",
+        "status_out_for_delivery": "Tu pedido {{order_id}} salió a entrega. ¡Pronto llegará a ti!",
+        "status_ready_for_pickup": "Tu pedido {{order_id}} está listo para recoger. ¡Ven por él mientras está calentito!",
+        "status_delivered": "Tu pedido {{order_id}} fue entregado. ¡Buen provecho!",
+        "status_cancelled": "Tu pedido {{order_id}} fue cancelado. Si tienes alguna duda, responde por aquí."
+      }
+    },
     "list": {
       "loadError": "Error al cargar las automatizaciones",
       "title": "Automatizaciones",

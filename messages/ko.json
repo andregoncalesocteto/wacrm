@@ -993,6 +993,79 @@
     }
   },
   "Automations": {
+    "journeyPreset": {
+      "title": "주문 Journey",
+      "description": "주문 Journey 자동화를 바로 수정할 수 있게 만들어 줍니다. 메뉴 링크 후 재안내(10분·30분), 장바구니 이탈, 감사 인사, 주문 상태별 안내가 포함됩니다. 모두 꺼진 상태로 생성되니 문구를 검토하고 목록에서 켜세요.",
+      "install": "주문 Journey 프리셋 추가",
+      "installAgain": "빠진 자동화 추가",
+      "toastCreated": "{created, plural, =0 {새로 추가할 항목이 없습니다} other {자동화 #개를 만들었습니다}}. 이미 있던 항목: {existing}개.",
+      "toastError": "프리셋을 추가하지 못했습니다.",
+      "loadError": "프리셋 상태를 불러오지 못했습니다.",
+      "statusTitle": "아직 필요한 설정",
+      "installedCount": "자동화 {total}개 중 {installed}개가 추가되었습니다.",
+      "allSet": "빠진 것이 없습니다. 모든 자동화가 켜져 있고, 모든 매장에 메뉴 주소가 있으며, 모든 발송 단계에 대체 템플릿이 있습니다.",
+      "inactive": "{count, plural, other {자동화 #개가 아직 꺼져 있습니다}}. 문구를 검토하고 아래 목록에서 켜세요.",
+      "storesMissing": "{count, plural, other {매장 #곳에}} 메뉴 주소가 없습니다: {names}. 해당 매장에는 메뉴 링크가 발송되지 않습니다.",
+      "storesLink": "설정에서 메뉴 주소 입력",
+      "templatesMissing": "{count, plural, other {메시지 #개에}} WhatsApp 대체 템플릿이 없습니다. WhatsApp은 24시간 창 밖에서는 템플릿을 요구하며, 없으면 발송이 실패합니다(자동화 로그와 대화에서 확인 가능).",
+      "templatesLink": "{name} 열기",
+      "selectionNote": "배송 완료 자동화도 함께 추가됩니다. 배송 완료 시 고객에게 알리고 싶지 않다면 꺼 두세요.",
+      "automations": {
+        "resumption": {
+          "name": "주문 Journey: 메뉴 링크 후 재안내",
+          "description": "메뉴 링크 발송 10분·30분 후, 고객이 답하지 않았고 장바구니에 이르지 않았으며 담당자가 없을 때 재안내합니다."
+        },
+        "abandoned_cart": {
+          "name": "주문 Journey: 장바구니 이탈",
+          "description": "마지막 장바구니·결제 시작 이벤트 10분 후, 고객이 조용하면 Journey당 한 번 메시지를 보냅니다."
+        },
+        "thank_you": {
+          "name": "주문 Journey: 감사 인사",
+          "description": "주문이 접수되면 고객에게 감사 인사를 보냅니다."
+        },
+        "status_received": {
+          "name": "주문 Journey: 주문 접수",
+          "description": "주문이 접수되면 고객에게 알립니다."
+        },
+        "status_preparing": {
+          "name": "주문 Journey: 조리 중",
+          "description": "주문이 조리에 들어가면 고객에게 알립니다."
+        },
+        "status_finished": {
+          "name": "주문 Journey: 조리 완료",
+          "description": "주문이 완료되면 고객에게 알립니다."
+        },
+        "status_out_for_delivery": {
+          "name": "주문 Journey: 배달 출발",
+          "description": "주문이 배달을 떠나면 고객에게 알립니다."
+        },
+        "status_ready_for_pickup": {
+          "name": "주문 Journey: 픽업 준비 완료",
+          "description": "주문이 픽업 준비되면 고객에게 알립니다."
+        },
+        "status_delivered": {
+          "name": "주문 Journey: 배송 완료",
+          "description": "주문이 배송되면 고객에게 알립니다."
+        },
+        "status_cancelled": {
+          "name": "주문 Journey: 취소",
+          "description": "주문이 취소되면 고객에게 알립니다."
+        }
+      },
+      "texts": {
+        "resumption1": "안녕하세요! 주문에 대해 궁금한 점이 있으신가요? 여기로 답장해 주시면 도와드릴게요.",
+        "resumption2": "안녕하세요! 주문이 아직 기다리고 있어요. 고르는 데 도움이 필요하시면 여기로 답장해 주세요.",
+        "abandonedCart": "안녕하세요! 장바구니에 담아 두신 상품이 있네요. 주문을 마무리하시겠어요? 도움이 필요하시면 여기로 답장해 주세요.",
+        "thankYou": "주문 {{order_id}} 감사합니다! 단계마다 알려 드릴게요.",
+        "status_received": "주문 {{order_id}}이(가) 접수되었습니다! 곧 준비를 시작할게요.",
+        "status_preparing": "주문 {{order_id}}을(를) 준비하고 있습니다.",
+        "status_finished": "주문 {{order_id}}이(가) 준비되었습니다!",
+        "status_out_for_delivery": "주문 {{order_id}}이(가) 배달을 출발했습니다. 곧 도착해요!",
+        "status_ready_for_pickup": "주문 {{order_id}}을(를) 픽업하실 수 있습니다. 따뜻할 때 가져가세요!",
+        "status_delivered": "주문 {{order_id}}이(가) 배달되었습니다. 맛있게 드세요!",
+        "status_cancelled": "주문 {{order_id}}이(가) 취소되었습니다. 궁금한 점이 있으면 여기로 답장해 주세요."
+      }
+    },
     "list": {
       "loadError": "자동화를 불러오지 못했습니다",
       "title": "자동화",

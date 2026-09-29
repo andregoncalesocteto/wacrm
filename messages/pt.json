@@ -993,6 +993,79 @@
     }
   },
   "Automations": {
+    "journeyPreset": {
+      "title": "Jornada de pedido",
+      "description": "Cria, prontas para editar, as automações da Jornada de pedido: retomadas após o link do cardápio (10 e 30 min), carrinho abandonado, agradecimento e um aviso por status do pedido. Tudo é criado desligado; revise os textos e ative na lista.",
+      "install": "Adicionar o preset Jornada de pedido",
+      "installAgain": "Adicionar automações que faltam",
+      "toastCreated": "{created, plural, =0 {Nada novo para adicionar} one {# automação criada} other {# automações criadas}}; {existing} já existiam.",
+      "toastError": "Não foi possível adicionar o preset.",
+      "loadError": "Não foi possível carregar o estado do preset.",
+      "statusTitle": "O que ainda falta",
+      "installedCount": "{installed} de {total} automações adicionadas.",
+      "allSet": "Nada faltando: todas as automações estão ativas, todas as lojas têm endereço do cardápio e todo passo de envio tem template de fallback.",
+      "inactive": "{count, plural, one {# automação ainda está desligada} other {# automações ainda estão desligadas}}. Revise os textos e ative na lista abaixo.",
+      "storesMissing": "{count, plural, one {# loja está sem} other {# lojas estão sem}} endereço do cardápio: {names}. O link do cardápio não é enviado para elas.",
+      "storesLink": "Cadastrar o endereço do cardápio em Configurações",
+      "templatesMissing": "{count, plural, one {# mensagem está sem} other {# mensagens estão sem}} template de fallback do WhatsApp. O WhatsApp exige um template fora da janela de 24 horas; sem ele o envio falha (visível no log da automação e na conversa).",
+      "templatesLink": "Abrir {name}",
+      "selectionNote": "A automação de entregue também é adicionada: deixe-a desligada se não quiser avisar o cliente na entrega.",
+      "automations": {
+        "resumption": {
+          "name": "Jornada de pedido: retomadas após o link do cardápio",
+          "description": "Retomadas 10 e 30 minutos após o link do cardápio, se o cliente não respondeu, não chegou ao carrinho e ninguém está atendendo."
+        },
+        "abandoned_cart": {
+          "name": "Jornada de pedido: carrinho abandonado",
+          "description": "10 minutos após o último evento de carrinho ou checkout, uma mensagem por Jornada se o cliente sumiu."
+        },
+        "thank_you": {
+          "name": "Jornada de pedido: agradecimento",
+          "description": "Agradece ao cliente quando o pedido é realizado."
+        },
+        "status_received": {
+          "name": "Jornada de pedido: pedido recebido",
+          "description": "Avisa o cliente quando o pedido é recebido."
+        },
+        "status_preparing": {
+          "name": "Jornada de pedido: pedido em preparo",
+          "description": "Avisa o cliente quando o pedido entra em preparo."
+        },
+        "status_finished": {
+          "name": "Jornada de pedido: pedido finalizado",
+          "description": "Avisa o cliente quando o pedido é finalizado."
+        },
+        "status_out_for_delivery": {
+          "name": "Jornada de pedido: saiu para entrega",
+          "description": "Avisa o cliente quando o pedido sai para entrega."
+        },
+        "status_ready_for_pickup": {
+          "name": "Jornada de pedido: pronto para retirada",
+          "description": "Avisa o cliente quando o pedido está pronto para retirada."
+        },
+        "status_delivered": {
+          "name": "Jornada de pedido: entregue",
+          "description": "Avisa o cliente quando o pedido é entregue."
+        },
+        "status_cancelled": {
+          "name": "Jornada de pedido: cancelado",
+          "description": "Avisa o cliente quando o pedido é cancelado."
+        }
+      },
+      "texts": {
+        "resumption1": "Oi! Ficou com alguma dúvida sobre o seu pedido? É só responder por aqui que a gente ajuda.",
+        "resumption2": "Oi! Seu pedido ainda está esperando por você. Precisa de ajuda para escolher? É só responder aqui.",
+        "abandonedCart": "Oi! Vimos que você deixou itens no carrinho. Quer finalizar o seu pedido? Se precisar de ajuda, é só responder por aqui.",
+        "thankYou": "Obrigado pelo pedido {{order_id}}! Vamos avisar você a cada etapa.",
+        "status_received": "Recebemos o seu pedido {{order_id}}! Já vamos começar a preparar.",
+        "status_preparing": "Seu pedido {{order_id}} está em preparo.",
+        "status_finished": "Seu pedido {{order_id}} está pronto!",
+        "status_out_for_delivery": "Seu pedido {{order_id}} saiu para entrega. Já já chega até você!",
+        "status_ready_for_pickup": "Seu pedido {{order_id}} está pronto para retirada. Venha buscar enquanto está quentinho!",
+        "status_delivered": "Seu pedido {{order_id}} foi entregue. Bom apetite!",
+        "status_cancelled": "Seu pedido {{order_id}} foi cancelado. Se tiver alguma dúvida, é só responder por aqui."
+      }
+    },
     "list": {
       "loadError": "Falha ao carregar automações",
       "title": "Automações",

@@ -993,6 +993,79 @@
     }
   },
   "Automations": {
+    "journeyPreset": {
+      "title": "Order Journey",
+      "description": "Creates, ready to edit, the automations of the order Journey: reminders after the menu link (10 and 30 min), abandoned cart, thank-you and one notice per order status. Everything is created off; review the texts and turn them on in the list.",
+      "install": "Add the Order Journey preset",
+      "installAgain": "Add missing automations",
+      "toastCreated": "{created, plural, =0 {Nothing new to add} one {# automation created} other {# automations created}}; {existing} already existed.",
+      "toastError": "Couldn't add the preset.",
+      "loadError": "Couldn't load the preset status.",
+      "statusTitle": "What is still missing",
+      "installedCount": "{installed} of {total} automations added.",
+      "allSet": "Nothing missing: all automations are on, every store has a menu URL and every send step has a fallback template.",
+      "inactive": "{count, plural, one {# automation is still off} other {# automations are still off}}. Review the texts and turn them on in the list below.",
+      "storesMissing": "{count, plural, one {# store has} other {# stores have}} no menu URL: {names}. The menu link is not sent for them.",
+      "storesLink": "Set the menu URL in Settings",
+      "templatesMissing": "{count, plural, one {# message has} other {# messages have}} no WhatsApp fallback template. WhatsApp requires a template outside the 24-hour window; without one the send fails (visible in the automation log and the conversation).",
+      "templatesLink": "Open {name}",
+      "selectionNote": "Delivered is added too: leave it off if you don't want to message customers on delivery.",
+      "automations": {
+        "resumption": {
+          "name": "Order Journey: reminders after the menu link",
+          "description": "Reminders 10 and 30 minutes after the menu link, if the customer hasn't replied, hasn't reached the cart and nobody is attending."
+        },
+        "abandoned_cart": {
+          "name": "Order Journey: abandoned cart",
+          "description": "10 minutes after the last cart or checkout event, one message per Journey if the customer went quiet."
+        },
+        "thank_you": {
+          "name": "Order Journey: thank-you",
+          "description": "Thanks the customer when the order is placed."
+        },
+        "status_received": {
+          "name": "Order Journey: order received",
+          "description": "Notifies the customer when the order is received."
+        },
+        "status_preparing": {
+          "name": "Order Journey: order preparing",
+          "description": "Notifies the customer when the order goes to preparation."
+        },
+        "status_finished": {
+          "name": "Order Journey: order finished",
+          "description": "Notifies the customer when the order is finished."
+        },
+        "status_out_for_delivery": {
+          "name": "Order Journey: out for delivery",
+          "description": "Notifies the customer when the order leaves for delivery."
+        },
+        "status_ready_for_pickup": {
+          "name": "Order Journey: ready for pickup",
+          "description": "Notifies the customer when the order is ready for pickup."
+        },
+        "status_delivered": {
+          "name": "Order Journey: delivered",
+          "description": "Notifies the customer when the order is delivered."
+        },
+        "status_cancelled": {
+          "name": "Order Journey: cancelled",
+          "description": "Notifies the customer when the order is cancelled."
+        }
+      },
+      "texts": {
+        "resumption1": "Hi! Still thinking about your order? If you have any questions, just reply here and we'll help.",
+        "resumption2": "Hi! Your order is still waiting for you. Need a hand choosing? Just reply here.",
+        "abandonedCart": "Hi! We noticed you left some items in your cart. Want to finish your order? Just reply here if you need help.",
+        "thankYou": "Thank you for your order {{order_id}}! We'll keep you posted on every step.",
+        "status_received": "Your order {{order_id}} was received! We'll start on it soon.",
+        "status_preparing": "Your order {{order_id}} is being prepared.",
+        "status_finished": "Your order {{order_id}} is ready!",
+        "status_out_for_delivery": "Your order {{order_id}} is out for delivery. It will be with you soon!",
+        "status_ready_for_pickup": "Your order {{order_id}} is ready for pickup. Come get it while it's hot!",
+        "status_delivered": "Your order {{order_id}} was delivered. Enjoy your meal!",
+        "status_cancelled": "Your order {{order_id}} was cancelled. If you have any questions, just reply here."
+      }
+    },
     "list": {
       "loadError": "Failed to load automations",
       "title": "Automations",
