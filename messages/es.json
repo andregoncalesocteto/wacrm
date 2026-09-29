@@ -2202,7 +2202,8 @@
         "conversations:read": "Listar y leer conversaciones",
         "connections:read": "Listar tiendas y conexiones de canal",
         "broadcasts:send": "Lanzar campañas de difusión",
-        "webhooks:manage": "Registrar y administrar webhooks de eventos salientes"
+        "webhooks:manage": "Registrar y administrar webhooks de eventos salientes",
+        "events:write": "Enviar eventos del recorrido de pedido desde el menú digital"
       },
       "noApiKeys": "Aún no hay claves de API.",
       "createOneHint": "Haz clic en <bold>Nueva clave de API</bold> para crear una.",

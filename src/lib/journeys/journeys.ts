@@ -94,7 +94,7 @@ export async function openOrRenewJourney(
   return journey;
 }
 
-async function findOpenJourney(
+export async function findOpenJourney(
   db: SupabaseClient,
   args: Pick<OpenJourneyArgs, 'accountId' | 'contactId' | 'connectionId'>
 ): Promise<JourneyRow | null> {

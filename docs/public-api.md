@@ -47,16 +47,17 @@ key's next request. Revoked keys stay in the list as an audit trail.
 A key can do only what its scopes allow — independent of who created
 it. Grant the minimum.
 
-| Scope                | Allows                                |
-| -------------------- | ------------------------------------- |
-| `messages:send`      | Send WhatsApp messages                |
-| `messages:read`      | Read messages and delivery status     |
-| `contacts:read`      | List and read contacts                |
-| `contacts:write`     | Create and update contacts            |
-| `conversations:read` | List and read conversations           |
-| `connections:read`   | List stores and channel connections   |
-| `broadcasts:send`    | Launch broadcast campaigns            |
-| `webhooks:manage`    | Register and manage outbound webhooks |
+| Scope                | Allows                                                                        |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `messages:send`      | Send WhatsApp messages                                                        |
+| `messages:read`      | Read messages and delivery status                                             |
+| `contacts:read`      | List and read contacts                                                        |
+| `contacts:write`     | Create and update contacts                                                    |
+| `conversations:read` | List and read conversations                                                   |
+| `connections:read`   | List stores and channel connections                                           |
+| `broadcasts:send`    | Launch broadcast campaigns                                                    |
+| `webhooks:manage`    | Register and manage outbound webhooks                                         |
+| `events:write`       | Send order-journey events (only `POST /api/v1/journey/events`; reads nothing) |
 
 A key with **no scopes** still authenticates and can call
 `GET /api/v1/me` — useful for verifying a key works.
@@ -76,14 +77,16 @@ Every response uses one of two shapes:
 Branch on `error.code` (stable); `error.message` is for humans and
 may be reworded.
 
-| Status | `code`         | Meaning                                               |
-| ------ | -------------- | ----------------------------------------------------- |
-| 401    | `unauthorized` | Missing / malformed / unknown / revoked / expired key |
-| 403    | `forbidden`    | Valid key, but missing the required scope             |
-| 429    | `rate_limited` | Per-key rate limit exceeded                           |
-| 400    | `bad_request`  | Malformed input                                       |
-| 404    | `not_found`    | No such resource                                      |
-| 500    | `internal`     | Server error                                          |
+| Status | `code`              | Meaning                                                       |
+| ------ | ------------------- | ------------------------------------------------------------- |
+| 401    | `unauthorized`      | Missing / malformed / unknown / revoked / expired key         |
+| 403    | `forbidden`         | Valid key, but missing the required scope                     |
+| 429    | `rate_limited`      | Per-key rate limit exceeded                                   |
+| 400    | `bad_request`       | Malformed input                                               |
+| 404    | `not_found`         | No such resource                                              |
+| 404    | `idtrack_not_found` | Events API: the `idtrack` matches no link sent by the account |
+| 410    | `idtrack_expired`   | Events API: the `idtrack` is past its 30-day validity         |
+| 500    | `internal`          | Server error                                                  |
 
 ## Rate limits
 
@@ -267,6 +270,32 @@ always `null`).
 
 - `stores[]`: `id`, `name`, `address`, `phone`, `manager_name`, `menu_url`, `created_at`. `menu_url` is the store's Digital menu address (an `https://` URL, or `null` when the store has no menu).
 - `connections[]`: `id`, `store_id`, `channel` (e.g. `whatsapp_cloud`, `telegram`), `display_name`, `external_id`, `status`, `enabled` (`false` when the connection was disabled), `last_inbound_at`, `last_outbound_at`, `connected_at`, `created_at`. Optional filter: `?store_id=`.
+
+### `POST /api/v1/journey/events`
+
+Scope `events:write`, meant for the **backend of the digital menu** (never the browser: the key must stay a server secret). It reports what a customer does after receiving the menu link, so the CRM can move the deal and, later, recover abandoned carts. The full contract for the menu team is `.projects/order-journey-recovery/prd-menu-events-contract.md`.
+
+One event per call:
+
+```bash
+curl -X POST https://your-crm.example.com/api/v1/journey/events \
+  -H "Authorization: Bearer wacrm_live_…" -H "Content-Type: application/json" \
+  -d '{
+    "event_id": "b6d2…", "name": "AddToCart", "idtrack": "<token from the link>",
+    "occurred_at": "2026-10-02T21:16:40Z",
+    "properties": { "currency": "BRL", "cart": { "value": 89.8, "items": [
+      { "id": "pizza-g", "name": "Pizza G", "quantity": 1, "unit_price": 59.9 },
+      { "id": "refri-2l", "name": "Soda 2L", "quantity": 1, "unit_price": 29.9 } ] } }
+  }'
+# → 200 { "data": { "event_id": "b6d2…", "journey_id": "…", "stage": "cart", "duplicate": false } }
+```
+
+- `event_id`, `name`, `idtrack`, `occurred_at` (ISO 8601 UTC) are required. Supported `name`s in this version: `ViewContent`, `AddToCart`, `InitiateCheckout`; any other name (including `Purchase` and `OrderStatusChanged`, not available yet) is a `400 bad_request`.
+- `AddToCart` and `InitiateCheckout` require `properties.currency` (3 letters) and `properties.cart { value, items[] }` with the **whole cart at that moment**. Each item: `id`, `quantity` (integer ≥ 1), `unit_price` (≥ 0), optional `name`.
+- **The deal only moves forward:** `ViewContent` → _Navegando_ (first time; repeats only count), `AddToCart` → _Carrinho_, `InitiateCheckout` → _Checkout_. An `AddToCart` after `InitiateCheckout` refreshes the cart but never moves the stage back; a late event never overwrites a newer cart (compared by `occurred_at`).
+- The `idtrack` is resolved to the contact, conversation and connection that received the link. With no open Journey for it (for example after a purchase), the event opens a new Journey and deal.
+- **Idempotency:** `event_id` is unique per account. Re-sending it returns the original response with `"duplicate": true` and the header `Idempotent-Replayed: true`, and repeats no effect. Two simultaneous requests with the same `event_id` are applied once. If the first is still running when the second waits too long, the second gets a retryable `500` (`internal`): re-send the same `event_id`. Rejected events (4xx) are not recorded, so fixing and re-sending works.
+- **Errors:** `400 bad_request` (invalid body, unknown or not-yet-supported `name`), `401 unauthorized`, `403 forbidden` (no `events:write`), `404 idtrack_not_found`, `410 idtrack_expired` (the customer needs a new link), `429 rate_limited` (120/min per key, honour `Retry-After`).
 
 ### `POST /api/v1/broadcasts`
 

@@ -4,3 +4,6 @@ export * from './menu-link-send';
 export * from './journeys';
 export * from './pipeline';
 export * from './tokens';
+export * from './event-hooks';
+export * from './event-payload';
+export * from './events';

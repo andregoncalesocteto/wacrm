@@ -331,6 +331,13 @@ BEGIN
     RAISE EXCEPTION 'uq_deals_open_journey is missing (migration 056)';
   END IF;
 
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'journey_events_event_key'
+  ) THEN
+    RAISE EXCEPTION 'journey_events unique (account_id, event_id) is missing (migration 057)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

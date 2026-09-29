@@ -3,14 +3,17 @@
 Memória entre tickets, na branch `feat/order-journey-recovery`. Cada ticket acrescenta uma seção.
 
 ## #1 Janela de 24 h no envio
+
 - `sendOutbound` (`src/lib/channels/send.ts`) aceita `windowPolicy?: { fallbackTemplate? }`, ativa só para texto. A janela vem da capacidade `replyWindowHours` do provider (Telegram declara `null`). Sem inbound na conversa, a janela conta como fechada. Fora da janela: com template, envia template; sem template, `ChannelError('window_closed')` e grava mensagem `failed` na conversa.
 - Só o texto de automação passa `windowPolicy` (via `engineSendText`). Inbox manual, broadcasts, IA e flows não mudam.
 - O passo `send_message` aceita `fallback_template {name, language?, variables?}`; falta a UI do editor para configurá-lo. Retomadas e notificações devem preencher esse campo no WhatsApp.
 
 ## #2 Endereço do cardápio por loja
+
 - Migration `055_store_menu_url.sql`: `stores.menu_url` (nula, CHECK `https://`). Validação em `src/lib/stores/validation.ts` (`isValidMenuUrl`). Campo na UI de lojas e em `GET /api/v1/stores`.
 
 ## #3 Link do cardápio com token e Journey aberta
+
 - Migration `056_order_journeys.sql` (+ asserts em `verify-schema.sql`):
   - `tracking_tokens` (account, contact, conversation, connection, `token` único, `expires_at`; UNIQUE (contact, conversation, connection)). RLS ligado SEM policy: só service-role.
   - `journeys`: `account_id, contact_id, conversation_id, connection_id, deal_id, state (open|won|lost), stage (link_sent|browsing|cart|checkout|won|lost), link_sent_at, link_count, last_event_at, view_content_count, first_view_content_at, cart_items_count, cart_value, cart_currency, last_add_to_cart_at, checkout_started_at, purchased_at, resumption_10_sent_at, resumption_30_sent_at, abandoned_cart_sent_at, closed_at`. Índice único parcial: uma Journey `open` por (conta, contato, conexão). RLS: membros leem, escrita só service-role.
@@ -26,9 +29,21 @@ Memória entre tickets, na branch `feat/order-journey-recovery`. Cada ticket acr
 - `056` também redefine `merge_contacts` (o guard de `verify-schema.sql` exige tratar toda tabela com `contact_id`): tokens/Journeys seguem a conversa dobrada; Journey aberta que colidiria com a aberta do sobrevivente na mesma conexão é fechada como `lost` (deal `lost`, sem mover de etapa). O teste `merge-contacts.test.ts` agora lê a migration mais recente que define a função. Toda migration futura com `contact_id` precisa repetir isso. 056 foi validada aplicando 055+056+verify-schema em transação com ROLLBACK no Postgres local.
 
 ## #4 IA de resposta envia o link do cardápio com token
+
 - Sem migration nem UI nova (nenhum texto i18n). Arquivos: `src/lib/ai/auto-reply.ts`, `src/lib/ai/defaults.ts` (+ testes `auto-reply.test.ts`, `defaults.test.ts`).
 - A IA usa `hasMenuLinkVariable` / `resolveMenuLink` / `replaceMenuLinkVariable` / `recordMenuLinkSent` de `@/lib/journeys`, sem lógica duplicada. `userId` = `configOwnerUserId`. Ordem: gera resposta -> (se tem `{{menu_link}}`) resolve o link e o token -> reserva slot de resposta -> `sendOutbound` -> `recordMenuLinkSent` (Journey e deal em "Link enviado" só após envio bem-sucedido; falha de envio não abre Journey).
 - Prompt: `buildSystemPrompt` no modo `auto_reply` (não no `draft`, que é enviado por humano) instrui a IA a escrever `{{menu_link}}` e a nunca escrever URL de cardápio própria, mesmo que apareça no prompt do negócio ou na base de conhecimento. Contas com URL fixa colada no prompt/base devem removê-la.
 - Decisão (loja sem endereço/conexão/loja): NÃO envia nada (nem a resposta sem o link, que ficaria sem sentido) e faz transbordo: `ai_autoreply_disabled=true`, atribui ao agente de transbordo se configurado, e `ai_handoff_summary` recebe o motivo ("Reply not sent: menu_link: store ... has no menu URL configured"), além de `console.error`. Nenhum slot de resposta é consumido. Assim o cliente não fica sem resposta e o motivo fica visível no banner da inbox.
 - Limites da IA inalterados (regras de humano atribuído, cap, transbordo, throttle continuam antes). O caminho de transbordo virou a closure local `handOff(reason?)`, comportamento idêntico ao anterior.
 - Não feito: `{{menu_link}}` no rascunho (`/api/ai/draft`) e no playground não é resolvido.
+
+## #5 Chave events:write e endpoint de eventos de comportamento
+
+- Migration `057_journey_events.sql` (+ assert em `verify-schema.sql`): `journey_events` (`account_id, event_id, name, occurred_at, journey_id, response jsonb, created_at, completed_at`, UNIQUE (account_id, event_id), RLS ligado SEM policy: só service-role) e `journeys.cart_items jsonb`. `response` nulo = evento reservado e ainda em processamento. Sem `contact_id`, então `merge_contacts` não muda.
+- Escopo `events:write` em `src/lib/api-keys/scopes.ts` (a tela de chaves lista `API_SCOPES` sozinha; texto em `apiKeys.scopeDescriptions` nos 4 idiomas). `ApiErrorCode` ganhou `idtrack_not_found` (404) e `idtrack_expired` (410), com helpers `idtrackNotFound()` / `idtrackExpired()` em `lib/api/v1/respond.ts`.
+- Rota `src/app/api/v1/journey/events/route.ts` (fina). Lógica em `src/lib/journeys/`: `event-payload.ts` (validação, `parseCommonFields`, `parseCartProperties`), `events.ts` (`processJourneyEvent`), `event-hooks.ts`. `findOpenJourney` passou a ser exportada de `journeys.ts`.
+- Fluxo: valida corpo -> nome (400) -> se o `event_id` já concluído, repete a resposta (mesmo com token vencido) -> `resolveTrackingToken` (404/410) -> reserva o `event_id` (insert; violação única = outra requisição) -> handler -> grava a resposta. Reserva concorrente: espera até ~0,9 s a resposta da outra; reserva sem resposta com mais de 60 s é retomada; senão `500 internal` (reenviar com o mesmo id). Erro durante o processamento libera a reserva. Eventos rejeitados (4xx) não são gravados.
+- **Para o #6 (Purchase / OrderStatusChanged):** acrescente uma entrada em `EVENT_HANDLERS` (`events.ts`) com `parseProperties` e `handle(ctx)`; hoje esses nomes devolvem 400 "not supported yet". `ctx` traz `db, accountId, userId, event, journey, now`. O fluxo de idempotência/token/Journey aberta já vale para eles. Um `Purchase` deve chamar `advanceJourneyStage(..., 'won')`; a Journey fecha e o próximo evento do mesmo token abre outra.
+- **Para o #7 (gatilho de automação):** `onJourneyEventAccepted(db, AcceptedJourneyEvent)` em `event-hooks.ts` é o ponto único; hoje é um no-op. É chamado uma vez por evento novo (nunca em replay) depois de gravado; erro dele é logado e engolido.
+- Decisões: (1) evento em token sem Journey aberta chama `openOrRenewJourney` (nova Journey, `link_count = 1`, `link_sent_at = agora`); com Journey aberta ela é reaproveitada SEM contar link. (2) `last_event_at` = hora de recebimento no servidor (não `occurred_at`, que vem do cliente). (3) Carrinho: o snapshot só é substituído se `occurred_at` >= o do snapshot atual (`max(last_add_to_cart_at, checkout_started_at)`); evento atrasado não sobrescreve carrinho mais novo. `cart_items_count` = soma das quantidades; `deals.value/currency` acompanham o carrinho. `last_add_to_cart_at` só muda em AddToCart, `checkout_started_at` só em InitiateCheckout (ambos guardam o maior instante). (4) Usuário de auditoria (deal/pipeline) = dono da conta, como em `POST /contacts`. (5) `occurred_at` exige designador UTC (`Z` ou `+00:00`); moeda 3 letras (maiúscula); itens: `id`, `quantity` inteiro >= 1, `unit_price` >= 0, `name` opcional; carrinho não vazio, máx. 200 itens.
+- Não feito / fora de escopo: `Purchase` e `OrderStatusChanged` (#6); gatilho de automação (#7); revisão final de `docs/public-api.md` (#16). `crm-world.fake.ts` ganhou a unicidade de `journey_events`.

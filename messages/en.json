@@ -2214,7 +2214,8 @@
         "conversations:read": "List and read conversations",
         "connections:read": "List stores and channel connections",
         "broadcasts:send": "Launch broadcast campaigns",
-        "webhooks:manage": "Register and manage outbound event webhooks"
+        "webhooks:manage": "Register and manage outbound event webhooks",
+        "events:write": "Send order-journey events from the digital menu"
       },
       "noApiKeys": "No API keys yet.",
       "createOneHint": "Click <bold>New API key</bold> to create one.",

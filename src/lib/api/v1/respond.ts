@@ -23,6 +23,8 @@ export type ApiErrorCode =
   | 'rate_limited' // per-key budget exhausted
   | 'bad_request' // malformed input
   | 'not_found'
+  | 'idtrack_not_found' // events API: no tracking token matches the idtrack
+  | 'idtrack_expired' // events API: the tracking token is past its validity
   | 'internal';
 
 /**
@@ -63,6 +65,24 @@ export function forbidden(message: string): ApiError {
 /** 400 — bad input. */
 export function badRequest(message: string): ApiError {
   return new ApiError('bad_request', message, 400);
+}
+
+/** 404 — the `idtrack` matches no tracking token of the account. */
+export function idtrackNotFound(): ApiError {
+  return new ApiError(
+    'idtrack_not_found',
+    "'idtrack' does not match any link sent by this account",
+    404
+  );
+}
+
+/** 410 — the `idtrack` existed but passed its validity. */
+export function idtrackExpired(): ApiError {
+  return new ApiError(
+    'idtrack_expired',
+    "'idtrack' has expired; the customer needs a new link",
+    410
+  );
 }
 
 /** 429 — built from a `checkRateLimit` miss, with the standard headers. */

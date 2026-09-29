@@ -2202,7 +2202,8 @@
         "conversations:read": "Listar e ler conversas",
         "connections:read": "Listar lojas e conexões de canal",
         "broadcasts:send": "Disparar campanhas de broadcast",
-        "webhooks:manage": "Registrar e gerenciar webhooks de eventos de saída"
+        "webhooks:manage": "Registrar e gerenciar webhooks de eventos de saída",
+        "events:write": "Enviar eventos da jornada de pedido a partir do cardápio digital"
       },
       "noApiKeys": "Nenhuma chave de API ainda.",
       "createOneHint": "Clique em <bold>Nova chave de API</bold> para criar uma.",

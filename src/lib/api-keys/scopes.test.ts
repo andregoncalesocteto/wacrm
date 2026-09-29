@@ -61,3 +61,14 @@ describe('SCOPE_DESCRIPTIONS', () => {
     }
   });
 });
+
+describe('events:write', () => {
+  it('is a valid scope with a description, separate from the read scopes', () => {
+    expect(isApiScope('events:write')).toBe(true);
+    expect(normalizeScopes(['events:write'])).toEqual(['events:write']);
+    expect(hasScope(['contacts:read', 'messages:read'], 'events:write')).toBe(
+      false
+    );
+    expect(hasScope(['events:write'], 'contacts:read')).toBe(false);
+  });
+});

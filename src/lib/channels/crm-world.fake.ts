@@ -30,6 +30,7 @@ const UNIQUE: Record<string, string[][]> = {
   messages: [['conversation_id', 'message_id']],
   contact_tags: [['contact_id', 'tag_id']],
   contact_custom_values: [['contact_id', 'custom_field_id']],
+  journey_events: [['account_id', 'event_id']],
 };
 
 class Query {
