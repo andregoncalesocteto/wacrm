@@ -449,6 +449,53 @@ describe.each(CHANNELS)('order journey on $label', (channel) => {
     expect(journeys()[0].view_content_count).toBe(3);
   });
 
+  it('a failure saving the response after the effects keeps the claim: the retry never re-applies them', async () => {
+    const idtrack = await sendMenuLink();
+    const failing = { error: { message: 'db down' } };
+    const dead: unknown = new Proxy(
+      {},
+      {
+        get: (_t, prop) =>
+          prop === 'then'
+            ? (resolve: (v: unknown) => unknown) => resolve(failing)
+            : () => dead,
+      }
+    );
+    const realFrom = db.from.bind(db);
+    let failSave = true;
+    vi.spyOn(db, 'from').mockImplementation((table: string) => {
+      const q = realFrom(table) as unknown as { update: (p: Row) => unknown };
+      if (table === 'journey_events') {
+        const update = q.update.bind(q);
+        q.update = (patch: Row) =>
+          failSave && 'response' in patch ? dead : update(patch);
+      }
+      return q as never;
+    });
+
+    const first = await post('ViewContent', idtrack, {}, 'evt-view');
+    expect(first.status).toBe(500);
+    expect(journeys()[0].view_content_count).toBe(1);
+    const claimRow = t('journey_events').find((e) => e.event_id === 'evt-view');
+    expect(claimRow?.response ?? null).toBeNull();
+    expect(claimRow?.journey_id).toBe(journeys()[0].id);
+    failSave = false;
+
+    // Still fresh: the retry is told to come back, and applies nothing.
+    const soon = await post('ViewContent', idtrack, {}, 'evt-view');
+    expect(soon.status).toBe(500);
+    expect(journeys()[0].view_content_count).toBe(1);
+
+    // Stale: the claim is taken over and only answered.
+    at(2);
+    const later = await post('ViewContent', idtrack, {}, 'evt-view');
+    expect(later.status).toBe(200);
+    expect((await later.json()).data.duplicate).toBe(false);
+    expect(journeys()[0].view_content_count).toBe(1);
+    const again = await post('ViewContent', idtrack, {}, 'evt-view');
+    expect(again.headers.get('Idempotent-Replayed')).toBe('true');
+  });
+
   it('an unknown idtrack is 404 and an expired one is 410', async () => {
     const idtrack = await sendMenuLink();
     const notFound = await post('ViewContent', 'nope');

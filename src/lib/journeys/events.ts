@@ -347,6 +347,8 @@ interface EventRow {
   id: string;
   response: JourneyEventResult | null;
   created_at: string;
+  /** Set on a claim whose effects were applied but never answered. */
+  journey_id: string | null;
 }
 
 async function findEventRow(
@@ -356,7 +358,7 @@ async function findEventRow(
 ): Promise<EventRow | null> {
   const { data, error } = await db
     .from('journey_events')
-    .select('id, response, created_at')
+    .select('id, response, created_at, journey_id')
     .eq('account_id', accountId)
     .eq('event_id', eventId)
     .maybeSingle();
@@ -374,12 +376,17 @@ const replay = (row: EventRow): JourneyEventResult => ({
  * owns it, or `{replay}` with the original response. A concurrent request that
  * is still working is awaited briefly; a stale claim (crashed request) is taken
  * over; otherwise the caller gets a retryable 500 and re-sends the same id.
+ * A taken-over claim carries `appliedJourneyId` when the dead request had
+ * already applied the event's effects (see `processJourneyEvent`).
  */
 async function claimEvent(
   db: SupabaseClient,
   accountId: string,
   event: CommonEventFields
-): Promise<{ claimId: string } | { replay: JourneyEventResult }> {
+): Promise<
+  | { claimId: string; appliedJourneyId?: string | null }
+  | { replay: JourneyEventResult }
+> {
   const { data, error } = await db
     .from('journey_events')
     .insert({
@@ -408,7 +415,9 @@ async function claimEvent(
         .eq('created_at', row.created_at)
         .is('response', null)
         .select('id');
-      if (Array.isArray(taken) && taken.length > 0) return { claimId: row.id };
+      if (Array.isArray(taken) && taken.length > 0) {
+        return { claimId: row.id, appliedJourneyId: row.journey_id };
+      }
     }
     if (i < CLAIM_POLL_TRIES) await sleep(CLAIM_POLL_MS);
   }
@@ -475,7 +484,64 @@ export async function processJourneyEvent(
   const claim = await claimEvent(db, accountId, event);
   if ('replay' in claim) return claim.replay;
 
+  // Set once the handler has applied the event. From then on the claim is
+  // NOT released on failure: a retry would apply the event a second time
+  // (ViewContent would count twice). It stays parked as "processing" and is
+  // resumed, without running the handler again, once it goes stale.
+  let appliedJourneyId: string | null = null;
+
   try {
+    const target: Target = {
+      contactId: token.contactId,
+      conversationId: token.conversationId,
+      connectionId: token.connectionId,
+    };
+
+    /** Save the response, then fire the hook (never for a duplicate). */
+    const answer = async (
+      reportedId: string | null,
+      duplicate: boolean,
+      journeyId: string | null = reportedId
+    ): Promise<JourneyEventResult> => {
+      const { data: after, error } = await db
+        .from('journeys')
+        .select('stage')
+        .eq('id', reportedId ?? journeyId)
+        .eq('account_id', accountId)
+        .single();
+      if (error) throw new Error(`journey lookup failed: ${error.message}`);
+      const stage = (after as { stage: JourneyStage }).stage;
+      const result: JourneyEventResult = {
+        event_id: event.eventId,
+        journey_id: reportedId,
+        stage,
+        duplicate,
+      };
+      await saveResponse(db, accountId, claim.claimId, result, now);
+      if (duplicate) return result;
+      try {
+        await onJourneyEventAccepted(db, {
+          accountId,
+          eventId: event.eventId,
+          name: event.name,
+          occurredAt: event.occurredAt,
+          journeyId: journeyId as string,
+          ...target,
+          stage,
+          properties: event.properties as Record<string, unknown>,
+        });
+      } catch (hookErr) {
+        console.error('[journeys] onJourneyEventAccepted failed:', hookErr);
+      }
+      return result;
+    };
+
+    if (claim.appliedJourneyId && !handler.handleStandalone) {
+      // Resume: effects already applied by a request that died before
+      // answering. Only answer (and fire the hook it never reached).
+      return await answer(claim.appliedJourneyId, false);
+    }
+
     const duplicateOf = await handler.findDuplicate?.(
       db,
       accountId,
@@ -491,12 +557,6 @@ export async function processJourneyEvent(
       await saveResponse(db, accountId, claim.claimId, result, now);
       return result;
     }
-
-    const target: Target = {
-      contactId: token.contactId,
-      conversationId: token.conversationId,
-      connectionId: token.connectionId,
-    };
 
     if (handler.handleStandalone) {
       const { journeyId, change } = await handler.handleStandalone({
@@ -558,42 +618,26 @@ export async function processJourneyEvent(
       now,
     });
 
+    if (!handled) appliedJourneyId = journey.id;
     // Duplicate found while handling: answer it, without hook nor effects.
-    const reportedId = handled ? handled.duplicateOf.journeyId : journey.id;
-    const { data: after, error } = await db
-      .from('journeys')
-      .select('stage')
-      .eq('id', reportedId ?? journey.id)
-      .eq('account_id', accountId)
-      .single();
-    if (error) throw new Error(`journey lookup failed: ${error.message}`);
-    const stage = (after as { stage: JourneyStage }).stage;
-
-    const result: JourneyEventResult = {
-      event_id: event.eventId,
-      journey_id: reportedId,
-      stage,
-      duplicate: !!handled,
-    };
-    await saveResponse(db, accountId, claim.claimId, result, now);
-    if (handled) return result;
-
-    try {
-      await onJourneyEventAccepted(db, {
-        accountId,
-        eventId: event.eventId,
-        name: event.name,
-        occurredAt: event.occurredAt,
-        journeyId: journey.id,
-        ...target,
-        stage,
-        properties: event.properties as Record<string, unknown>,
-      });
-    } catch (hookErr) {
-      console.error('[journeys] onJourneyEventAccepted failed:', hookErr);
-    }
-    return result;
+    return await answer(
+      handled ? handled.duplicateOf.journeyId : journey.id,
+      !!handled,
+      journey.id
+    );
   } catch (err) {
+    if (appliedJourneyId) {
+      // Effects are in: keep the claim, and mark it (best effort) with the
+      // Journey so the takeover resumes instead of re-running the handler.
+      await db
+        .from('journey_events')
+        .update({ journey_id: appliedJourneyId })
+        .eq('id', claim.claimId)
+        .eq('account_id', accountId)
+        .is('response', null)
+        .then(undefined, () => undefined);
+      throw err;
+    }
     // Release the id so the caller's retry is processed, not stuck.
     await db
       .from('journey_events')
