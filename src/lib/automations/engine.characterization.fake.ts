@@ -9,6 +9,8 @@ interface Harness {
   db: Record<string, Row[]>;
   seq: number;
   rpcCalls: { name: string; args: unknown }[];
+  /** Tables whose inserts fail (simulates a database error). */
+  failInsert?: string[];
 }
 
 export function fakeAdmin(h: Harness) {
@@ -93,6 +95,9 @@ export function fakeAdmin(h: Harness) {
     private run() {
       const rows = (h.db[this.table] ??= []);
       let out: Row[];
+      if (this.op === 'insert' && h.failInsert?.includes(this.table)) {
+        return { data: null, error: { message: 'insert failed' } };
+      }
       if (this.op === 'insert') {
         const row = { id: `${this.table}-${++h.seq}`, ...this.payload };
         rows.push(row);

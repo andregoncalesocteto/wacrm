@@ -153,13 +153,17 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
         // A renewed link (or a new cart / checkout event) starts the
         // automation's timers over: park-and-resume runs from the previous
         // one must not also fire, so the wait always counts from the LAST.
-        if (
-          (input.triggerType === 'menu_link_sent' || input.triggerType === 'journey_event') &&
-          input.contactId
-        ) {
-          await supersedePendingRuns(db, automation, input.contactId)
+        // The old runs are cancelled only AFTER the new one has started (its
+        // log exists): if it cannot start, the old timers keep counting. The
+        // window in between is closed at resume time (`isSuperseded`).
+        const supersedeIds =
+          isSupersedingTrigger(input.triggerType) && input.contactId
+            ? await findPendingRunIds(db, automation, input.contactId)
+            : []
+        const started = await executeAutomation(automation, input)
+        if (started && supersedeIds.length > 0) {
+          await cancelPendingRuns(db, automation, supersedeIds)
         }
-        await executeAutomation(automation, input)
       } catch (err) {
         console.error('[automations] execute failed:', automation.id, err)
       }
@@ -208,6 +212,13 @@ export async function resumePendingExecution(pending: {
     return
   }
 
+  // A run claimed by the cron (`running`) cannot be cancelled by a newer
+  // trigger, so the old chain checks here that it is still the current one.
+  if (await isSuperseded(db, automation as Automation, pending)) {
+    await markPending(pending.id, 'cancelled')
+    return
+  }
+
   try {
     await executeStepsFrom({
       automation: automation as Automation,
@@ -233,23 +244,77 @@ export async function resumePendingExecution(pending: {
 // Internal execution
 // ------------------------------------------------------------
 
-/** Cancel the automation's parked (not yet claimed) runs for this contact. */
-async function supersedePendingRuns(
+/** Triggers whose new firing restarts the automation's timers. */
+function isSupersedingTrigger(triggerType: string): boolean {
+  return triggerType === 'menu_link_sent' || triggerType === 'journey_event'
+}
+
+/** The automation's parked (not yet claimed) runs for this contact. */
+async function findPendingRunIds(
   db: SupabaseClient,
   automation: Automation,
   contactId: string,
-) {
-  const { error } = await db
+): Promise<string[]> {
+  const { data, error } = await db
     .from('automation_pending_executions')
-    .update({ status: 'cancelled' })
+    .select('id')
     .eq('automation_id', automation.id)
     .eq('account_id', automation.account_id)
     .eq('contact_id', contactId)
     .eq('status', 'pending')
+  if (error) {
+    console.error('[automations] supersede lookup failed:', error)
+    return []
+  }
+  return ((data ?? []) as { id: string }[]).map((r) => r.id)
+}
+
+/** Cancel exactly those runs, and only while still parked. */
+async function cancelPendingRuns(db: SupabaseClient, automation: Automation, ids: string[]) {
+  const { error } = await db
+    .from('automation_pending_executions')
+    .update({ status: 'cancelled' })
+    .in('id', ids)
+    .eq('account_id', automation.account_id)
+    .eq('status', 'pending')
   if (error) console.error('[automations] supersede pending failed:', error)
 }
 
-async function executeAutomation(automation: Automation, input: DispatchInput) {
+/**
+ * Whether a newer run of the same automation started for this contact since
+ * the parked run's own (its log row). Only for the superseding triggers: other
+ * automations legitimately run overlapping chains.
+ */
+async function isSuperseded(
+  db: SupabaseClient,
+  automation: Automation,
+  pending: { contact_id: string | null; log_id: string | null },
+): Promise<boolean> {
+  if (!isSupersedingTrigger(automation.trigger_type) || !pending.contact_id || !pending.log_id) {
+    return false
+  }
+  const { data: own } = await db
+    .from('automation_logs')
+    .select('created_at')
+    .eq('id', pending.log_id)
+    .maybeSingle()
+  const ownAt = (own as { created_at?: string } | null)?.created_at
+  if (!ownAt) return false
+  const { data: latest } = await db
+    .from('automation_logs')
+    .select('id, created_at')
+    .eq('automation_id', automation.id)
+    .eq('account_id', automation.account_id)
+    .eq('contact_id', pending.contact_id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const row = latest as { id: string; created_at: string } | null
+  return !!row && row.id !== pending.log_id && row.created_at > ownAt
+}
+
+/** Returns whether the run started (its log row was created). */
+async function executeAutomation(automation: Automation, input: DispatchInput): Promise<boolean> {
   const db = supabaseAdmin()
 
   const { data: log, error: logErr } = await db
@@ -283,7 +348,7 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
 
   if (logErr || !log) {
     console.error('[automations] cannot create log:', logErr)
-    return
+    return false
   }
 
   await executeStepsFrom({
@@ -307,6 +372,7 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
   if (rpcErr) {
     console.error('[automations] increment counter failed:', rpcErr)
   }
+  return true
 }
 
 interface ExecuteArgs {
@@ -1278,7 +1344,7 @@ async function finalizeLog(
     .eq('id', logId)
 }
 
-async function markPending(id: string, status: 'done' | 'failed') {
+async function markPending(id: string, status: 'done' | 'failed' | 'cancelled') {
   await supabaseAdmin()
     .from('automation_pending_executions')
     .update({ status })

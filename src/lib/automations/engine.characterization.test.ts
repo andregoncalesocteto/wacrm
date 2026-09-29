@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   db: {} as Record<string, Row[]>,
   seq: 0,
   rpcCalls: [] as { name: string; args: unknown }[],
+  failInsert: undefined as string[] | undefined,
   sendTextMessage: vi.fn(),
   sendTemplateMessage: vi.fn(),
   sendInteractiveButtons: vi.fn(),
@@ -988,6 +989,49 @@ describe('menu_link_sent Resumption chain (wait 10 -> checks -> R1 -> wait 20 ->
     expect(pending()).toHaveLength(1);
     await tick(10);
     expect(sent()).toEqual([]);
+    await tick(13);
+    expect(sent()).toEqual(['R1']);
+  });
+
+  it("keeps the previous link's parked run when the new run cannot start", async () => {
+    await linkSent();
+    const first = pending()[0];
+    vi.setSystemTime(T0 + 3 * MIN);
+    h.failInsert = ['automation_logs'];
+    await runAutomationsForTrigger({
+      accountId: 'acct-1',
+      triggerType: 'menu_link_sent',
+      contactId: 'ct-1',
+      context: { conversation_id: 'cv-1', journey_id: 'jr-1', menu_link_sent_at: at(T0 + 3 * MIN) },
+    });
+    h.failInsert = undefined;
+    expect(first.status).toBe('pending');
+    await tick(10);
+    expect(sent()).toEqual(['R1']);
+  });
+
+  it('a run the cron already claimed is aborted when a newer link superseded it', async () => {
+    await linkSent();
+    const first = pending()[0];
+    // The cron claimed it (`running`) just before the renewed link arrived, so
+    // the renewal cannot cancel it.
+    first.status = 'running';
+    vi.setSystemTime(T0 + 3 * MIN);
+    await runAutomationsForTrigger({
+      accountId: 'acct-1',
+      triggerType: 'menu_link_sent',
+      contactId: 'ct-1',
+      context: { conversation_id: 'cv-1', journey_id: 'jr-1', menu_link_sent_at: at(T0 + 3 * MIN) },
+    });
+    expect(first.status).toBe('running');
+
+    vi.setSystemTime(T0 + 10 * MIN);
+    await resumePendingExecution(
+      first as unknown as Parameters<typeof resumePendingExecution>[0]
+    );
+    expect(first.status).toBe('cancelled');
+    expect(sent()).toEqual([]);
+    // The newer chain is the one that sends.
     await tick(13);
     expect(sent()).toEqual(['R1']);
   });
