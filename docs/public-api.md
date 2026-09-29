@@ -8,7 +8,8 @@ broadcasts — without going through the dashboard UI.
 > messages / contacts / conversations / broadcasts endpoints, and
 > outbound event [webhooks](#webhooks) all ship now.
 
-> **Pre-stable until the first client:** the multi-store, multi-channel
+> **Pre-stable until the first client:** the order-journey events endpoint
+> (`POST /api/v1/journey/events`, scope `events:write`) and the multi-store, multi-channel
 > contract (`/stores`, `/connections`, `connection_id` / `channel` /
 > `external_message_id` on messages and conversations, contact `identities`,
 > and the new webhook fields) may still change before it is frozen. Breaking
@@ -47,16 +48,17 @@ key's next request. Revoked keys stay in the list as an audit trail.
 A key can do only what its scopes allow — independent of who created
 it. Grant the minimum.
 
-| Scope                | Allows                                   |
-| -------------------- | ---------------------------------------- |
-| `messages:send`      | Send WhatsApp messages                   |
-| `messages:read`      | Read messages and delivery status        |
-| `contacts:read`      | List and read contacts                   |
-| `contacts:write`     | Create and update contacts               |
-| `conversations:read` | List and read conversations              |
-| `connections:read`   | List stores and channel connections      |
-| `broadcasts:send`    | Launch broadcast campaigns               |
-| `webhooks:manage`    | Register and manage outbound webhooks    |
+| Scope                | Allows                                                                        |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `messages:send`      | Send WhatsApp messages                                                        |
+| `messages:read`      | Read messages and delivery status                                             |
+| `contacts:read`      | List and read contacts                                                        |
+| `contacts:write`     | Create and update contacts                                                    |
+| `conversations:read` | List and read conversations                                                   |
+| `connections:read`   | List stores and channel connections                                           |
+| `broadcasts:send`    | Launch broadcast campaigns                                                    |
+| `webhooks:manage`    | Register and manage outbound webhooks                                         |
+| `events:write`       | Send order-journey events (only `POST /api/v1/journey/events`; reads nothing) |
 
 A key with **no scopes** still authenticates and can call
 `GET /api/v1/me` — useful for verifying a key works.
@@ -76,14 +78,17 @@ Every response uses one of two shapes:
 Branch on `error.code` (stable); `error.message` is for humans and
 may be reworded.
 
-| Status | `code`         | Meaning                                          |
-| ------ | -------------- | ------------------------------------------------ |
-| 401    | `unauthorized` | Missing / malformed / unknown / revoked / expired key |
-| 403    | `forbidden`    | Valid key, but missing the required scope        |
-| 429    | `rate_limited` | Per-key rate limit exceeded                      |
-| 400    | `bad_request`  | Malformed input                                  |
-| 404    | `not_found`    | No such resource                                 |
-| 500    | `internal`     | Server error                                     |
+| Status | `code`              | Meaning                                                       |
+| ------ | ------------------- | ------------------------------------------------------------- |
+| 401    | `unauthorized`      | Missing / malformed / unknown / revoked / expired key         |
+| 403    | `forbidden`         | Valid key, but missing the required scope                     |
+| 429    | `rate_limited`      | Per-key rate limit exceeded                                   |
+| 400    | `bad_request`       | Malformed input                                               |
+| 400    | `order_not_found`   | Events API: the `order_id` of an `OrderStatusChanged` is unknown (or not this contact's) |
+| 404    | `not_found`         | No such resource                                              |
+| 404    | `idtrack_not_found` | Events API: the `idtrack` matches no link sent by the account |
+| 410    | `idtrack_expired`   | Events API: the `idtrack` is past its 30-day validity         |
+| 500    | `internal`          | Server error                                                  |
 
 ## Rate limits
 
@@ -153,9 +158,9 @@ curl -X POST https://your-crm.example.com/api/v1/messages \
   "template": {
     "name": "order_update",
     "language": "en_US",
-    "params": ["A123"]        // positional body vars, or a structured object
+    "params": ["A123"], // positional body vars, or a structured object
   },
-  "reply_to_message_id": "<uuid>"   // optional; must be in the same conversation
+  "reply_to_message_id": "<uuid>", // optional; must be in the same conversation
 }
 ```
 
@@ -194,13 +199,22 @@ or phone) and `?tag=<tagId>`.
 {
   "data": [
     {
-      "id": "…", "phone": "14155550123", "name": "Jane Doe",
+      "id": "…",
+      "phone": "14155550123",
+      "name": "Jane Doe",
       "identities": [
-        { "kind": "whatsapp:phone", "external_id": "14155550123", "handle": null }
+        {
+          "kind": "whatsapp:phone",
+          "external_id": "14155550123",
+          "handle": null
+        }
       ],
-      "email": null, "company": "Acme", "avatar_url": null,
+      "email": null,
+      "company": "Acme",
+      "avatar_url": null,
       "tags": [{ "id": "…", "name": "vip", "color": "#3b82f6" }],
-      "created_at": "…", "updated_at": "…"
+      "created_at": "…",
+      "updated_at": "…"
     }
   ],
   "meta": { "next_cursor": "…" }
@@ -256,8 +270,190 @@ Read-only discovery of the ids you pass to `POST /api/v1/messages`
 `config` are never returned. Both return the whole list (`next_cursor` is
 always `null`).
 
-- `stores[]`: `id`, `name`, `address`, `phone`, `manager_name`, `created_at`.
+- `stores[]`: `id`, `name`, `address`, `phone`, `manager_name`, `menu_url`, `created_at`. `menu_url` is the store's Digital menu address (an `https://` URL, or `null` when the store has no menu).
 - `connections[]`: `id`, `store_id`, `channel` (e.g. `whatsapp_cloud`, `telegram`), `display_name`, `external_id`, `status`, `enabled` (`false` when the connection was disabled), `last_inbound_at`, `last_outbound_at`, `connected_at`, `created_at`. Optional filter: `?store_id=`.
+
+### `POST /api/v1/journey/events`
+
+Scope `events:write`, meant for the **backend of the digital menu** (never
+the browser: the key must stay a server secret, because whoever holds it
+can forge a `Purchase`). It reports what a customer does after receiving the
+menu link and how their order progresses, so the CRM can move the deal,
+recover abandoned carts and notify the customer. The operator-side setup is in
+[order-journey.md](./order-journey.md).
+
+> **Pre-stable until the first client.** This contract is frozen when the
+> first client integrates; after that a breaking change needs `v2`.
+> **Migrations required:** `055` to `062` (see [order-journey.md](./order-journey.md#what-to-apply-and-configure)).
+
+**One event per call**, JSON body, no batching. Common fields:
+
+| Field         | Required | Description                                                                                                        |
+| ------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `event_id`    | yes      | Unique per account, up to 200 characters. Generate it on your side (a UUID) and reuse it when re-sending.          |
+| `name`        | yes      | `ViewContent`, `AddToCart`, `InitiateCheckout`, `Purchase` or `OrderStatusChanged`. Anything else is `400`.        |
+| `idtrack`     | yes      | The opaque value that came back on the menu URL (`?idtrack=…`). Never build, decode or reuse it as a customer id.  |
+| `occurred_at` | yes      | ISO 8601 with an explicit UTC designator (`Z` or `+00:00`): when it happened on the menu, not when you send it.    |
+| `properties`  | per name | Event data, see below. Required by every name except `ViewContent`.                                                |
+
+The `idtrack` is created by the CRM when it sends the store's menu link
+(`https://<menu-url>/?idtrack=<token>`, other query parameters of the store's
+menu address are kept). It is valid for **30 days**, renewed each time a new
+link is sent. It resolves to the contact, conversation and channel connection
+that received the link; a customer who opens the menu without `idtrack` (a
+bookmark, a direct URL) cannot be attributed, so **do not send events for
+that session**. Keep the `idtrack` in the order you store at `Purchase`:
+`OrderStatusChanged` arrives hours later, when the browser session is gone.
+
+Every call answers `200` with `{ "data": { "event_id", "journey_id", "stage", "duplicate" } }`.
+`stage` is the Journey stage after the event: `link_sent`, `browsing`,
+`cart`, `checkout` or `won` (`lost` never comes from an event).
+
+#### Examples, one per event
+
+Set `URL=https://your-crm.example.com/api/v1/journey/events` and
+`AUTH='Authorization: Bearer wacrm_live_…'` (a key with `events:write`).
+
+`ViewContent`: the customer opened the menu or a product. Send it on the
+first access of the session; repeats are accepted and counted but never change
+the stage. No `properties`.
+
+```bash
+curl -X POST $URL -H "$AUTH" -H "Content-Type: application/json" -d '{
+  "event_id": "9b1f6c3e-7f64-4c7a-9a1e-1f2b3c4d5e6f",
+  "name": "ViewContent",
+  "idtrack": "<token from the link>",
+  "occurred_at": "2026-10-02T21:14:05Z"
+}'
+# → 200 { "data": { "event_id": "9b1f…", "journey_id": "…", "stage": "browsing", "duplicate": false } }
+```
+
+`AddToCart` and `InitiateCheckout`: the customer changed the cart, or started
+checkout. Both take the same `properties` and **always carry the whole cart at
+that moment**, not just the new item, so a lost call cannot corrupt the total.
+`AddToCart` may repeat, each time with a new `event_id`. `currency` is 3 letters
+(ISO 4217); each item has `id`, `quantity` (integer ≥ 1), `unit_price` (≥ 0)
+and an optional `name`; 1 to 200 items; `cart.value` ≥ 0.
+
+```bash
+curl -X POST $URL -H "$AUTH" -H "Content-Type: application/json" -d '{
+  "event_id": "b6d2…", "name": "AddToCart", "idtrack": "<token>",
+  "occurred_at": "2026-10-02T21:16:40Z",
+  "properties": { "currency": "BRL", "cart": { "value": 89.8, "items": [
+    { "id": "pizza-g", "name": "Pizza G", "quantity": 1, "unit_price": 59.9 },
+    { "id": "refri-2l", "name": "Soda 2L", "quantity": 1, "unit_price": 29.9 } ] } }
+}'
+# → 200 { "data": { …, "stage": "cart", "duplicate": false } }
+
+curl -X POST $URL -H "$AUTH" -H "Content-Type: application/json" -d '{
+  "event_id": "c0a7…", "name": "InitiateCheckout", "idtrack": "<token>",
+  "occurred_at": "2026-10-02T21:19:02Z",
+  "properties": { "currency": "BRL", "cart": { "value": 89.8, "items": [
+    { "id": "pizza-g", "name": "Pizza G", "quantity": 1, "unit_price": 59.9 },
+    { "id": "refri-2l", "name": "Soda 2L", "quantity": 1, "unit_price": 29.9 } ] } }
+}'
+# → 200 { "data": { …, "stage": "checkout", "duplicate": false } }
+```
+
+`Purchase`: the order was placed. **Terminal for the Journey**: it closes as
+won, creates the order in the CRM and fires the thank-you. `order_id` is your
+own order id (up to 200 characters), stable forever; every later
+`OrderStatusChanged` refers to it. `items` is required (same item rules as the
+cart) and `value` is stored as sent (not checked against the items).
+
+```bash
+curl -X POST $URL -H "$AUTH" -H "Content-Type: application/json" -d '{
+  "event_id": "c41e…", "name": "Purchase", "idtrack": "<token>",
+  "occurred_at": "2026-10-02T21:22:11Z",
+  "properties": { "order_id": "PED-2026-104233", "currency": "BRL", "value": 89.8, "items": [
+    { "id": "pizza-g", "name": "Pizza G", "quantity": 1, "unit_price": 59.9 },
+    { "id": "refri-2l", "name": "Soda 2L", "quantity": 1, "unit_price": 29.9 } ] }
+}'
+# → 200 { "data": { …, "stage": "won", "duplicate": false } }
+```
+
+A second `Purchase` with the same `order_id` and another `event_id` is treated
+as a duplicate: `200`, `"duplicate": true`, `Idempotent-Replayed: true`, and
+nothing is created or sent again. `order_id` is unique per account.
+
+`OrderStatusChanged`: the order moved on after being placed. Use the `idtrack`
+stored with the order.
+
+```bash
+curl -X POST $URL -H "$AUTH" -H "Content-Type: application/json" -d '{
+  "event_id": "d78a…", "name": "OrderStatusChanged", "idtrack": "<token>",
+  "occurred_at": "2026-10-02T21:35:00Z",
+  "properties": { "order_id": "PED-2026-104233", "status": "preparing" }
+}'
+# → 200 { "data": { "event_id": "d78a…", "journey_id": "…", "stage": "won", "duplicate": false } }
+```
+
+`status` is a closed set; anything else is `400 bad_request` (the message lists
+the valid values):
+
+| `status`           | Meaning                             |
+| ------------------ | ----------------------------------- |
+| `received`         | Order received by the store         |
+| `preparing`        | Being prepared                      |
+| `finished`         | Preparation finished                |
+| `out_for_delivery` | Out for delivery                    |
+| `ready_for_pickup` | Ready for pickup                    |
+| `delivered`        | Delivered, or picked up             |
+| `cancelled`        | Cancelled (at any moment)           |
+
+The `placed` state is the `Purchase` itself and is not accepted as a status.
+Translate your internal states on your side; an internal state with no message
+for the customer (such as a "ready to produce" step) is simply not sent.
+
+#### Behavior
+
+- **Only forward.** The stage goes Link sent → Browsing → Cart → Checkout →
+  Purchased. An `AddToCart` after `InitiateCheckout` refreshes the cart but never
+  moves the stage back, and a late event never overwrites a newer cart (compared
+  by `occurred_at`). If an intermediate event never arrives, the final state is
+  still correct. The order status also only moves forward: `received` →
+  `preparing` → `finished` → `out_for_delivery` **or** `ready_for_pickup` →
+  `delivered` (steps may be skipped). The two last-mile statuses are the same
+  level: the first to arrive wins and the other is ignored. `cancelled` is
+  accepted at any moment before `delivered`; `delivered` and `cancelled` are final.
+- **A status that is older than, equal to, or after a final status than the
+  current one** is accepted (`200`) but **ignored**: nothing is written and no
+  message is sent to the customer.
+- **After a `Purchase` the same `idtrack` keeps working.** A new event with it
+  opens a **new Journey** (and deal), so a returning customer who reuses the
+  session is still attributed. Likewise, an event for a Journey already marked
+  lost opens a new one. An event on a token with no open Journey opens one.
+- **Idempotency.** `event_id` is unique per account. Re-sending it returns the
+  original response (with `"duplicate": true`) and the header
+  `Idempotent-Replayed: true`, and repeats no effect: no second message to the
+  customer. This holds even after the `idtrack` has expired. Two simultaneous
+  requests with the same `event_id` are applied once; if the first is still
+  running when the second gives up waiting, the second gets a retryable `500`
+  (`internal`): re-send the same `event_id`. Rejected events (4xx) are not
+  recorded, so fixing the body (or sending the `Purchase` first) and re-sending works.
+- **Order and delivery.** Order of arrival does not matter beyond the rules above.
+  Losing a `Purchase` or an `OrderStatusChanged` is the costly case (the CRM would
+  treat a buyer as an abandoner, or the customer would miss a notification), so
+  send those from an outbox with retries. Retry on `429`, `5xx` and network
+  failures with the **same `event_id`** and growing waits (for example 30 s, 2 min,
+  10 min, 1 h, 6 h, up to 24 h); **do not retry** `400`, `401`, `403`, `404` or
+  `410`, they fail the same way.
+- **The events do not send the message themselves.** What the customer receives
+  (thank-you, one message per status, reminders) is configured in the CRM as
+  automations, see [order-journey.md](./order-journey.md).
+- **Errors** (also in the table above): `400 bad_request` (invalid body, unknown
+  `name`, `status` outside the set), `400 order_not_found`, `401 unauthorized`,
+  `403 forbidden` (no `events:write`), `404 idtrack_not_found`, `410 idtrack_expired`
+  (the customer needs a new link), `429 rate_limited` (120/min per key, honour
+  `Retry-After`).
+- **`order_not_found`** is returned for `OrderStatusChanged` when the `order_id` is
+  unknown, belongs to another account or belongs to another contact than the
+  `idtrack`. The three cases answer alike, so nothing leaks. It is a `400` with
+  its own `error.code`, so you can tell "send the `Purchase` first" from "fix the
+  body". `OrderStatusChanged` opens no Journey and creates no deal; the response
+  reports the order's Journey (already `won`).
+- The current status and the change history show on the conversation panel and on
+  the deal.
 
 ### `POST /api/v1/broadcasts`
 
@@ -345,11 +541,11 @@ things happen in your account. **Migration required:** apply
 
 ### Events
 
-| Event                    | Fires when                                        |
-| ------------------------ | ------------------------------------------------- |
-| `message.received`       | An inbound message arrives from a contact         |
-| `message.status_updated` | A message you sent changed delivery status        |
-| `conversation.created`   | A new conversation is opened for a contact        |
+| Event                    | Fires when                                 |
+| ------------------------ | ------------------------------------------ |
+| `message.received`       | An inbound message arrives from a contact  |
+| `message.status_updated` | A message you sent changed delivery status |
+| `conversation.created`   | A new conversation is opened for a contact |
 
 ### Managing endpoints
 
@@ -380,7 +576,7 @@ delivery uuid you can dedupe on, and `data` varies by `event`:
   "event": "message.received",
   "occurred_at": "2026-07-01T12:00:00.000Z",
   "account_id": "…",
-  "data": { /* per-event, see below */ }
+  "data": {/* per-event, see below */}
 }
 ```
 
@@ -411,8 +607,10 @@ a few minutes old (replay protection).
 
 ```js
 const [, t, v1] = header.match(/t=(\d+),v1=([0-9a-f]+)/);
-const expected = crypto.createHmac('sha256', secret)
-  .update(`${t}.${rawBody}`).digest('hex');
+const expected = crypto
+  .createHmac('sha256', secret)
+  .update(`${t}.${rawBody}`)
+  .digest('hex');
 const ok = crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
 ```
 
@@ -439,6 +637,8 @@ internal targets are refused at delivery time.
 
 The public API now covers messaging, contacts, conversations,
 broadcasts, and outbound webhooks — the full scope of
-[#245](https://github.com/ArnasDon/wacrm/issues/245). Future ideas
-(deals/pipelines, templates, flows, a delivery queue for webhooks) are
+[#245](https://github.com/ArnasDon/wacrm/issues/245). The order-journey
+events endpoint (`POST /api/v1/journey/events`) is also live; see
+[order-journey.md](./order-journey.md). Future ideas (deals/pipelines
+reads, templates, flows, a delivery queue for webhooks, batch events) are
 not yet scheduled.

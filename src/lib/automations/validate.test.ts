@@ -294,7 +294,91 @@ describe("validateTriggerForActivation", () => {
     );
   });
 
+  it("requires known event names on journey_event triggers", () => {
+    expect(validateTriggerForActivation("journey_event", {})).toEqual([
+      { path: "trigger.event_names", message: "at least one event name is required" },
+    ]);
+    expect(
+      validateTriggerForActivation("journey_event", {
+        event_names: ["AddToCart", "Purchase"],
+      }),
+    ).toEqual([]);
+    expect(
+      validateTriggerForActivation("journey_event", { event_names: ["Nope"] }),
+    ).toHaveLength(1);
+  });
+
+  it("requires known order statuses on order_status_changed triggers", () => {
+    expect(validateTriggerForActivation("order_status_changed", {})).toEqual([
+      { path: "trigger.statuses", message: "at least one order status is required" },
+    ]);
+    expect(
+      validateTriggerForActivation("order_status_changed", { statuses: ["preparing", "cancelled"] }),
+    ).toEqual([]);
+    expect(
+      validateTriggerForActivation("order_status_changed", { statuses: ["placed"] }),
+    ).toHaveLength(1);
+    expect(
+      validateTriggerForActivation("order_status_changed", { statuses: [1] }),
+    ).toHaveLength(1);
+  });
+
   it("does not flag unknown trigger types (handled elsewhere)", () => {
     expect(validateTriggerForActivation("some_future_trigger", {})).toEqual([]);
+  });
+});
+
+describe("validateStepsForActivation — journey conditions", () => {
+  const cond = (step_config: Record<string, unknown>) =>
+    validateStepsForActivation([{ step_type: "condition", step_config }]);
+
+  it("journey_open needs no operand", () => {
+    expect(cond({ subject: "journey_open" })).toEqual([]);
+  });
+
+  it("customer_replied_since needs a known reference instant", () => {
+    expect(cond({ subject: "customer_replied_since", operand: "link_sent" })).toEqual([]);
+    expect(cond({ subject: "customer_replied_since", operand: "run_start" })).toEqual([]);
+    expect(cond({ subject: "customer_replied_since" }).map((i) => i.path)).toEqual([
+      "steps[0].operand",
+    ]);
+    expect(cond({ subject: "customer_replied_since", operand: "x" })).toHaveLength(1);
+  });
+
+  it("conversation_unattended needs no operand", () => {
+    expect(cond({ subject: "conversation_unattended" })).toEqual([]);
+  });
+
+  it("journey_stage needs a known stage and an is/before comparison", () => {
+    expect(cond({ subject: "journey_stage", operand: "cart", value: "before" })).toEqual([]);
+    expect(cond({ subject: "journey_stage", operand: "browsing", value: "is" })).toEqual([]);
+    expect(cond({ subject: "journey_stage", value: "before" }).map((i) => i.path)).toEqual([
+      "steps[0].operand",
+    ]);
+    expect(cond({ subject: "journey_stage", operand: "nope", value: "before" })).toHaveLength(1);
+    expect(cond({ subject: "journey_stage", operand: "cart" }).map((i) => i.path)).toEqual([
+      "steps[0].value",
+    ]);
+    expect(cond({ subject: "journey_stage", operand: "cart", value: "after" })).toHaveLength(1);
+  });
+
+  it("journey_flag needs a known flag", () => {
+    expect(cond({ subject: "journey_flag", operand: "abandoned_cart_sent" })).toEqual([]);
+    expect(cond({ subject: "journey_flag" }).map((i) => i.path)).toEqual(["steps[0].operand"]);
+    expect(cond({ subject: "journey_flag", operand: "nope" })).toHaveLength(1);
+  });
+
+  it("send_message mark_journey_flag must be a known flag", () => {
+    const send = (config: Record<string, unknown>) =>
+      validateStepsForActivation([{ step_type: "send_message", step_config: config }] as never);
+    expect(send({ text: "hi", mark_journey_flag: "abandoned_cart_sent" })).toEqual([]);
+    expect(send({ text: "hi" })).toEqual([]);
+    expect(send({ text: "hi", mark_journey_flag: "nope" }).map((i) => i.path)).toEqual([
+      "steps[0].mark_journey_flag",
+    ]);
+  });
+
+  it("other subjects still require an operand", () => {
+    expect(cond({ subject: "tag_presence" })).toHaveLength(1);
   });
 });

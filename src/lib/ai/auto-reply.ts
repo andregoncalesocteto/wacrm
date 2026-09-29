@@ -9,6 +9,16 @@ import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { sendOutbound, showTyping } from '@/lib/channels/send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import {
+  MenuLinkError,
+  hasMenuLinkVariable,
+  loadJourneyHandoffState,
+  recordMenuLinkSent,
+  replaceMenuLinkVariable,
+  resolveMenuLink,
+  type JourneyHandoffState,
+  type ResolvedMenuLink,
+} from '@/lib/journeys'
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and WhatsApp connection lookups. */
@@ -38,6 +48,11 @@ interface DispatchArgs {
  *   - auto-reply was disabled for this conversation (prior handoff)
  *   - the per-conversation reply cap is reached
  *   - there's nothing to reply to
+ *
+ * A reply containing `{{menu_link}}` is resolved at send time (token +
+ * store menu URL); the Journey opens only after the send succeeds. If the
+ * link can't be produced (store without a menu address) nothing is sent and
+ * the thread is handed to a human, with the reason in the handoff note.
  *
  * The 24h WhatsApp session window is inherently open here — we're
  * reacting to a customer message that just landed — so no separate
@@ -146,6 +161,40 @@ export async function dispatchInboundToAiReply(
       usage,
     })
 
+    // Pauses the bot on this thread, routes to the handoff agent (if any)
+    // and leaves the internal note. `reason` is appended to the note.
+    const handOff = async (reason?: string) => {
+      // Best-effort: a failed Journey read leaves the plain note.
+      let journey: JourneyHandoffState | null = null
+      try {
+        journey = await loadJourneyHandoffState(db, {
+          accountId,
+          contactId: args.contactId,
+          conversationId,
+        })
+      } catch (err) {
+        console.error(
+          `[ai auto-reply] journey state unavailable for handoff note (conversation ${conversationId}):`,
+          err,
+        )
+      }
+      const summary = buildHandoffSummary({
+        messages,
+        replyCount: conv.ai_reply_count ?? 0,
+        journey,
+      })
+      const update: Record<string, unknown> = {
+        ai_autoreply_disabled: true,
+        ai_handoff_summary: reason ? `${summary} ${reason}` : summary,
+      }
+      // Only set the assignee when a target is configured AND the thread
+      // isn't already owned — never stomp an existing human assignment.
+      if (config.handoffAgentId && !conv.assigned_agent_id) {
+        update.assigned_agent_id = config.handoffAgentId
+      }
+      await db.from('conversations').update(update).eq('id', conversationId)
+    }
+
     if (handoff || !text) {
       // The model can't (or shouldn't) answer — stop auto-replying on
       // this thread and hand it to a human. We (a) pause the bot here
@@ -154,21 +203,33 @@ export async function dispatchInboundToAiReply(
       // and (c) leave a short internal note so whoever picks it up has
       // context. Assigning fires the `on_conversation_assigned` trigger,
       // which notifies the agent.
-      const summary = buildHandoffSummary({
-        messages,
-        replyCount: conv.ai_reply_count ?? 0,
-      })
-      const update: Record<string, unknown> = {
-        ai_autoreply_disabled: true,
-        ai_handoff_summary: summary,
-      }
-      // Only set the assignee when a target is configured AND the thread
-      // isn't already owned — never stomp an existing human assignment.
-      if (config.handoffAgentId && !conv.assigned_agent_id) {
-        update.assigned_agent_id = config.handoffAgentId
-      }
-      await db.from('conversations').update(update).eq('id', conversationId)
+      await handOff()
       return
+    }
+
+    // `{{menu_link}}` → the store's menu URL with a fresh/renewed tracking
+    // token, resolved BEFORE the send. No usable link (e.g. the store has no
+    // menu address) → we never send a broken or link-less message: the
+    // thread is handed to a human and the reason is logged and noted.
+    let finalText = text
+    let menuLink: ResolvedMenuLink | null = null
+    if (hasMenuLinkVariable(text)) {
+      try {
+        menuLink = await resolveMenuLink(db, {
+          accountId,
+          userId: args.configOwnerUserId,
+          conversationId,
+          contactId: args.contactId,
+        })
+      } catch (err) {
+        if (!(err instanceof MenuLinkError)) throw err
+        console.error(
+          `[ai auto-reply] menu link unavailable for conversation ${conversationId}; reply not sent, handing off: ${err.message}`,
+        )
+        await handOff(`Reply not sent: ${err.message}`)
+        return
+      }
+      finalText = replaceMenuLinkVariable(text, menuLink.url)
     }
 
     // Atomically claim a reply slot: the cap check + increment happen in
@@ -196,10 +257,22 @@ export async function dispatchInboundToAiReply(
     await sendOutbound({
       accountId,
       conversationId,
-      message: { type: 'text', text },
+      message: { type: 'text', text: finalText },
       actor: { type: 'ai' },
       db,
     })
+
+    // Same effect as the automation send: open/renew the Journey and put the
+    // deal at "Link enviado", only once the message carrying the link left.
+    if (menuLink) {
+      await recordMenuLinkSent(db, {
+        accountId,
+        userId: args.configOwnerUserId,
+        conversationId,
+        contactId: args.contactId,
+        connectionId: menuLink.connectionId,
+      })
+    }
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
   }

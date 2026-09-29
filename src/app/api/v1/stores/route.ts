@@ -8,7 +8,8 @@
 import { requireApiKey } from '@/lib/auth/api-context';
 import { okList, fail, toApiErrorResponse } from '@/lib/api/v1/respond';
 
-const STORE_COLUMNS = 'id, name, address, phone, manager_name, created_at';
+const STORE_COLUMNS =
+  'id, name, address, phone, manager_name, menu_url, created_at';
 
 export async function GET(request: Request) {
   try {

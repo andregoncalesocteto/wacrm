@@ -40,6 +40,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { JourneyPresetCard } from "@/components/automations/journey-preset-card"
 import { type TemplateSlug } from "@/lib/automations/templates"
 import { triggerMeta, formatRelative, isKnownTrigger } from "@/lib/automations/trigger-meta"
 import { cn } from "@/lib/utils"
@@ -177,6 +178,8 @@ export default function AutomationsPage() {
           {t("create")}
         </GatedButton>
       </div>
+
+      <JourneyPresetCard refreshKey={automations} onInstalled={load} />
 
       {showTemplates && (
         <section>

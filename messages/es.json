@@ -623,7 +623,8 @@
     "card": {
       "noContact": "Sin contacto",
       "won": "Ganado",
-      "lost": "Perdido"
+      "lost": "Perdido",
+      "cartItems": "{count, plural, =1 {# artículo} other {# artículos}}"
     },
     "form": {
       "editDeal": "Editar negocio",
@@ -706,6 +707,35 @@
       "lostThisMonth": "Perdidos este mes",
       "lostThisMonthTooltip": "Negocios marcados como perdidos desde el primer día del mes actual.",
       "howCalculated": "Cómo se calcula {label}"
+    },
+    "journey": {
+      "filters": {
+        "channel": "Canal",
+        "store": "Tienda",
+        "allChannels": "Todos los canales",
+        "allStores": "Todas las tiendas"
+      },
+      "stages": {
+        "link_sent": "Enlace enviado",
+        "browsing": "Navegando",
+        "cart": "Carrito",
+        "checkout": "Checkout",
+        "won": "Compró",
+        "lost": "Perdido"
+      },
+      "funnel": {
+        "title": "Conversión del Journey",
+        "description": "Journeys que llegaron a cada etapa (en ella o más allá) y la tasa desde el enlace enviado hasta la compra.",
+        "overall": "General",
+        "byChannel": "Por canal",
+        "byStore": "Por tienda",
+        "group": "Grupo",
+        "allJourneys": "Todos los Journeys",
+        "conversion": "Enlace a compra",
+        "noData": "-",
+        "empty": "Aún no hay Journeys.",
+        "error": "No se pudo cargar el embudo del Journey."
+      }
     }
   },
   "Broadcasts": {
@@ -963,6 +993,79 @@
     }
   },
   "Automations": {
+    "journeyPreset": {
+      "title": "Journey del pedido",
+      "description": "Crea, listas para editar, las automatizaciones del recorrido del pedido: recordatorios tras el enlace del menú (10 y 30 min), carrito abandonado, agradecimiento y un aviso por estado del pedido. Todo se crea apagado; revisa los textos y actívalo en la lista.",
+      "install": "Añadir el preset Journey del pedido",
+      "installAgain": "Añadir automatizaciones que faltan",
+      "toastCreated": "{created, plural, =0 {Nada nuevo que añadir} one {# automatización creada} other {# automatizaciones creadas}}; {existing} ya existían.",
+      "toastError": "No se pudo añadir el preset.",
+      "loadError": "No se pudo cargar el estado del preset.",
+      "statusTitle": "Lo que aún falta",
+      "installedCount": "{installed} de {total} automatizaciones añadidas.",
+      "allSet": "No falta nada: todas las automatizaciones están activas, todas las tiendas tienen enlace del menú y todo paso de envío tiene plantilla de respaldo.",
+      "inactive": "{count, plural, one {# automatización sigue apagada} other {# automatizaciones siguen apagadas}}. Revisa los textos y actívalas en la lista de abajo.",
+      "storesMissing": "{count, plural, one {# tienda no tiene} other {# tiendas no tienen}} enlace del menú: {names}. El enlace del menú no se envía para ellas.",
+      "storesLink": "Configurar el enlace del menú en Ajustes",
+      "templatesMissing": "{count, plural, one {# mensaje no tiene} other {# mensajes no tienen}} plantilla de respaldo de WhatsApp. WhatsApp exige una plantilla fuera de la ventana de 24 horas; sin ella el envío falla (visible en el registro de la automatización y en la conversación).",
+      "templatesLink": "Abrir {name}",
+      "selectionNote": "También se añade la de entregado: déjala apagada si no quieres avisar al cliente en la entrega.",
+      "automations": {
+        "resumption": {
+          "name": "Journey del pedido: recordatorios tras el enlace del menú",
+          "description": "Recordatorios 10 y 30 minutos después del enlace del menú, si el cliente no respondió, no llegó al carrito y nadie lo atiende."
+        },
+        "abandoned_cart": {
+          "name": "Journey del pedido: carrito abandonado",
+          "description": "10 minutos después del último evento de carrito o checkout, un mensaje por recorrido si el cliente dejó de responder."
+        },
+        "thank_you": {
+          "name": "Journey del pedido: agradecimiento",
+          "description": "Agradece al cliente cuando se realiza el pedido."
+        },
+        "status_received": {
+          "name": "Journey del pedido: pedido recibido",
+          "description": "Avisa al cliente cuando se recibe el pedido."
+        },
+        "status_preparing": {
+          "name": "Journey del pedido: en preparación",
+          "description": "Avisa al cliente cuando el pedido pasa a preparación."
+        },
+        "status_finished": {
+          "name": "Journey del pedido: pedido terminado",
+          "description": "Avisa al cliente cuando el pedido está terminado."
+        },
+        "status_out_for_delivery": {
+          "name": "Journey del pedido: salió a entrega",
+          "description": "Avisa al cliente cuando el pedido sale a entrega."
+        },
+        "status_ready_for_pickup": {
+          "name": "Journey del pedido: listo para recoger",
+          "description": "Avisa al cliente cuando el pedido está listo para recoger."
+        },
+        "status_delivered": {
+          "name": "Journey del pedido: entregado",
+          "description": "Avisa al cliente cuando se entrega el pedido."
+        },
+        "status_cancelled": {
+          "name": "Journey del pedido: cancelado",
+          "description": "Avisa al cliente cuando se cancela el pedido."
+        }
+      },
+      "texts": {
+        "resumption1": "¡Hola! ¿Te quedó alguna duda sobre tu pedido? Responde por aquí y te ayudamos.",
+        "resumption2": "¡Hola! Tu pedido sigue esperándote. ¿Necesitas ayuda para elegir? Responde por aquí.",
+        "abandonedCart": "¡Hola! Vimos que dejaste productos en el carrito. ¿Quieres terminar tu pedido? Si necesitas ayuda, responde por aquí.",
+        "thankYou": "¡Gracias por tu pedido {{order_id}}! Te avisaremos en cada etapa.",
+        "status_received": "¡Recibimos tu pedido {{order_id}}! Pronto empezamos a prepararlo.",
+        "status_preparing": "Tu pedido {{order_id}} está en preparación.",
+        "status_finished": "¡Tu pedido {{order_id}} está listo!",
+        "status_out_for_delivery": "Tu pedido {{order_id}} salió a entrega. ¡Pronto llegará a ti!",
+        "status_ready_for_pickup": "Tu pedido {{order_id}} está listo para recoger. ¡Ven por él mientras está calentito!",
+        "status_delivered": "Tu pedido {{order_id}} fue entregado. ¡Buen provecho!",
+        "status_cancelled": "Tu pedido {{order_id}} fue cancelado. Si tienes alguna duda, responde por aquí."
+      }
+    },
     "list": {
       "loadError": "Error al cargar las automatizaciones",
       "title": "Automatizaciones",
@@ -1077,6 +1180,18 @@
           "label": "Respuesta de botón / lista",
           "hint": "El cliente toca un botón o fila de lista cuyo id coincide; encadena menús entre automatizaciones"
         },
+        "journey_event": {
+          "label": "Evento de Journey",
+          "hint": "Cuando la Journey de pedido de un cliente registra un evento (vista, carrito, checkout, compra)"
+        },
+        "menu_link_sent": {
+          "label": "Enlace del menú enviado",
+          "hint": "Cuando se envía un enlace del menú (por una automatización o la respuesta de la IA) y la Journey de pedido se abre o se renueva. Inicio de los recordatorios de 10 y 30 minutos."
+        },
+        "order_status_changed": {
+          "label": "Estado del pedido cambiado",
+          "hint": "Cuando un pedido pasa a un nuevo estado informado por el menú (recibido, en preparación, entregado, cancelado...). Envía al cliente la notificación del estado."
+        },
         "new_contact_created": {
           "label": "Nuevo contacto creado",
           "hint": "Cuando un contacto se crea automáticamente a partir de un mensaje entrante"
@@ -1172,6 +1287,7 @@
       "config": {
         "messageText": "Texto del mensaje",
         "placeholderMessageText": "¡Hola! Gracias por escribirnos…",
+        "menuLinkHint": "inserta el enlace del menú de la tienda con un token de seguimiento y abre el recorrido del pedido. El paso falla, y no se envía nada, si la tienda no tiene URL de menú.",
         "tagLabel": "Etiqueta",
         "modeLabel": "Modo",
         "modes": {
@@ -1195,8 +1311,51 @@
           "tag_presence": "Presencia de etiqueta",
           "contact_field": "Campo del contacto",
           "message_content": "Contenido del mensaje",
-          "time_of_day": "Hora del día"
+          "time_of_day": "Hora del día",
+          "customer_replied_since": "Cliente respondió desde",
+          "journey_open": "Journey abierta",
+          "journey_stage": "Etapa de la Journey",
+          "conversation_unattended": "Sin humano y sin traspaso de la IA",
+          "journey_flag": "Mensaje de carrito abandonado ya enviado en la Journey"
         },
+        "replyReferenceLabel": "Instante de referencia",
+        "replyReferences": {
+          "link_sent": "Enlace del menú enviado",
+          "run_start": "Inicio de esta ejecución"
+        },
+        "replyReferenceHint": "Verdadero si el cliente envió un mensaje después de este instante. Se evalúa cuando se ejecuta el paso, también tras una espera.",
+        "journeyOpenHint": "Verdadero mientras la Journey del cliente siga abierta cuando se ejecuta el paso (falso una vez ganada o perdida).",
+        "journeyEventsLabel": "Eventos de Journey",
+        "journeyEventsHint": "Se dispara cuando se acepta cualquiera de los eventos marcados para la Journey del cliente.",
+        "orderStatusesLabel": "Estados del pedido",
+        "orderStatusesHint": "Se activa cuando el pedido pasa a cualquiera de los estados marcados. Un estado sin automatización no envía nada.",
+        "orderVariablesHint": "insertan los datos del pedido (id, código del estado y valor) en el texto. Disponibles en este disparador y en las automatizaciones de Evento de Journey para Purchase.",
+        "conversationUnattendedHint": "Verdadero mientras no haya un agente asignado a la conversación y la IA no la haya traspasado. Se comprueba cuando se ejecuta el paso, también después de una espera.",
+        "journeyFlagLabel": "Marca",
+        "journeyFlags": {
+          "abandoned_cart_sent": "Mensaje de carrito abandonado"
+        },
+        "journeyFlagHint": "Verdadero una vez que el mensaje de carrito abandonado salió para esta Journey. Se comprueba cuando se ejecuta el paso, también después de una espera.",
+        "markJourneyFlagLabel": "Enviar una vez por Journey (carrito abandonado)",
+        "markJourneyFlagHint": "La Journey se marca justo antes del envío, así que este mensaje sale como máximo una vez por Journey, aunque varias ejecuciones lleguen a él. Si el envío falla, la marca se deshace.",
+        "stageComparisonLabel": "Comparación",
+        "stageComparisons": {
+          "before": "es anterior a",
+          "is": "es"
+        },
+        "stageLabel": "Etapa",
+        "stages": {
+          "link_sent": "Enlace enviado",
+          "browsing": "Navegando",
+          "cart": "Carrito",
+          "checkout": "Checkout",
+          "won": "Compró",
+          "lost": "Perdido"
+        },
+        "stageHint": "Se comprueba cuando se ejecuta el paso. \"Es anterior a Carrito\" solo es verdadero mientras la Journey sigue abierta y aún no llegó al carrito.",
+        "fallbackTemplateLabel": "Template fuera de la ventana de 24 h (WhatsApp)",
+        "fallbackVariablesLabel": "Variables del template (una por línea, en orden)",
+        "fallbackTemplateHint": "Se envía en lugar del texto cuando el último mensaje del cliente tiene más de 24 h. Sin template, ese envío falla y aparece en el registro de la automatización. Las variables son valores fijos.",
         "operandLabel": "Operando",
         "placeholderTime": "HH:mm-HH:mm",
         "placeholderContact": "name / email / company",
@@ -1920,6 +2079,9 @@
       "hoursLabel": "Horario",
       "hoursPlaceholder": "Ej.: Lun-Vie 9h-18h",
       "managerLabel": "Encargado",
+      "menuUrlLabel": "Dirección del menú digital",
+      "menuUrlPlaceholder": "https://menu.ejemplo.com",
+      "menuUrlHint": "Opcional. Debe comenzar con https://. Déjalo vacío si la tienda no tiene menú digital.",
       "cancel": "Cancelar",
       "save": "Guardar",
       "noConnections": "Aún no hay conexiones",
@@ -1931,6 +2093,7 @@
       "toastNameRequired": "Ingresa el nombre de la tienda.",
       "toastNameTooLong": "El nombre debe tener como máximo {max} caracteres.",
       "toastFieldTooLong": "Uno de los campos es demasiado largo.",
+      "toastMenuUrlInvalid": "Ingresa una dirección https:// válida para el menú digital.",
       "toastSaveFailed": "No se pudo guardar la tienda.",
       "toastCreated": "Tienda creada.",
       "toastUpdated": "Tienda actualizada.",
@@ -2197,7 +2360,8 @@
         "conversations:read": "Listar y leer conversaciones",
         "connections:read": "Listar tiendas y conexiones de canal",
         "broadcasts:send": "Lanzar campañas de difusión",
-        "webhooks:manage": "Registrar y administrar webhooks de eventos salientes"
+        "webhooks:manage": "Registrar y administrar webhooks de eventos salientes",
+        "events:write": "Enviar eventos del recorrido de pedido desde el menú digital"
       },
       "noApiKeys": "Aún no hay claves de API.",
       "createOneHint": "Haz clic en <bold>Nueva clave de API</bold> para crear una.",
@@ -2520,5 +2684,21 @@
   "Ui": {
     "close": "Cerrar",
     "gatedReadOnly": "Solo lectura — tu rol no puede {reason}"
+  },
+  "Orders": {
+    "title": "Pedidos",
+    "orderNumber": "Pedido {id}",
+    "history": "Historial de estados",
+    "itemQuantity": "{quantity}x",
+    "status": {
+      "placed": "Realizado",
+      "received": "Recibido",
+      "preparing": "En preparación",
+      "finished": "Finalizado",
+      "out_for_delivery": "En camino",
+      "ready_for_pickup": "Listo para recoger",
+      "delivered": "Entregado",
+      "cancelled": "Cancelado"
+    }
   }
 }

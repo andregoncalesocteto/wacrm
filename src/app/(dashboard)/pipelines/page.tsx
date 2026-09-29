@@ -1,12 +1,19 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { Pipeline, PipelineStage, Deal } from '@/types';
 import { PipelineBoard } from '@/components/pipelines/pipeline-board';
 import { PipelineSettings } from '@/components/pipelines/pipeline-settings';
 import { DealForm } from '@/components/pipelines/deal-form';
 import { PipelineAnalytics } from '@/components/pipelines/pipeline-analytics';
+import {
+  ALL_FILTER,
+  JourneyFilters,
+  type JourneyFilterValue,
+} from '@/components/pipelines/journey-filters';
+import { JourneyFunnelPanel } from '@/components/pipelines/journey-funnel-panel';
+import { JOURNEY_PIPELINE_KEY } from '@/lib/journeys/constants';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -63,6 +70,16 @@ export default function PipelinesPage() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Channel / store filter of the order Journey pipeline.
+  const [connections, setConnections] = useState<
+    { id: string; channel_type: string; store_id: string }[]
+  >([]);
+  const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
+  const [journeyFilter, setJourneyFilter] = useState<JourneyFilterValue>({
+    channelType: ALL_FILTER,
+    storeId: ALL_FILTER,
+  });
+
   // Dialog / sheet state
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
   const [newPipelineName, setNewPipelineName] = useState('');
@@ -107,7 +124,7 @@ export default function PipelinesPage() {
       const { data } = await supabase
         .from('deals')
         .select(
-          `*, contact:contacts(*, ${CONTACT_IDENTITIES_EMBED}), assignee:profiles!deals_assigned_to_fkey(*)`
+          `*, contact:contacts(*, ${CONTACT_IDENTITIES_EMBED}), assignee:profiles!deals_assigned_to_fkey(*), journey:journeys!deals_journey_id_fkey(cart_items_count, cart_value, cart_currency)`
         )
         .eq('pipeline_id', pipelineId)
         .order('created_at', { ascending: false });
@@ -119,7 +136,11 @@ export default function PipelinesPage() {
             | Parameters<typeof withIdentities>[0][]
             | null
         );
-        return { ...row, contact: contact ? withIdentities(contact) : contact };
+        return {
+          ...row,
+          contact: contact ? withIdentities(contact) : contact,
+          journey: firstOf(row.journey as Deal['journey'] | Deal['journey'][]),
+        };
       }) as unknown as Deal[];
     },
     [supabase]
@@ -216,6 +237,25 @@ export default function PipelinesPage() {
       cancelled = true;
     };
   }, [selectedPipelineId, loadStages, loadDeals]);
+
+  // Connections and stores feed the Journey pipeline's filters (RLS-scoped).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [c, st] = await Promise.all([
+        supabase
+          .from('channel_connections')
+          .select('id, channel_type, store_id'),
+        supabase.from('stores').select('id, name').order('name'),
+      ]);
+      if (cancelled) return;
+      setConnections(c.data ?? []);
+      setStores(st.data ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
 
   const refreshPipelines = useCallback(async () => {
     const list = await loadPipelines();
@@ -317,6 +357,31 @@ export default function PipelinesPage() {
   }
 
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId);
+  const isJourneyPipeline =
+    selectedPipeline?.system_key === JOURNEY_PIPELINE_KEY;
+
+  const journeyFilterOptions = useMemo(
+    () => ({
+      channelTypes: [...new Set(connections.map((c) => c.channel_type))].sort(),
+      stores,
+    }),
+    [connections, stores]
+  );
+
+  const visibleDeals = useMemo(() => {
+    if (!isJourneyPipeline) return deals;
+    const { channelType, storeId } = journeyFilter;
+    if (channelType === ALL_FILTER && storeId === ALL_FILTER) return deals;
+    const connById = new Map(connections.map((c) => [c.id, c]));
+    return deals.filter((d) => {
+      const conn = d.connection_id ? connById.get(d.connection_id) : undefined;
+      if (!conn) return false;
+      return (
+        (channelType === ALL_FILTER || conn.channel_type === channelType) &&
+        (storeId === ALL_FILTER || conn.store_id === storeId)
+      );
+    });
+  }, [isJourneyPipeline, deals, connections, journeyFilter]);
 
   if (loading) {
     return (
@@ -434,14 +499,22 @@ export default function PipelinesPage() {
         </div>
       ) : (
         <>
-          <PipelineAnalytics stages={stages} deals={deals} />
+          {isJourneyPipeline && (
+            <JourneyFilters
+              options={journeyFilterOptions}
+              value={journeyFilter}
+              onChange={setJourneyFilter}
+            />
+          )}
+          <PipelineAnalytics stages={stages} deals={visibleDeals} />
           <PipelineBoard
             stages={stages}
-            deals={deals}
+            deals={visibleDeals}
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
           />
+          {isJourneyPipeline && <JourneyFunnelPanel />}
         </>
       )}
 

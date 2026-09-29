@@ -61,8 +61,8 @@ export function currencyName(option: CurrencyOption, locale = "en"): string {
 
 /**
  * Format a deal value as a currency string. Whole-number output
- * (no minor units) — deal values are tracked to the dollar across
- * the app. `currency` defaults to USD so callers with nothing better
+ * (no minor units unless `fractionDigits` is given) — deal values are
+ * tracked to the dollar across the app. `currency` defaults to USD so callers with nothing better
  * stay safe, but pass the account/deal currency wherever known.
  *
  * Total by design: `Intl.NumberFormat` throws a RangeError on a
@@ -76,6 +76,7 @@ export function formatCurrency(
   value: number,
   currency: string = DEFAULT_CURRENCY,
   locale: string = "en",
+  fractionDigits: number = 0,
 ): string {
   const code = (currency || DEFAULT_CURRENCY).trim();
   const amount = Number(value) || 0;
@@ -83,14 +84,15 @@ export function formatCurrency(
     return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: code,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
     }).format(amount);
   } catch {
     // Invalid ISO code — show the raw code + grouped number so the
     // value is still legible instead of throwing.
     return `${code} ${new Intl.NumberFormat(locale, {
-      maximumFractionDigits: 0,
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
     }).format(amount)}`;
   }
 }

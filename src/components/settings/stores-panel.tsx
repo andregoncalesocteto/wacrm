@@ -44,6 +44,7 @@ interface StoreRow {
   phone: string | null;
   business_hours: Record<string, unknown> | null;
   manager_name: string | null;
+  menu_url: string | null;
   connections: StoreConnection[];
 }
 
@@ -58,7 +59,10 @@ const CHIP_TONE: Record<ConnectionChipState, string> = {
 const CHANNEL_TYPES = ['whatsapp_cloud', 'telegram'] as const;
 
 function emptyDraft(): StoreDraft {
-  return { name: '', address: '', phone: '', hours: '', manager_name: '' };
+  return { name: '', address: '', phone: '', hours: '',
+    manager_name: '',
+    menu_url: '',
+  };
 }
 
 /**
@@ -110,6 +114,7 @@ export function StoresPanel() {
       phone: s.phone ?? '',
       hours: hoursToText(s.business_hours),
       manager_name: s.manager_name ?? '',
+      menu_url: s.menu_url ?? '',
     });
     setEditing({ id: s.id });
   };
@@ -123,7 +128,9 @@ export function StoresPanel() {
           ? t('toastNameRequired')
           : problem === 'nameTooLong'
             ? t('toastNameTooLong', { max: STORE_LIMITS.name })
-            : t('toastFieldTooLong')
+            : problem === 'menuUrlInvalid'
+              ? t('toastMenuUrlInvalid')
+              : t('toastFieldTooLong')
       );
       return;
     }
@@ -139,6 +146,7 @@ export function StoresPanel() {
             address: draft.address,
             phone: draft.phone,
             manager_name: draft.manager_name,
+            menu_url: draft.menu_url,
             business_hours: textToHours(draft.hours),
           }),
         }
@@ -239,6 +247,11 @@ export function StoresPanel() {
                     {s.address || s.phone ? (
                       <p className="text-muted-foreground truncate text-xs">
                         {[s.address, s.phone].filter(Boolean).join(' · ')}
+                      </p>
+                    ) : null}
+                    {s.menu_url ? (
+                      <p className="text-muted-foreground truncate text-xs">
+                        {s.menu_url}
                       </p>
                     ) : null}
                     {hasConnections ? (
@@ -363,6 +376,22 @@ export function StoresPanel() {
                   setDraft({ ...draft, manager_name: e.target.value })
                 }
               />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="store-menu-url">{t('menuUrlLabel')}</Label>
+              <Input
+                id="store-menu-url"
+                type="url"
+                value={draft.menu_url}
+                maxLength={STORE_LIMITS.menu_url}
+                placeholder={t('menuUrlPlaceholder')}
+                onChange={(e) =>
+                  setDraft({ ...draft, menu_url: e.target.value })
+                }
+              />
+              <p className="text-muted-foreground text-xs">
+                {t('menuUrlHint')}
+              </p>
             </div>
           </div>
           <DialogFooter>

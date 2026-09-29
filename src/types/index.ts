@@ -386,6 +386,8 @@ export interface Pipeline {
   id: string;
   user_id: string;
   name: string;
+  /** CRM-managed pipeline key (`order_journey`); null for user pipelines. */
+  system_key?: string | null;
   created_at: string;
 }
 
@@ -411,6 +413,14 @@ export interface Deal {
    */
   contact_id: string | null;
   conversation_id?: string;
+  /** Connection of the order Journey that opened the deal (channel + store). */
+  connection_id?: string | null;
+  /** Cart snapshot of the order Journey behind the deal, when there is one. */
+  journey?: {
+    cart_items_count: number;
+    cart_value: number;
+    cart_currency: string | null;
+  } | null;
   assigned_to?: string;
   title: string;
   value: number;
@@ -511,7 +521,16 @@ export type AutomationTriggerType =
   | 'time_based'
   /** Customer tapped a reply button / list row whose id matches; lets
    *  multi-step menus be chained across automations. */
-  | 'interactive_reply';
+  | 'interactive_reply'
+  /** A behaviour event of an order Journey (ViewContent, AddToCart, ...) was
+   *  accepted by `POST /api/v1/journey/events`. */
+  | 'journey_event'
+  /** A menu link was sent (by an automation step or the AI reply) and the
+   *  Journey was opened or renewed; the anchor of the Resumption chain. */
+  | 'menu_link_sent'
+  /** An order moved to a new status (`OrderStatusChanged`, only when the
+   *  status really changed). Fires the customer's status notification. */
+  | 'order_status_changed';
 
 export type AutomationStepType =
   | 'send_message'
@@ -559,16 +578,42 @@ export interface InteractiveReplyTriggerConfig {
   reply_ids: string[];
 }
 
+export interface JourneyEventTriggerConfig {
+  /** Journey event names to match; any one fires. */
+  event_names: string[];
+}
+
+export interface OrderStatusChangedTriggerConfig {
+  /** Order statuses to match; any one fires. */
+  statuses: string[];
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig
   | InteractiveReplyTriggerConfig
+  | JourneyEventTriggerConfig
+  | OrderStatusChangedTriggerConfig
   | Record<string, unknown>;
 
 export interface SendMessageStepConfig {
   text: string;
+  /**
+   * Template sent instead of `text` when the channel's reply window (WhatsApp
+   * 24 h) is closed. Without it, a send outside the window fails visibly.
+   */
+  fallback_template?: {
+    name: string;
+    language?: string;
+    variables?: Record<string, string>;
+  };
+  /**
+   * One-shot Journey mark set right before the send (atomically) and undone if
+   * the send fails. When the Journey already carries it, nothing is sent.
+   */
+  mark_journey_flag?: 'abandoned_cart_sent';
 }
 
 /**
@@ -623,13 +668,28 @@ export type ConditionSubject =
   | 'contact_field'
   | 'tag_presence'
   | 'message_content'
-  | 'time_of_day';
+  | 'time_of_day'
+  /** Customer sent a message after a reference instant (`operand`). */
+  | 'customer_replied_since'
+  /** The contact's Journey (conversation's connection) is open right now. */
+  | 'journey_open'
+  /** The Journey's funnel stage is / is before a stage (`operand`, `value`). */
+  | 'journey_stage'
+  /** No human is assigned and the AI has not handed the conversation off. */
+  | 'conversation_unattended'
+  /** The Journey carries the one-shot mark named by `operand`. */
+  | 'journey_flag';
+
+/** `customer_replied_since` reference instants (the condition's `operand`). */
+export type ReplyReference = 'link_sent' | 'run_start';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;
-  /** e.g. field name, tag id, substring, or "HH:mm-HH:mm" depending on subject */
+  /** e.g. field name, tag id, substring, "HH:mm-HH:mm", or (for
+   *  `customer_replied_since`) a `ReplyReference`; unused by `journey_open`. */
   operand?: string;
-  /** For contact_field equals / message_content contains — comparison value */
+  /** For contact_field equals / message_content contains — comparison value;
+   *  for `journey_stage`, `is` or `before`. */
   value?: string;
 }
 

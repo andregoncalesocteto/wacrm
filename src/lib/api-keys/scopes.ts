@@ -22,6 +22,7 @@ export const API_SCOPES = [
   'connections:read',
   'broadcasts:send',
   'webhooks:manage',
+  'events:write',
 ] as const;
 
 export type ApiScope = (typeof API_SCOPES)[number];
@@ -36,6 +37,7 @@ export const SCOPE_DESCRIPTIONS: Record<ApiScope, string> = {
   'connections:read': 'List stores and channel connections',
   'broadcasts:send': 'Launch broadcast campaigns',
   'webhooks:manage': 'Register and manage outbound event webhooks',
+  'events:write': 'Send order-journey events from the digital menu',
 };
 
 /** Type-narrow an unknown value into a valid `ApiScope`. */

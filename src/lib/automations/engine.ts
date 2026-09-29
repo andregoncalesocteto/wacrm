@@ -6,6 +6,8 @@ import type {
   ConditionStepConfig,
   KeywordMatchTriggerConfig,
   InteractiveReplyTriggerConfig,
+  JourneyEventTriggerConfig,
+  OrderStatusChangedTriggerConfig,
   TagTriggerConfig,
   SendMessageStepConfig,
   SendButtonsStepConfig,
@@ -18,6 +20,7 @@ import type {
   CreateDealStepConfig,
   AssignConversationStepConfig,
 } from '@/types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from './admin-client'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
@@ -27,6 +30,23 @@ import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 import { getProvider, hasProvider } from '@/lib/channels/registry'
 import { registerBuiltinProviders } from '@/lib/channels/providers'
 import type { Capabilities } from '@/lib/channels/types'
+import {
+  hasMenuLinkVariable,
+  replaceMenuLinkVariable,
+  resolveMenuLink,
+  recordMenuLinkSent,
+  findOpenJourney,
+  JOURNEY_STAGES,
+  isJourneyFlag,
+  isJourneyFlagSet,
+  claimJourneyFlag,
+  releaseJourneyFlag,
+  type JourneyRow,
+  type JourneyFlag,
+  type ResolvedMenuLink,
+} from '@/lib/journeys'
+
+import { orderVariable, type AutomationOrderContext } from './order-vars'
 
 // ------------------------------------------------------------
 // Public API
@@ -45,6 +65,25 @@ export interface AutomationContext {
   agent_id?: string
   /** Button / list-row id the customer tapped, for interactive_reply. */
   interactive_reply_id?: string
+  /** Journey the event belongs to, for journey_event (also read by the
+   *  journey conditions, which then look at THAT Journey's current state). */
+  journey_id?: string
+  /** Name of the accepted Journey event, for journey_event. */
+  journey_event_name?: string
+  /** Client-supplied id of the accepted Journey event. */
+  journey_event_id?: string
+  /** Validated properties of the accepted Journey event (cart, order...). */
+  journey_event_properties?: Record<string, unknown>
+  /** Journey stage right after the event. */
+  journey_stage?: string
+  /** Connection the Journey runs on. */
+  connection_id?: string
+  /** When the menu link was sent, for menu_link_sent. Its presence marks a run
+   *  born from a link send (a `{{menu_link}}` step in it would loop). */
+  menu_link_sent_at?: string
+  /** The order this run is about: order_status_changed (status change) or a
+   *  Purchase journey_event. Feeds `{{order_id}}`/`{{order_status}}`/`{{order_value}}`. */
+  order?: AutomationOrderContext
 }
 
 export interface DispatchInput {
@@ -111,7 +150,20 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
     for (const automation of automations as Automation[]) {
       if (!triggerMatches(automation, input.context)) continue
       try {
-        await executeAutomation(automation, input)
+        // A renewed link (or a new cart / checkout event) starts the
+        // automation's timers over: park-and-resume runs from the previous
+        // one must not also fire, so the wait always counts from the LAST.
+        // The old runs are cancelled only AFTER the new one has started (its
+        // log exists): if it cannot start, the old timers keep counting. The
+        // window in between is closed at resume time (`isSuperseded`).
+        const supersedeIds =
+          isSupersedingTrigger(input.triggerType) && input.contactId
+            ? await findPendingRunIds(db, automation, input.contactId)
+            : []
+        const started = await executeAutomation(automation, input)
+        if (started && supersedeIds.length > 0) {
+          await cancelPendingRuns(db, automation, supersedeIds)
+        }
       } catch (err) {
         console.error('[automations] execute failed:', automation.id, err)
       }
@@ -160,6 +212,13 @@ export async function resumePendingExecution(pending: {
     return
   }
 
+  // A run claimed by the cron (`running`) cannot be cancelled by a newer
+  // trigger, so the old chain checks here that it is still the current one.
+  if (await isSuperseded(db, automation as Automation, pending)) {
+    await markPending(pending.id, 'cancelled')
+    return
+  }
+
   try {
     await executeStepsFrom({
       automation: automation as Automation,
@@ -172,6 +231,7 @@ export async function resumePendingExecution(pending: {
       startPosition: pending.next_step_position,
       logId: pending.log_id,
       triggerEvent: 'resumed_wait',
+      resumeRoot: true,
     })
     await markPending(pending.id, 'done')
   } catch (err) {
@@ -184,7 +244,77 @@ export async function resumePendingExecution(pending: {
 // Internal execution
 // ------------------------------------------------------------
 
-async function executeAutomation(automation: Automation, input: DispatchInput) {
+/** Triggers whose new firing restarts the automation's timers. */
+function isSupersedingTrigger(triggerType: string): boolean {
+  return triggerType === 'menu_link_sent' || triggerType === 'journey_event'
+}
+
+/** The automation's parked (not yet claimed) runs for this contact. */
+async function findPendingRunIds(
+  db: SupabaseClient,
+  automation: Automation,
+  contactId: string,
+): Promise<string[]> {
+  const { data, error } = await db
+    .from('automation_pending_executions')
+    .select('id')
+    .eq('automation_id', automation.id)
+    .eq('account_id', automation.account_id)
+    .eq('contact_id', contactId)
+    .eq('status', 'pending')
+  if (error) {
+    console.error('[automations] supersede lookup failed:', error)
+    return []
+  }
+  return ((data ?? []) as { id: string }[]).map((r) => r.id)
+}
+
+/** Cancel exactly those runs, and only while still parked. */
+async function cancelPendingRuns(db: SupabaseClient, automation: Automation, ids: string[]) {
+  const { error } = await db
+    .from('automation_pending_executions')
+    .update({ status: 'cancelled' })
+    .in('id', ids)
+    .eq('account_id', automation.account_id)
+    .eq('status', 'pending')
+  if (error) console.error('[automations] supersede pending failed:', error)
+}
+
+/**
+ * Whether a newer run of the same automation started for this contact since
+ * the parked run's own (its log row). Only for the superseding triggers: other
+ * automations legitimately run overlapping chains.
+ */
+async function isSuperseded(
+  db: SupabaseClient,
+  automation: Automation,
+  pending: { contact_id: string | null; log_id: string | null },
+): Promise<boolean> {
+  if (!isSupersedingTrigger(automation.trigger_type) || !pending.contact_id || !pending.log_id) {
+    return false
+  }
+  const { data: own } = await db
+    .from('automation_logs')
+    .select('created_at')
+    .eq('id', pending.log_id)
+    .maybeSingle()
+  const ownAt = (own as { created_at?: string } | null)?.created_at
+  if (!ownAt) return false
+  const { data: latest } = await db
+    .from('automation_logs')
+    .select('id, created_at')
+    .eq('automation_id', automation.id)
+    .eq('account_id', automation.account_id)
+    .eq('contact_id', pending.contact_id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const row = latest as { id: string; created_at: string } | null
+  return !!row && row.id !== pending.log_id && row.created_at > ownAt
+}
+
+/** Returns whether the run started (its log row was created). */
+async function executeAutomation(automation: Automation, input: DispatchInput): Promise<boolean> {
   const db = supabaseAdmin()
 
   const { data: log, error: logErr } = await db
@@ -200,6 +330,9 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
       contact_id: input.contactId ?? null,
       trigger_event: input.triggerType,
       steps_executed: [],
+      // Explicit so "start of this run" (customer_replied_since) has a fixed
+      // instant that survives waits: resumes reuse this same log row.
+      created_at: new Date().toISOString(),
       // Seeded pessimistically. The row is written BEFORE any step runs,
       // and every terminal path below overwrites it (`appendResults` at
       // the outermost scope, or `finalizeLog`). Seeding 'success' meant a
@@ -215,7 +348,7 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
 
   if (logErr || !log) {
     console.error('[automations] cannot create log:', logErr)
-    return
+    return false
   }
 
   await executeStepsFrom({
@@ -239,6 +372,7 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
   if (rpcErr) {
     console.error('[automations] increment counter failed:', rpcErr)
   }
+  return true
 }
 
 interface ExecuteArgs {
@@ -250,9 +384,14 @@ interface ExecuteArgs {
   startPosition: number
   logId: string | null
   triggerEvent: string
+  /** First scope of a run resumed from a wait: it owns the log's final status
+   *  even when the wait was inside a branch (parentStepId !== null). */
+  resumeRoot?: boolean
 }
 
-async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
+type RunStatus = 'success' | 'partial' | 'failed'
+
+async function executeStepsFrom(args: ExecuteArgs): Promise<RunStatus> {
   const db = supabaseAdmin()
 
   const baseQuery = db
@@ -271,13 +410,13 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
 
   if (stepsErr) {
     await finalizeLog(args.logId, 'failed', stepsErr.message)
-    return
+    return 'failed'
   }
   if (!steps || steps.length === 0) {
-    if (args.parentStepId === null && args.logId) {
+    if ((args.parentStepId === null || args.resumeRoot) && args.logId) {
       await finalizeLog(args.logId, 'success', null)
     }
-    return
+    return 'success'
   }
 
   const results: AutomationLogStepResult[] = []
@@ -353,7 +492,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
       })
       status = 'partial'
       await appendResults(args.logId, results, status, errorMessage)
-      return
+      return 'partial'
     }
 
     try {
@@ -368,13 +507,20 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
         })
         // Recurse into the chosen branch at position 0 (children use their
         // own ordering within the branch scope).
-        await executeStepsFrom({
+        const nested = await executeStepsFrom({
           ...args,
           parentStepId: step.id,
           branch: taken ? 'yes' : 'no',
           startPosition: 0,
           logId: args.logId,
+          resumeRoot: false,
         })
+        // A failed send inside a branch fails the run; the branch already
+        // recorded the step and its error message.
+        if (nested === 'failed') status = 'failed'
+        // A wait parked inside the branch is still pending: the run is not
+        // finished, so the log must not end as 'success'.
+        else if (nested === 'partial' && status === 'success') status = 'partial'
         continue
       }
 
@@ -410,12 +556,13 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
     }
   }
 
-  if (args.parentStepId === null) {
+  if (args.parentStepId === null || args.resumeRoot) {
     await appendResults(args.logId, results, status, errorMessage)
   } else {
     // Nested branch — just append results; parent scope decides final status.
     await appendResults(args.logId, results, null, errorMessage)
   }
+  return status
 }
 
 async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string> {
@@ -425,16 +572,83 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'send_message': {
       const cfg = step.step_config as SendMessageStepConfig
       if (!args.contactId) throw new Error('send_message needs a contact')
-      const text = interpolate(cfg.text, args)
-      if (!text.trim()) throw new Error('send_message has empty text')
+      // `{{menu_link}}` resolves conversation -> connection -> store -> menu_url
+      // and mints/renews the Tracking token BEFORE the send; a failure there
+      // throws, so nothing is sent. The Journey opens only after the send.
+      const usesMenuLink = hasMenuLinkVariable(cfg.text)
+      if (usesMenuLink && args.context.menu_link_sent_at) {
+        // Sending a link fires menu_link_sent: this run would trigger itself.
+        throw new Error('{{menu_link}} is not allowed in a menu_link_sent automation')
+      }
+      const preText = usesMenuLink ? cfg.text : interpolate(cfg.text, args)
+      if (!preText.trim()) throw new Error('send_message has empty text')
       const conversationId = await resolveConversationId(args, 'text')
-      const { whatsapp_message_id } = await engineSendText({
-        accountId: args.automation.account_id,
-        userId: args.automation.user_id,
-        conversationId,
-        contactId: args.contactId,
-        text,
-      })
+      let menuLink: ResolvedMenuLink | null = null
+      let text = preText
+      if (usesMenuLink) {
+        menuLink = await resolveMenuLink(db, {
+          accountId: args.automation.account_id,
+          userId: args.automation.user_id,
+          conversationId,
+          contactId: args.contactId,
+        })
+        text = interpolate(replaceMenuLinkVariable(cfg.text, menuLink.url), args)
+      }
+      // One-shot mark: claim it atomically BEFORE sending, so a second run
+      // (or a concurrent one) finds it taken and sends nothing.
+      let claimed: { journeyId: string; flag: JourneyFlag } | null = null
+      if (cfg.mark_journey_flag) {
+        if (!isJourneyFlag(cfg.mark_journey_flag)) {
+          throw new Error(`unknown journey flag: ${String(cfg.mark_journey_flag)}`)
+        }
+        const journey = await currentJourney(args)
+        if (!journey) throw new Error('mark_journey_flag needs a Journey')
+        const won = await claimJourneyFlag(db, {
+          accountId: args.automation.account_id,
+          journeyId: journey.id,
+          flag: cfg.mark_journey_flag,
+        })
+        if (!won) return `skipped: ${cfg.mark_journey_flag} already set on the Journey`
+        claimed = { journeyId: journey.id, flag: cfg.mark_journey_flag }
+      }
+      let whatsapp_message_id: string | undefined
+      try {
+        ;({ whatsapp_message_id } = await engineSendText({
+          accountId: args.automation.account_id,
+          userId: args.automation.user_id,
+          conversationId,
+          contactId: args.contactId,
+          text,
+          // A template fallback would replace the text and drop the link, so a
+          // link message never falls back: outside the window it fails visibly.
+          fallbackTemplate: !menuLink && cfg.fallback_template?.name
+            ? {
+                name: cfg.fallback_template.name,
+                // '' = unspecified: the core resolves it from the template row.
+                language: cfg.fallback_template.language ?? '',
+                provider: { params: templateParams(cfg.fallback_template.variables) },
+              }
+            : null,
+        }))
+      } catch (err) {
+        // Nothing went out: give the mark back so a later trigger can retry.
+        if (claimed) {
+          await releaseJourneyFlag(db, {
+            accountId: args.automation.account_id,
+            ...claimed,
+          })
+        }
+        throw err
+      }
+      if (menuLink) {
+        await recordMenuLinkSent(db, {
+          accountId: args.automation.account_id,
+          userId: args.automation.user_id,
+          conversationId,
+          contactId: args.contactId,
+          connectionId: menuLink.connectionId,
+        })
+      }
       return `sent via Meta (${whatsapp_message_id})`
     }
 
@@ -466,24 +680,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('send_template needs a contact')
       if (!cfg.template_name) throw new Error('send_template needs template_name')
       const conversationId = await resolveConversationId(args, 'templates')
-      // Meta templates use positional {{1}}, {{2}}, … placeholders, so
-      // we MUST emit params in strict numeric order. Lexicographic sort
-      // of "1", "2", …, "10" yields "1", "10", "2", … which silently
-      // scrambles every template with ≥10 variables.
-      const params = cfg.variables
-        ? Object.keys(cfg.variables)
-            .sort((a, b) => {
-              const na = Number(a)
-              const nb = Number(b)
-              const aNum = Number.isFinite(na)
-              const bNum = Number.isFinite(nb)
-              if (aNum && bNum) return na - nb
-              if (aNum) return -1
-              if (bNum) return 1
-              return a.localeCompare(b)
-            })
-            .map((k) => String(cfg.variables![k]))
-        : []
+      const params = templateParams(cfg.variables)
       const { whatsapp_message_id } = await engineSendTemplate({
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
@@ -838,6 +1035,26 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
     return cfg.reply_ids.includes(replyId)
   }
 
+  // Fires for the accepted Journey event's name (any one of the configured).
+  if (automation.trigger_type === 'journey_event') {
+    const cfg = automation.trigger_config as JourneyEventTriggerConfig
+    const name = ctx?.journey_event_name
+    if (!name || !Array.isArray(cfg?.event_names) || cfg.event_names.length === 0) {
+      return false
+    }
+    return cfg.event_names.includes(name)
+  }
+
+  // Fires for the status the order just moved to (any one of the configured).
+  if (automation.trigger_type === 'order_status_changed') {
+    const cfg = automation.trigger_config as OrderStatusChangedTriggerConfig
+    const status = ctx?.order?.status
+    if (!status || !Array.isArray(cfg?.statuses) || cfg.statuses.length === 0) {
+      return false
+    }
+    return cfg.statuses.includes(status)
+  }
+
   if (automation.trigger_type === 'tag_added') {
     const cfg = automation.trigger_config as TagTriggerConfig
     const tagId = ctx?.tag_id
@@ -910,9 +1127,165 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       const t = parse(to)
       return f <= t ? mins >= f && mins < t : mins >= f || mins < t
     }
+    case 'journey_open': {
+      const journey = await currentJourney(args)
+      return journey?.state === 'open'
+    }
+    case 'journey_stage': {
+      // The Journey's funnel position NOW ("is X" / "is before X"). A closed
+      // Journey sits at won/lost, past every open stage, so "before cart" also
+      // means it is still open.
+      const journey = await currentJourney(args)
+      if (!journey) return false
+      const target = stageRank(cfg.operand)
+      const current = stageRank(journey.stage)
+      if (target < 0 || current < 0) return false
+      if (cfg.value === 'is') return current === target
+      if (cfg.value === 'before') return current < target
+      return false
+    }
+    case 'conversation_unattended': {
+      // No human owns the conversation and the AI has not handed it off.
+      const conv = await conditionConversation(args)
+      if (!conv) return false
+      return !conv.assigned_agent_id && !conv.ai_autoreply_disabled
+    }
+    case 'journey_flag': {
+      // The one-shot mark is read NOW, so a send by a concurrent run counts.
+      if (!isJourneyFlag(cfg.operand)) return false
+      return isJourneyFlagSet(await currentJourney(args), cfg.operand)
+    }
+    case 'customer_replied_since': {
+      // Both sides are read from the database NOW (this runs when the step
+      // executes, also after a wait resumes), never from a scheduling snapshot.
+      const since = await replyReferenceInstant(cfg.operand, args)
+      if (since === null) return false
+      const conv = await conditionConversation(args)
+      if (!conv) return false
+      const { data } = await db
+        .from('messages')
+        .select('created_at')
+        .eq('conversation_id', conv.id)
+        .eq('sender_type', 'customer')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const last = (data as { created_at?: string } | null)?.created_at
+      if (!last) return false
+      return Date.parse(last) > since
+    }
     default:
       return false
   }
+}
+
+interface ConditionConversation {
+  id: string
+  connection_id: string | null
+  assigned_agent_id: string | null
+  ai_autoreply_disabled: boolean | null
+}
+
+/** Position of a stage in the funnel, or -1 when it is not one. */
+function stageRank(stage: string | undefined): number {
+  return JOURNEY_STAGES.findIndex((s) => s.key === stage)
+}
+
+/** Conversation (and its connection) the journey conditions look at. */
+async function conditionConversation(
+  args: ExecuteArgs,
+): Promise<ConditionConversation | null> {
+  const db = supabaseAdmin()
+  const accountId = args.automation.account_id
+  const fromCtx = args.context.conversation_id
+  if (fromCtx) {
+    const { data } = await db
+      .from('conversations')
+      .select('id, connection_id, assigned_agent_id, ai_autoreply_disabled')
+      .eq('id', fromCtx)
+      .eq('account_id', accountId)
+      .maybeSingle()
+    return (data as ConditionConversation | null) ?? null
+  }
+  if (!args.contactId) return null
+  const { data } = await db
+    .from('conversations')
+    .select('id, connection_id, assigned_agent_id, ai_autoreply_disabled')
+    .eq('account_id', accountId)
+    .eq('contact_id', args.contactId)
+    .order('last_message_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return (data as ConditionConversation | null) ?? null
+}
+
+/**
+ * The Journey the run is about: the one the trigger named (`journey_id`, so a
+ * Purchase that just closed it reads as closed), otherwise the contact's open
+ * Journey on the conversation's connection. Always read fresh.
+ */
+async function currentJourney(args: ExecuteArgs): Promise<JourneyRow | null> {
+  const db = supabaseAdmin()
+  const accountId = args.automation.account_id
+  const journeyId = args.context.journey_id
+  if (journeyId) {
+    const { data } = await db
+      .from('journeys')
+      .select('*')
+      .eq('id', journeyId)
+      .eq('account_id', accountId)
+      .maybeSingle()
+    return (data as JourneyRow | null) ?? null
+  }
+  if (!args.contactId) return null
+  const conv = await conditionConversation(args)
+  if (!conv?.connection_id) return null
+  return findOpenJourney(db, {
+    accountId,
+    contactId: args.contactId,
+    connectionId: conv.connection_id,
+  })
+}
+
+/** Epoch ms of `customer_replied_since`'s reference, or null if unknown. */
+async function replyReferenceInstant(
+  reference: string | undefined,
+  args: ExecuteArgs,
+): Promise<number | null> {
+  let iso: string | null | undefined
+  if (reference === 'link_sent') {
+    iso = (await currentJourney(args))?.link_sent_at
+  } else if (reference === 'run_start') {
+    if (!args.logId) return null
+    const { data } = await supabaseAdmin()
+      .from('automation_logs')
+      .select('created_at')
+      .eq('id', args.logId)
+      .maybeSingle()
+    iso = (data as { created_at?: string } | null)?.created_at
+  }
+  const ms = iso ? Date.parse(iso) : NaN
+  return Number.isNaN(ms) ? null : ms
+}
+
+// Meta templates use positional {{1}}, {{2}}, … placeholders, so we MUST emit
+// params in strict numeric order. Lexicographic sort of "1", "2", …, "10"
+// yields "1", "10", "2", … which silently scrambles every template with ≥10
+// variables.
+function templateParams(variables: Record<string, string> | undefined): string[] {
+  if (!variables) return []
+  return Object.keys(variables)
+    .sort((a, b) => {
+      const na = Number(a)
+      const nb = Number(b)
+      const aNum = Number.isFinite(na)
+      const bNum = Number.isFinite(nb)
+      if (aNum && bNum) return na - nb
+      if (aNum) return -1
+      if (bNum) return 1
+      return a.localeCompare(b)
+    })
+    .map((k) => String(variables[k]))
 }
 
 function waitMs(cfg: WaitStepConfig): number {
@@ -925,6 +1298,13 @@ function interpolate(s: string, args: ExecuteArgs): string {
     const [ns, prop] = String(key).split('.')
     if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
     if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
+    if (key === 'order_id' || key === 'order_status' || key === 'order_value') {
+      return orderVariable(
+        args.context.order,
+        key,
+        process.env.NEXT_PUBLIC_APP_LOCALE || 'en',
+      )
+    }
     return ''
   })
 }
@@ -967,7 +1347,7 @@ async function finalizeLog(
     .eq('id', logId)
 }
 
-async function markPending(id: string, status: 'done' | 'failed') {
+async function markPending(id: string, status: 'done' | 'failed' | 'cancelled') {
   await supabaseAdmin()
     .from('automation_pending_executions')
     .update({ status })

@@ -23,6 +23,9 @@ export type ApiErrorCode =
   | 'rate_limited' // per-key budget exhausted
   | 'bad_request' // malformed input
   | 'not_found'
+  | 'idtrack_not_found' // events API: no tracking token matches the idtrack
+  | 'idtrack_expired' // events API: the tracking token is past its validity
+  | 'order_not_found' // events API: no order of this contact has that order_id
   | 'internal';
 
 /**
@@ -63,6 +66,38 @@ export function forbidden(message: string): ApiError {
 /** 400 — bad input. */
 export function badRequest(message: string): ApiError {
   return new ApiError('bad_request', message, 400);
+}
+
+/** 404 — the `idtrack` matches no tracking token of the account. */
+export function idtrackNotFound(): ApiError {
+  return new ApiError(
+    'idtrack_not_found',
+    "'idtrack' does not match any link sent by this account",
+    404
+  );
+}
+
+/**
+ * 400 — `OrderStatusChanged` for an `order_id` that is unknown to the account
+ * or belongs to another contact (same answer for both: nothing leaks). A 400,
+ * not a 404, with its own code so the integrator can tell it apart from a bad
+ * body and from `idtrack_not_found`.
+ */
+export function orderNotFound(orderId: string): ApiError {
+  return new ApiError(
+    'order_not_found',
+    `No order '${orderId}' was found for this idtrack; send its Purchase first`,
+    400
+  );
+}
+
+/** 410 — the `idtrack` existed but passed its validity. */
+export function idtrackExpired(): ApiError {
+  return new ApiError(
+    'idtrack_expired',
+    "'idtrack' has expired; the customer needs a new link",
+    410
+  );
 }
 
 /** 429 — built from a `checkRateLimit` miss, with the standard headers. */

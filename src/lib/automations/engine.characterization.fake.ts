@@ -9,6 +9,8 @@ interface Harness {
   db: Record<string, Row[]>;
   seq: number;
   rpcCalls: { name: string; args: unknown }[];
+  /** Tables whose inserts fail (simulates a database error). */
+  failInsert?: string[];
 }
 
 export function fakeAdmin(h: Harness) {
@@ -17,8 +19,9 @@ export function fakeAdmin(h: Harness) {
     private payload: Row = {};
     private filters: ((r: Row) => boolean)[] = [];
     private mode: 'many' | 'maybe' | 'single' = 'many';
-    private sort: { col: string; asc: boolean } | null = null;
+    private sort: { col: string; asc: boolean }[] = [];
     private embedContact = false;
+    private window: [number, number] | null = null;
     constructor(private table: string) {}
     select(c?: string) {
       if (typeof c === 'string' && c.includes('contact:contacts')) {
@@ -44,6 +47,23 @@ export function fakeAdmin(h: Harness) {
       this.filters.push((r) => (r[col] ?? null) === v);
       return this;
     }
+    lt(col: string, v: unknown) {
+      this.filters.push((r) => r[col] != null && String(r[col]) < String(v));
+      return this;
+    }
+    /** Only `col.is.null` and `col.lt.<value>` terms, as the sweep uses. */
+    or(expr: string) {
+      const terms = expr.split(',').map((t) => {
+        const [col, op, ...rest] = t.split('.');
+        const v = rest.join('.');
+        return (r: Row) =>
+          op === 'is'
+            ? (r[col] ?? null) === null
+            : r[col] != null && String(r[col]) < v;
+      });
+      this.filters.push((r) => terms.some((f) => f(r)));
+      return this;
+    }
     gte(col: string, v: number) {
       this.filters.push((r) => (r[col] as number) >= v);
       return this;
@@ -53,10 +73,15 @@ export function fakeAdmin(h: Harness) {
       return this;
     }
     order(col: string, opts?: { ascending?: boolean }) {
-      this.sort = { col, asc: opts?.ascending !== false };
+      this.sort.push({ col, asc: opts?.ascending !== false });
       return this;
     }
     limit() {
+      return this;
+    }
+    /** Inclusive `from`..`to` window over the sorted result (`many` only). */
+    range(from: number, to: number) {
+      this.window = [from, to];
       return this;
     }
     maybeSingle() {
@@ -70,6 +95,9 @@ export function fakeAdmin(h: Harness) {
     private run() {
       const rows = (h.db[this.table] ??= []);
       let out: Row[];
+      if (this.op === 'insert' && h.failInsert?.includes(this.table)) {
+        return { data: null, error: { message: 'insert failed' } };
+      }
       if (this.op === 'insert') {
         const row = { id: `${this.table}-${++h.seq}`, ...this.payload };
         rows.push(row);
@@ -88,15 +116,22 @@ export function fakeAdmin(h: Harness) {
           }));
         }
       }
-      if (this.sort) {
-        const { col, asc } = this.sort;
+      if (this.sort.length) {
         // Numbers or ISO strings (most-recent-first lookups, US-028).
         const cmp = (x: unknown, y: unknown) =>
           typeof x === 'string' || typeof y === 'string'
             ? String(x ?? '').localeCompare(String(y ?? ''))
             : ((x as number) ?? 0) - ((y as number) ?? 0);
-        out = [...out].sort((a, b) => cmp(a[col], b[col]) * (asc ? 1 : -1));
+        const sorts = this.sort;
+        out = [...out].sort((a, b) => {
+          for (const { col, asc } of sorts) {
+            const c = cmp(a[col], b[col]);
+            if (c !== 0) return c * (asc ? 1 : -1);
+          }
+          return 0;
+        });
       }
+      if (this.window) out = out.slice(this.window[0], this.window[1] + 1);
       if (this.mode === 'many') return { data: out, error: null };
       if (this.mode === 'single' && !out[0]) {
         return { data: null, error: { message: 'no rows' } };

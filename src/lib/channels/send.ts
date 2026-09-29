@@ -31,6 +31,7 @@ import {
   type InteractivePayload,
   type OutboundMessage,
   type SendResult,
+  type TemplateMessage,
 } from './types';
 
 /**
@@ -74,6 +75,16 @@ export interface SendOutboundInput {
    * (default `[<content_type>]`). Automations keep their `[template:<name>]`.
    */
   fallbackPreview?: string;
+  /**
+   * Opt-in reply-window enforcement for TEXT messages, driven by the provider's
+   * `capabilities.replyWindowHours` (never by channel type). When set and the
+   * channel has a window: last inbound within the window sends the text as is;
+   * outside it sends `fallbackTemplate` instead, or fails with `window_closed`
+   * (nothing sent, a failed message row is left in the thread) when there is
+   * none. Absent = no check, so callers without a fallback intent (inbox,
+   * broadcasts, AI auto-reply, flows) behave exactly as before.
+   */
+  windowPolicy?: { fallbackTemplate?: TemplateMessage | null };
   /** RLS-bound or service-role client; every query is account-scoped either way. */
   db?: SupabaseClient;
 }
@@ -317,7 +328,8 @@ export async function showTyping(input: {
 export async function sendOutbound(
   input: SendOutboundInput
 ): Promise<SendOutboundResult> {
-  const { conversationId, accountId, message, actor, replyToMessageId } = input;
+  const { conversationId, accountId, actor, replyToMessageId } = input;
+  const requested = input.message;
   const db = input.db ?? supabaseAdmin();
 
   const { data: conversation, error: convError } = await db
@@ -360,6 +372,46 @@ export async function sendOutbound(
     );
   }
 
+  let effective: OutboundMessage = requested;
+  const windowHours = provider.capabilities.replyWindowHours;
+  if (input.windowPolicy && requested.type === 'text' && windowHours !== null) {
+    const { data: lastInbound } = await db
+      .from('messages')
+      .select('created_at')
+      .eq('conversation_id', conversationId)
+      .eq('sender_type', 'customer')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const at = (lastInbound as Row | null)?.created_at as string | undefined;
+    const open =
+      !!at && Date.now() - new Date(at).getTime() < windowHours * 3_600_000;
+    if (!open) {
+      const fallback = input.windowPolicy.fallbackTemplate;
+      if (!fallback) {
+        const reason = `Outside the ${windowHours}-hour reply window and no template is configured for this step`;
+        channelLog(
+          'warn',
+          connCtx(connection),
+          'send blocked: reply window closed, no template',
+          { conversation: conversationId }
+        );
+        await db.from('messages').insert({
+          conversation_id: conversationId,
+          sender_type: actor.type === 'agent' ? 'agent' : 'bot',
+          content_type: 'text',
+          content_text: requested.text,
+          status: 'failed',
+          error_title: 'Reply window closed',
+          error_details: reason,
+        });
+        throw new ChannelError('window_closed', reason);
+      }
+      effective = { type: 'template', template: fallback };
+    }
+  }
+
+  const message = effective;
   validate(message, provider.capabilities);
 
   // Template: resolve the local row (header/button components + body to persist).

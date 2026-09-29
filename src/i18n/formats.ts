@@ -18,7 +18,7 @@ export type FormatPresets = {
     | 'weekdayDayMonth',
     DateTimeFormatOptions
   >;
-  number: Record<'integer' | 'compact', NumberFormatOptions>;
+  number: Record<'integer' | 'compact' | 'percent', NumberFormatOptions>;
 };
 
 const time24: DateTimeFormatOptions = {
@@ -33,6 +33,7 @@ const time12: DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
 const numbers: FormatPresets['number'] = {
   integer: { maximumFractionDigits: 0 },
   compact: { notation: 'compact', maximumFractionDigits: 1 },
+  percent: { style: 'percent', maximumFractionDigits: 1 },
 };
 
 // Presets added for the components migration. `en` reproduces what the old

@@ -73,8 +73,73 @@ import {
   type StepPath,
 } from "@/lib/automations/builder-tree"
 import { cn } from "@/lib/utils"
+import { JOURNEY_TRIGGER_EVENTS, ORDER_TRIGGER_STATUSES } from "@/lib/automations/trigger-meta"
+import { JOURNEY_STAGES } from "@/lib/journeys/constants"
 import { StepWarnings } from "@/components/channels/step-warnings"
 import { stepRequirements } from "@/lib/channels/step-capabilities"
+
+/**
+ * `fallback_template` of a `send_message` step: the template sent instead of
+ * the text when the channel's reply window (WhatsApp 24 h) is closed. Left
+ * empty, a send outside the window fails visibly. Variables are fixed values,
+ * one per line, in order ({{1}}, {{2}}, ...).
+ */
+function FallbackTemplateFields({
+  value,
+  onChange,
+  t,
+}: {
+  value: { name: string; language?: string; variables?: Record<string, string> } | undefined
+  onChange: (
+    v: { name: string; language?: string; variables?: Record<string, string> } | undefined,
+  ) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const variables = value?.variables ?? {}
+  const lines = Object.keys(variables)
+    .sort((a, b) => Number(a) - Number(b))
+    .map((k) => variables[k])
+    .join("\n")
+  return (
+    <div className="mt-3 space-y-2 rounded-md border border-border p-2">
+      <p className="text-xs font-medium text-muted-foreground">
+        {t("config.fallbackTemplateLabel")}
+      </p>
+      <SendTemplateFields
+        templateName={value?.name ?? ""}
+        language={value?.language ?? ""}
+        onChange={(patch) =>
+          onChange(
+            patch.template_name
+              ? {
+                  name: patch.template_name,
+                  language: patch.language,
+                  ...(value?.variables ? { variables: value.variables } : {}),
+                }
+              : undefined,
+          )
+        }
+        t={t}
+      />
+      {value?.name && (
+        <FieldBlock label={t("config.fallbackVariablesLabel")}>
+          <Textarea
+            value={lines}
+            onChange={(e) => {
+              const vals = e.target.value.split("\n")
+              onChange({
+                ...value,
+                variables: Object.fromEntries(vals.map((v, i) => [String(i + 1), v])),
+              })
+            }}
+            className="min-h-16 bg-muted font-mono text-xs text-foreground"
+          />
+        </FieldBlock>
+      )}
+      <p className="text-[11px] text-muted-foreground">{t("config.fallbackTemplateHint")}</p>
+    </div>
+  )
+}
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -149,6 +214,9 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "new_contact_created" },
   { value: "conversation_assigned" },
   { value: "tag_added" },
+  { value: "journey_event" },
+  { value: "menu_link_sent" },
+  { value: "order_status_changed" },
   { value: "time_based" },
 ]
 
@@ -863,6 +931,12 @@ function TriggerCard({
             {type === "interactive_reply" && (
               <InteractiveReplyConfig config={config} onChange={onConfigChange} t={t} />
             )}
+            {type === "journey_event" && (
+              <JourneyEventConfig config={config} onChange={onConfigChange} t={t} />
+            )}
+            {type === "order_status_changed" && (
+              <OrderStatusesConfig config={config} onChange={onConfigChange} t={t} />
+            )}
             {type === "tag_added" && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -986,6 +1060,83 @@ function KeywordMatchConfig({
           </p>
         )}
       </div>
+    </div>
+  )
+}
+
+function JourneyEventConfig({
+  config,
+  onChange,
+  t,
+}: {
+  config: Record<string, unknown>
+  onChange: (c: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const selected = (config?.event_names as string[] | undefined) ?? []
+  function toggle(name: string, checked: boolean) {
+    const next = JOURNEY_TRIGGER_EVENTS.filter((n) =>
+      n === name ? checked : selected.includes(n),
+    )
+    onChange({ ...config, event_names: next })
+  }
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+        {t("config.journeyEventsLabel")}
+      </label>
+      <div className="space-y-1">
+        {JOURNEY_TRIGGER_EVENTS.map((name) => (
+          <label key={name} className="flex items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={selected.includes(name)}
+              onChange={(e) => toggle(name, e.target.checked)}
+            />
+            <span className="font-mono text-xs">{name}</span>
+          </label>
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground">{t("config.journeyEventsHint")}</p>
+    </div>
+  )
+}
+
+function OrderStatusesConfig({
+  config,
+  onChange,
+  t,
+}: {
+  config: Record<string, unknown>
+  onChange: (c: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const tStatus = useTranslations("Orders.status")
+  const selected = (config?.statuses as string[] | undefined) ?? []
+  function toggle(status: string, checked: boolean) {
+    const next = ORDER_TRIGGER_STATUSES.filter((n) =>
+      n === status ? checked : selected.includes(n),
+    )
+    onChange({ ...config, statuses: next })
+  }
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+        {t("config.orderStatusesLabel")}
+      </label>
+      <div className="space-y-1">
+        {ORDER_TRIGGER_STATUSES.map((status) => (
+          <label key={status} className="flex items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={selected.includes(status)}
+              onChange={(e) => toggle(status, e.target.checked)}
+            />
+            <span>{tStatus(status)}</span>
+          </label>
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground">{t("config.orderStatusesHint")}</p>
     </div>
   )
 }
@@ -1317,6 +1468,41 @@ function StepEditor({
             placeholder={t("config.placeholderMessageText")}
             className="min-h-24 bg-muted text-foreground"
           />
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            <code className="rounded bg-muted px-1">{"{{menu_link}}"}</code>{" "}
+            {t("config.menuLinkHint")}
+          </p>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            <code className="rounded bg-muted px-1">{"{{order_id}}"}</code>{" "}
+            <code className="rounded bg-muted px-1">{"{{order_status}}"}</code>{" "}
+            <code className="rounded bg-muted px-1">{"{{order_value}}"}</code>{" "}
+            {t("config.orderVariablesHint")}
+          </p>
+          <FallbackTemplateFields
+            value={
+              cfg.fallback_template as
+                | { name: string; language?: string; variables?: Record<string, string> }
+                | undefined
+            }
+            onChange={(fallback) => set({ fallback_template: fallback })}
+            t={t}
+          />
+          <label className="mt-2 flex items-start gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={cfg.mark_journey_flag === "abandoned_cart_sent"}
+              onChange={(e) =>
+                set({ mark_journey_flag: e.target.checked ? "abandoned_cart_sent" : undefined })
+              }
+            />
+            <span>
+              {t("config.markJourneyFlagLabel")}
+              <span className="block text-[11px] text-muted-foreground">
+                {t("config.markJourneyFlagHint")}
+              </span>
+            </span>
+          </label>
         </FieldBlock>
       )
     case "send_buttons":
@@ -1452,15 +1638,115 @@ function StepEditor({
           <FieldBlock label={t("config.subjectLabel")}>
             <select
               value={(cfg.subject as string) ?? "tag_presence"}
-              onChange={(e) => set({ subject: e.target.value })}
+              onChange={(e) => {
+                const subject = e.target.value
+                // The reply condition always carries an explicit reference
+                // (what the select shows is what gets saved); journey_open
+                // has no operand.
+                set({
+                  subject,
+                  operand:
+                    subject === "customer_replied_since"
+                      ? "link_sent"
+                      : subject === "journey_stage"
+                        ? "cart"
+                        : subject === "journey_flag"
+                          ? "abandoned_cart_sent"
+                          : "",
+                  ...(subject === "journey_stage" ? { value: "before" } : {}),
+                })
+              }}
               className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
             >
               <option value="tag_presence">{t("config.subjects.tag_presence")}</option>
               <option value="contact_field">{t("config.subjects.contact_field")}</option>
               <option value="message_content">{t("config.subjects.message_content")}</option>
               <option value="time_of_day">{t("config.subjects.time_of_day")}</option>
+              <option value="customer_replied_since">
+                {t("config.subjects.customer_replied_since")}
+              </option>
+              <option value="journey_open">{t("config.subjects.journey_open")}</option>
+              <option value="journey_stage">{t("config.subjects.journey_stage")}</option>
+              <option value="conversation_unattended">
+                {t("config.subjects.conversation_unattended")}
+              </option>
+              <option value="journey_flag">{t("config.subjects.journey_flag")}</option>
             </select>
           </FieldBlock>
+          {cfg.subject === "journey_open" && (
+            <p className="text-xs text-muted-foreground">{t("config.journeyOpenHint")}</p>
+          )}
+          {cfg.subject === "conversation_unattended" && (
+            <p className="text-xs text-muted-foreground">
+              {t("config.conversationUnattendedHint")}
+            </p>
+          )}
+          {cfg.subject === "journey_flag" && (
+            <FieldBlock label={t("config.journeyFlagLabel")}>
+              <select
+                value={(cfg.operand as string) || "abandoned_cart_sent"}
+                onChange={(e) => set({ operand: e.target.value })}
+                className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+              >
+                <option value="abandoned_cart_sent">
+                  {t("config.journeyFlags.abandoned_cart_sent")}
+                </option>
+              </select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {t("config.journeyFlagHint")}
+              </p>
+            </FieldBlock>
+          )}
+          {cfg.subject === "journey_stage" && (
+            <>
+              <FieldBlock label={t("config.stageComparisonLabel")}>
+                <select
+                  value={(cfg.value as string) || "before"}
+                  onChange={(e) => set({ value: e.target.value })}
+                  className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+                >
+                  <option value="before">{t("config.stageComparisons.before")}</option>
+                  <option value="is">{t("config.stageComparisons.is")}</option>
+                </select>
+              </FieldBlock>
+              <FieldBlock label={t("config.stageLabel")}>
+                <select
+                  value={(cfg.operand as string) || "cart"}
+                  onChange={(e) => set({ operand: e.target.value })}
+                  className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+                >
+                  {JOURNEY_STAGES.map((st) => (
+                    <option key={st.key} value={st.key}>
+                      {t(`config.stages.${st.key}`)}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {t("config.stageHint")}
+                </p>
+              </FieldBlock>
+            </>
+          )}
+          {cfg.subject === "customer_replied_since" && (
+            <FieldBlock label={t("config.replyReferenceLabel")}>
+              <select
+                value={(cfg.operand as string) || "link_sent"}
+                onChange={(e) => set({ operand: e.target.value })}
+                className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+              >
+                <option value="link_sent">{t("config.replyReferences.link_sent")}</option>
+                <option value="run_start">{t("config.replyReferences.run_start")}</option>
+              </select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {t("config.replyReferenceHint")}
+              </p>
+            </FieldBlock>
+          )}
+          {cfg.subject !== "journey_open" &&
+            cfg.subject !== "customer_replied_since" &&
+            cfg.subject !== "journey_stage" &&
+            cfg.subject !== "journey_flag" &&
+            cfg.subject !== "conversation_unattended" && (
           <FieldBlock label={t("config.operandLabel")}>
             <Input
               placeholder={
@@ -1477,6 +1763,7 @@ function StepEditor({
               className="bg-muted text-foreground"
             />
           </FieldBlock>
+          )}
           {(cfg.subject === "contact_field" || cfg.subject === "message_content") && (
             <FieldBlock label={t("config.valueLabel")}>
               <Input

@@ -30,6 +30,8 @@ const UNIQUE: Record<string, string[][]> = {
   messages: [['conversation_id', 'message_id']],
   contact_tags: [['contact_id', 'tag_id']],
   contact_custom_values: [['contact_id', 'custom_field_id']],
+  journey_events: [['account_id', 'event_id']],
+  orders: [['account_id', 'external_order_id']],
 };
 
 class Query {
@@ -42,7 +44,8 @@ class Query {
   private embedConversation = false;
   private embedIdentities = false;
   private embedConnection = false;
-  private sort: { col: string; asc: boolean } | null = null;
+  private sort: { col: string; asc: boolean }[] = [];
+  private window: [number, number] | null = null;
   private max: number | null = null;
   private ignoreDup = false;
   private onConflict: string[] = [];
@@ -107,6 +110,10 @@ class Query {
     this.filters.push((r) => (r[c] as string | number) >= v);
     return this;
   }
+  lte(c: string, v: string | number) {
+    this.filters.push((r) => (r[c] as string | number) <= v);
+    return this;
+  }
   lt(c: string, v: string | number) {
     this.filters.push((r) => (r[c] as string | number) < v);
     return this;
@@ -124,7 +131,12 @@ class Query {
     return this;
   }
   order(col: string, opts?: { ascending?: boolean }) {
-    this.sort = { col, asc: opts?.ascending !== false };
+    this.sort.push({ col, asc: opts?.ascending !== false });
+    return this;
+  }
+  /** Inclusive `from`..`to` window over the sorted result. */
+  range(from: number, to: number) {
+    this.window = [from, to];
     return this;
   }
   limit(n?: number) {
@@ -245,14 +257,17 @@ class Query {
             ) ?? null,
         }));
       }
-      if (this.sort) {
-        const { col, asc } = this.sort;
-        out = [...out].sort(
-          (a, b) =>
-            String(a[col] ?? '').localeCompare(String(b[col] ?? '')) *
-            (asc ? 1 : -1)
-        );
+      if (this.sort.length) {
+        const sorts = this.sort;
+        out = [...out].sort((a, b) => {
+          for (const { col, asc } of sorts) {
+            const c = String(a[col] ?? '').localeCompare(String(b[col] ?? ''));
+            if (c !== 0) return c * (asc ? 1 : -1);
+          }
+          return 0;
+        });
       }
+      if (this.window) out = out.slice(this.window[0], this.window[1] + 1);
       if (this.max !== null) out = out.slice(0, this.max);
       if (this.head) return { data: null, error: null, count: out.length };
     }

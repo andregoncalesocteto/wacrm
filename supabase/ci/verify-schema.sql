@@ -292,6 +292,98 @@ BEGIN
     RAISE EXCEPTION 'idx_broadcast_recipients_external_message_id is missing (migration 053)';
   END IF;
 
+  -- 055: stores.menu_url (Digital menu address, nullable, https-only CHECK).
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'stores'
+      AND column_name = 'menu_url'
+  ) THEN
+    RAISE EXCEPTION 'stores.menu_url is missing (migration 055)';
+  END IF;
+
+  -- 056: order journeys (journeys, tracking_tokens, deals.connection_id/journey_id).
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'journeys'
+      AND column_name = 'link_sent_at'
+  ) THEN
+    RAISE EXCEPTION 'journeys.link_sent_at is missing (migration 056)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'tracking_tokens'
+      AND column_name = 'token'
+  ) THEN
+    RAISE EXCEPTION 'tracking_tokens.token is missing (migration 056)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'deals'
+      AND column_name = 'connection_id'
+  ) THEN
+    RAISE EXCEPTION 'deals.connection_id is missing (migration 056)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND tablename = 'deals'
+      AND indexname = 'uq_deals_open_journey'
+  ) THEN
+    RAISE EXCEPTION 'uq_deals_open_journey is missing (migration 056)';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'journey_events_event_key'
+  ) THEN
+    RAISE EXCEPTION 'journey_events unique (account_id, event_id) is missing (migration 057)';
+  END IF;
+
+  -- 058: orders (Purchase) + contacts.last_purchase_at.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'orders_external_key'
+  ) THEN
+    RAISE EXCEPTION 'orders unique (account_id, external_order_id) is missing (migration 058)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'contacts'
+      AND column_name = 'last_purchase_at'
+  ) THEN
+    RAISE EXCEPTION 'contacts.last_purchase_at is missing (migration 058)';
+  END IF;
+
+  -- 059: orders.status_history (OrderStatusChanged).
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'orders'
+      AND column_name = 'status_history'
+  ) THEN
+    RAISE EXCEPTION 'orders.status_history is missing (migration 059)';
+  END IF;
+
+  -- 061: automations.preset_key + unique (account_id, preset_key).
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'automations'
+      AND column_name = 'preset_key'
+  ) THEN
+    RAISE EXCEPTION 'automations.preset_key is missing (migration 061)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'automations_account_preset_key'
+  ) THEN
+    RAISE EXCEPTION 'automations_account_preset_key index is missing (migration 061)';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'orders'
+      AND column_name = 'origin_event_id'
+  ) THEN
+    RAISE EXCEPTION 'orders.origin_event_id is missing (migration 062)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

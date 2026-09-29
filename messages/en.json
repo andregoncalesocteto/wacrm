@@ -445,9 +445,9 @@
         "custom": "Custom Fields",
         "deals": "Deals",
         "tags": "Tags",
-      "noTags": "No tags",
-      "noDeals": "No deals",
-      "addNotePlaceholder": "Add a note..."
+        "noTags": "No tags",
+        "noDeals": "No deals",
+        "addNotePlaceholder": "Add a note..."
       },
       "actions": {
         "edit": "Edit",
@@ -623,7 +623,8 @@
     "card": {
       "noContact": "No contact",
       "won": "Won",
-      "lost": "Lost"
+      "lost": "Lost",
+      "cartItems": "{count, plural, =1 {# item} other {# items}}"
     },
     "form": {
       "editDeal": "Edit Deal",
@@ -706,6 +707,35 @@
       "lostThisMonth": "Lost This Month",
       "lostThisMonthTooltip": "Deals marked as Lost since the first day of the current month.",
       "howCalculated": "How {label} is calculated"
+    },
+    "journey": {
+      "filters": {
+        "channel": "Channel",
+        "store": "Store",
+        "allChannels": "All channels",
+        "allStores": "All stores"
+      },
+      "stages": {
+        "link_sent": "Link sent",
+        "browsing": "Browsing",
+        "cart": "Cart",
+        "checkout": "Checkout",
+        "won": "Purchased",
+        "lost": "Lost"
+      },
+      "funnel": {
+        "title": "Journey conversion",
+        "description": "Journeys that reached each step (in it or beyond) and the rate from link sent to purchase.",
+        "overall": "Overall",
+        "byChannel": "By channel",
+        "byStore": "By store",
+        "group": "Group",
+        "allJourneys": "All Journeys",
+        "conversion": "Link to purchase",
+        "noData": "-",
+        "empty": "No Journeys yet.",
+        "error": "Could not load the Journey funnel."
+      }
     }
   },
   "Broadcasts": {
@@ -963,6 +993,79 @@
     }
   },
   "Automations": {
+    "journeyPreset": {
+      "title": "Order Journey",
+      "description": "Creates, ready to edit, the automations of the order Journey: reminders after the menu link (10 and 30 min), abandoned cart, thank-you and one notice per order status. Everything is created off; review the texts and turn them on in the list.",
+      "install": "Add the Order Journey preset",
+      "installAgain": "Add missing automations",
+      "toastCreated": "{created, plural, =0 {Nothing new to add} one {# automation created} other {# automations created}}; {existing} already existed.",
+      "toastError": "Couldn't add the preset.",
+      "loadError": "Couldn't load the preset status.",
+      "statusTitle": "What is still missing",
+      "installedCount": "{installed} of {total} automations added.",
+      "allSet": "Nothing missing: all automations are on, every store has a menu URL and every send step has a fallback template.",
+      "inactive": "{count, plural, one {# automation is still off} other {# automations are still off}}. Review the texts and turn them on in the list below.",
+      "storesMissing": "{count, plural, one {# store has} other {# stores have}} no menu URL: {names}. The menu link is not sent for them.",
+      "storesLink": "Set the menu URL in Settings",
+      "templatesMissing": "{count, plural, one {# message has} other {# messages have}} no WhatsApp fallback template. WhatsApp requires a template outside the 24-hour window; without one the send fails (visible in the automation log and the conversation).",
+      "templatesLink": "Open {name}",
+      "selectionNote": "Delivered is added too: leave it off if you don't want to message customers on delivery.",
+      "automations": {
+        "resumption": {
+          "name": "Order Journey: reminders after the menu link",
+          "description": "Reminders 10 and 30 minutes after the menu link, if the customer hasn't replied, hasn't reached the cart and nobody is attending."
+        },
+        "abandoned_cart": {
+          "name": "Order Journey: abandoned cart",
+          "description": "10 minutes after the last cart or checkout event, one message per Journey if the customer went quiet."
+        },
+        "thank_you": {
+          "name": "Order Journey: thank-you",
+          "description": "Thanks the customer when the order is placed."
+        },
+        "status_received": {
+          "name": "Order Journey: order received",
+          "description": "Notifies the customer when the order is received."
+        },
+        "status_preparing": {
+          "name": "Order Journey: order preparing",
+          "description": "Notifies the customer when the order goes to preparation."
+        },
+        "status_finished": {
+          "name": "Order Journey: order finished",
+          "description": "Notifies the customer when the order is finished."
+        },
+        "status_out_for_delivery": {
+          "name": "Order Journey: out for delivery",
+          "description": "Notifies the customer when the order leaves for delivery."
+        },
+        "status_ready_for_pickup": {
+          "name": "Order Journey: ready for pickup",
+          "description": "Notifies the customer when the order is ready for pickup."
+        },
+        "status_delivered": {
+          "name": "Order Journey: delivered",
+          "description": "Notifies the customer when the order is delivered."
+        },
+        "status_cancelled": {
+          "name": "Order Journey: cancelled",
+          "description": "Notifies the customer when the order is cancelled."
+        }
+      },
+      "texts": {
+        "resumption1": "Hi! Still thinking about your order? If you have any questions, just reply here and we'll help.",
+        "resumption2": "Hi! Your order is still waiting for you. Need a hand choosing? Just reply here.",
+        "abandonedCart": "Hi! We noticed you left some items in your cart. Want to finish your order? Just reply here if you need help.",
+        "thankYou": "Thank you for your order {{order_id}}! We'll keep you posted on every step.",
+        "status_received": "Your order {{order_id}} was received! We'll start on it soon.",
+        "status_preparing": "Your order {{order_id}} is being prepared.",
+        "status_finished": "Your order {{order_id}} is ready!",
+        "status_out_for_delivery": "Your order {{order_id}} is out for delivery. It will be with you soon!",
+        "status_ready_for_pickup": "Your order {{order_id}} is ready for pickup. Come get it while it's hot!",
+        "status_delivered": "Your order {{order_id}} was delivered. Enjoy your meal!",
+        "status_cancelled": "Your order {{order_id}} was cancelled. If you have any questions, just reply here."
+      }
+    },
     "list": {
       "loadError": "Failed to load automations",
       "title": "Automations",
@@ -1077,6 +1180,18 @@
           "label": "Button / List Reply",
           "hint": "Customer taps a button or list row whose id matches — chain menus across automations"
         },
+        "journey_event": {
+          "label": "Journey Event",
+          "hint": "When a customer's order Journey records an event (view, add to cart, checkout, purchase)"
+        },
+        "menu_link_sent": {
+          "label": "Menu link sent",
+          "hint": "When a menu link is sent (by an automation or the AI reply) and the order Journey opens or renews. Start of the 10 and 30 minute Resumptions."
+        },
+        "order_status_changed": {
+          "label": "Order status changed",
+          "hint": "When an order moves to a new status reported by the menu (received, preparing, delivered, cancelled...). Sends the customer's status notification."
+        },
         "new_contact_created": {
           "label": "New Contact Created",
           "hint": "When a contact is auto-created from an incoming message"
@@ -1172,6 +1287,7 @@
       "config": {
         "messageText": "Message text",
         "placeholderMessageText": "Hi! Thanks for reaching out…",
+        "menuLinkHint": "inserts the store's menu link with a tracking token and opens the order Journey. The step fails, and nothing is sent, if the store has no menu URL.",
         "tagLabel": "Tag",
         "modeLabel": "Mode",
         "modes": {
@@ -1195,8 +1311,51 @@
           "tag_presence": "Tag presence",
           "contact_field": "Contact field",
           "message_content": "Message content",
-          "time_of_day": "Time of day"
+          "time_of_day": "Time of day",
+          "customer_replied_since": "Customer replied since",
+          "journey_open": "Journey is open",
+          "journey_stage": "Journey stage",
+          "conversation_unattended": "No human and no AI handoff",
+          "journey_flag": "Journey abandoned-cart message already sent"
         },
+        "replyReferenceLabel": "Reference instant",
+        "replyReferences": {
+          "link_sent": "Menu link sent",
+          "run_start": "Start of this run"
+        },
+        "replyReferenceHint": "True if the customer sent a message after this instant. Checked when the step runs, including after a wait.",
+        "journeyOpenHint": "True while the customer's Journey is still open when the step runs (false once it is won or lost).",
+        "journeyEventsLabel": "Journey events",
+        "journeyEventsHint": "Fires when any of the checked events is accepted for the customer's Journey.",
+        "orderStatusesLabel": "Order statuses",
+        "orderStatusesHint": "Fires when the order moves to any of the checked statuses. A status with no automation sends nothing.",
+        "orderVariablesHint": "insert the order data (id, status code and value) into the text. Available in this trigger and in Journey Event automations for Purchase.",
+        "conversationUnattendedHint": "True while no agent is assigned to the conversation and the AI has not handed it off. Checked when the step runs, including after a wait.",
+        "journeyFlagLabel": "Flag",
+        "journeyFlags": {
+          "abandoned_cart_sent": "Abandoned-cart message"
+        },
+        "journeyFlagHint": "True once the abandoned-cart message went out for this Journey. Checked when the step runs, including after a wait.",
+        "markJourneyFlagLabel": "Send once per Journey (abandoned cart)",
+        "markJourneyFlagHint": "The Journey is marked right before the send, so this message goes out at most once per Journey, even if several runs reach it. If the send fails, the mark is undone.",
+        "stageComparisonLabel": "Comparison",
+        "stageComparisons": {
+          "before": "is before",
+          "is": "is"
+        },
+        "stageLabel": "Stage",
+        "stages": {
+          "link_sent": "Link sent",
+          "browsing": "Browsing",
+          "cart": "Cart",
+          "checkout": "Checkout",
+          "won": "Purchased",
+          "lost": "Lost"
+        },
+        "stageHint": "Checked when the step runs. \"Is before Cart\" is true only while the Journey is still open and has not reached the cart.",
+        "fallbackTemplateLabel": "Template outside the 24 h window (WhatsApp)",
+        "fallbackVariablesLabel": "Template variables (one per line, in order)",
+        "fallbackTemplateHint": "Sent instead of the text when the customer's last message is over 24 h old. Without a template, that send fails and shows in the automation log. Variables are fixed values.",
         "operandLabel": "Operand",
         "placeholderTime": "HH:mm-HH:mm",
         "placeholderContact": "name / email / company",
@@ -1676,13 +1835,13 @@
       "deleteLocallyAria": "Delete template locally",
       "deleteMetaLocallyTitle": "Delete from Meta and locally",
       "deleteLocallyTitle": "Delete locally",
-      
+
       "dialogEditTitle": "Edit Message Template",
       "dialogNewTitle": "New Message Template",
       "dialogEditDesc": "Save your changes to re-submit to Meta. Status will flip back to PENDING during review.",
       "dialogNewDesc": "Build a template and submit it to Meta for approval. Once approved, you can use it in broadcasts and the inbox.",
       "authWarning": "AUTHENTICATION templates have a fixed body + OTP button shape that needs a different builder. Create them in Meta WhatsApp Manager for now and use <bold>Sync from Meta</bold> to bring them in.",
-      
+
       "templateName": "Template Name",
       "namePlaceholder": "e.g. order_confirmation",
       "nameFixed": "Name is fixed once a template exists on Meta — create a new template to change it.",
@@ -1691,7 +1850,7 @@
       "language": "Language",
       "langFixed": "Language is fixed once a template exists on Meta.",
       "langHint": "Must match the exact code on Meta — <code>en_US</code> and <code>en</code> are distinct.",
-      
+
       "header": "Header",
       "headerNone": "None",
       "headerText": "Text",
@@ -1701,7 +1860,7 @@
       "headerTextPlaceholder": "Header text (max 60 chars, optional {{1}})",
       "headerSampleAria": "Sample value for header variable",
       "headerSamplePlaceholder": "Sample value for {{1}} (required for Meta review)",
-      
+
       "uploadImage": "Upload image",
       "uploadVideo": "Upload video",
       "uploadDocument": "Upload document",
@@ -1713,17 +1872,17 @@
       "mediaHint": "Upload a file or paste a public HTTPS link — we upload it to Meta for review automatically.",
       "videoHint": " MP4 or 3GPP, ≤16 MB, ≤60 seconds recommended.",
       "documentHint": " PDF, Word, PowerPoint, Excel or text, ≤100 MB via link (≤16 MB when uploaded here).",
-      
+
       "bodyText": "Body Text",
       "bodyPlaceholder": "Hello {{1}}, your order {{2}} is confirmed.",
       "bodyHint": "Use {{1}}, {{2}} for variables (must be contiguous starting at {{1}}).",
       "sampleValues": "Sample values (Meta uses these to review your template)",
       "sampleAria": "Sample value for body variable {var}",
       "samplePlaceholder": "Sample for {var}",
-      
+
       "footer": "Footer (optional)",
       "footerPlaceholder": "Optional footer text (max 60 chars)",
-      
+
       "buttons": "Buttons (optional)",
       "addButton": "Add Button",
       "buttonsLimit": "Up to {max} buttons. QUICK_REPLY buttons must come before URL / phone / copy-code buttons.",
@@ -1736,19 +1895,19 @@
       "urlSamplePlaceholder": "Example value for {{1}} (required when URL has a variable)",
       "phonePlaceholder": "+15551234567",
       "codePlaceholder": "Example code (e.g. SUMMER20)",
-      
+
       "cancel": "Cancel",
       "saving": "Saving…",
       "submitting": "Submitting…",
       "saveResubmit": "Save & Resubmit",
       "submitApproval": "Submit for Approval",
-      
+
       "deleteDialogTitle": "Delete template?",
       "deleteMetaDesc": "\"{name}\" will be deleted from Meta and from wacrm. Active broadcasts using this template will start failing on their next send. This can't be undone.",
       "deleteLocalDesc": "\"{name}\" will be deleted from wacrm. It was never submitted to Meta, so no remote cleanup is needed.",
       "deleting": "Deleting…",
       "delete": "Delete",
-      
+
       "toastLoadFailed": "Failed to load templates",
       "toastSubmitFailed": "Failed to submit",
       "toastSubmitEditSuccess": "Edit submitted — Meta typically reviews within 24 hours.",
@@ -1930,6 +2089,9 @@
       "hoursLabel": "Hours",
       "hoursPlaceholder": "e.g. Mon-Fri 9am-6pm",
       "managerLabel": "Manager",
+      "menuUrlLabel": "Digital menu URL",
+      "menuUrlPlaceholder": "https://menu.example.com",
+      "menuUrlHint": "Optional. Must start with https://. Leave blank if the store has no digital menu.",
       "cancel": "Cancel",
       "save": "Save",
       "noConnections": "No connections yet",
@@ -1941,6 +2103,7 @@
       "toastNameRequired": "Enter the store name.",
       "toastNameTooLong": "The name must be at most {max} characters.",
       "toastFieldTooLong": "One of the fields is too long.",
+      "toastMenuUrlInvalid": "Enter a valid https:// address for the digital menu.",
       "toastSaveFailed": "Could not save the store.",
       "toastCreated": "Store created.",
       "toastUpdated": "Store updated.",
@@ -2122,7 +2285,7 @@
       "profileSaved": "Profile saved",
       "emailChangeFailed": "Email change failed: {message}",
       "profileSavedEmailCheck": "Profile saved — check your email to confirm the address change",
-      
+
       "passwordTitle": "Password",
       "passwordDesc": "Use at least {min} characters. You will stay signed in on this device after changing it.",
       "currentPassword": "Current password",
@@ -2136,7 +2299,7 @@
       "currentPasswordIncorrect": "Current password is incorrect",
       "passwordUpdateFailed": "Password update failed: {message}",
       "passwordUpdated": "Password updated",
-      
+
       "sessionsTitle": "Active sessions",
       "sessionsDesc": "Sign out of every device where you're logged in — including this one. Useful if you lost a laptop or shared your password.",
       "signOutAll": "Sign out of all devices",
@@ -2209,7 +2372,8 @@
         "conversations:read": "List and read conversations",
         "connections:read": "List stores and channel connections",
         "broadcasts:send": "Launch broadcast campaigns",
-        "webhooks:manage": "Register and manage outbound event webhooks"
+        "webhooks:manage": "Register and manage outbound event webhooks",
+        "events:write": "Send order-journey events from the digital menu"
       },
       "noApiKeys": "No API keys yet.",
       "createOneHint": "Click <bold>New API key</bold> to create one.",
@@ -2532,5 +2696,21 @@
   "Ui": {
     "close": "Close",
     "gatedReadOnly": "Read-only — your role can't {reason}"
+  },
+  "Orders": {
+    "title": "Orders",
+    "orderNumber": "Order {id}",
+    "history": "Status history",
+    "itemQuantity": "{quantity}x",
+    "status": {
+      "placed": "Placed",
+      "received": "Received",
+      "preparing": "Preparing",
+      "finished": "Finished",
+      "out_for_delivery": "Out for delivery",
+      "ready_for_pickup": "Ready for pickup",
+      "delivered": "Delivered",
+      "cancelled": "Cancelled"
+    }
   }
 }

@@ -163,6 +163,38 @@ describe('POST /api/v1/contacts', () => {
     expect(JSON.stringify(body)).toContain('telegram:chat_id');
   });
 
+  it('refuses to plant an idtrack identity (Tracking tokens are CRM-issued only)', async () => {
+    const res = await POST(
+      post({
+        phone: '+15551230000',
+        identities: [{ kind: 'idtrack', external_id: 'stolen-token' }],
+      })
+    );
+    expect(res.status).toBe(400);
+    expect(
+      (world.tables.contact_identities ?? []).some((i) => i.kind === 'idtrack')
+    ).toBe(false);
+  });
+
+  it('never returns idtrack identities (the token is an events-API credential)', async () => {
+    seedTelegramContact();
+    world.tables.contact_identities.push({
+      id: 'i-track',
+      account_id: 'acct-1',
+      contact_id: 'c-tg',
+      kind: 'idtrack',
+      external_id: 'secret-token',
+    });
+    const res = await GET(
+      new Request('https://crm.example.com/api/v1/contacts')
+    );
+    const { data } = await res.json();
+    expect(JSON.stringify(data)).not.toContain('secret-token');
+    expect(data[0].identities.map((i: { kind: string }) => i.kind)).toEqual([
+      'telegram:chat_id',
+    ]);
+  });
+
   it('rejects an invalid whatsapp:phone identity and a malformed entry', async () => {
     const bad = await POST(
       post({ identities: [{ kind: 'whatsapp:phone', external_id: 'abc' }] })

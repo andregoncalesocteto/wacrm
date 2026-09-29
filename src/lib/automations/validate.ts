@@ -1,5 +1,8 @@
 import type { AutomationTriggerType } from '@/types'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
+import { JOURNEY_STAGES } from '@/lib/journeys/constants'
+import { JOURNEY_FLAGS, isJourneyFlag } from '@/lib/journeys/flags'
+import { JOURNEY_TRIGGER_EVENTS, ORDER_TRIGGER_STATUSES } from './trigger-meta'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -57,6 +60,12 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
     case 'send_message':
       if (!nonEmpty(c.text)) {
         issues.push({ path: `${path}.text`, message: 'message text is required' })
+      }
+      if (c.mark_journey_flag !== undefined && !isJourneyFlag(c.mark_journey_flag)) {
+        issues.push({
+          path: `${path}.mark_journey_flag`,
+          message: `journey flag must be among: ${Object.keys(JOURNEY_FLAGS).join(', ')}`,
+        })
       }
       break
     case 'send_buttons':
@@ -122,7 +131,38 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       if (!nonEmpty(c.subject)) {
         issues.push({ path: `${path}.subject`, message: 'condition subject is required' })
       }
-      if (!nonEmpty(c.operand)) {
+      if (c.subject === 'journey_open') {
+        // Reads the Journey's current state; nothing to configure.
+      } else if (c.subject === 'conversation_unattended') {
+        // Reads the conversation's assignment and AI handoff; nothing to configure.
+      } else if (c.subject === 'journey_stage') {
+        if (!JOURNEY_STAGES.some((s) => s.key === c.operand)) {
+          issues.push({
+            path: `${path}.operand`,
+            message: `stage must be among: ${JOURNEY_STAGES.map((s) => s.key).join(', ')}`,
+          })
+        }
+        if (c.value !== 'is' && c.value !== 'before') {
+          issues.push({
+            path: `${path}.value`,
+            message: 'stage comparison must be "is" or "before"',
+          })
+        }
+      } else if (c.subject === 'journey_flag') {
+        if (!isJourneyFlag(c.operand)) {
+          issues.push({
+            path: `${path}.operand`,
+            message: `flag must be among: ${Object.keys(JOURNEY_FLAGS).join(', ')}`,
+          })
+        }
+      } else if (c.subject === 'customer_replied_since') {
+        if (c.operand !== 'link_sent' && c.operand !== 'run_start') {
+          issues.push({
+            path: `${path}.operand`,
+            message: 'reference instant must be "link_sent" or "run_start"',
+          })
+        }
+      } else if (!nonEmpty(c.operand)) {
         issues.push({ path: `${path}.operand`, message: 'condition operand is required' })
       }
       break
@@ -189,6 +229,38 @@ export function validateTriggerForActivation(
   } else if (triggerType === 'tag_added') {
     if (!nonEmpty(cfg.tag_id)) {
       issues.push({ path: 'trigger.tag_id', message: 'tag is required' })
+    }
+  } else if (triggerType === 'journey_event') {
+    const names = cfg.event_names
+    if (!Array.isArray(names) || names.length === 0) {
+      issues.push({
+        path: 'trigger.event_names',
+        message: 'at least one event name is required',
+      })
+    } else if (
+      names.some((v) => typeof v !== 'string' || !(JOURNEY_TRIGGER_EVENTS as readonly string[]).includes(v))
+    ) {
+      issues.push({
+        path: 'trigger.event_names',
+        message: `event names must be among: ${JOURNEY_TRIGGER_EVENTS.join(', ')}`,
+      })
+    }
+  } else if (triggerType === 'order_status_changed') {
+    const statuses = cfg.statuses
+    if (!Array.isArray(statuses) || statuses.length === 0) {
+      issues.push({
+        path: 'trigger.statuses',
+        message: 'at least one order status is required',
+      })
+    } else if (
+      statuses.some(
+        (v) => typeof v !== 'string' || !(ORDER_TRIGGER_STATUSES as readonly string[]).includes(v),
+      )
+    ) {
+      issues.push({
+        path: 'trigger.statuses',
+        message: `order statuses must be among: ${ORDER_TRIGGER_STATUSES.join(', ')}`,
+      })
     }
   } else if (triggerType === 'interactive_reply') {
     const ids = cfg.reply_ids
