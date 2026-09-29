@@ -30,14 +30,52 @@ A migration 062 ainda não foi testada num Postgres de produção. Aplique prime
 
 Uma loja sem endereço não consegue enviar o link do cardápio: a mensagem **não é enviada** e a falha aparece no log da automação. O cartão do preset (passo 5) lista as lojas que faltam.
 
-## Passo 3. Colocar o link do cardápio nas mensagens
+## Passo 3. Fazer o CRM responder e enviar o link do cardápio
+
+O preset (passo 5) **não responde à primeira mensagem do cliente**. Ele só cuida do que acontece depois que o link foi enviado. Sem uma resposta configurada aqui, o cliente que escreve "quero fazer um pedido" fica sem resposta. Escolha **uma** das duas opções.
 
 O link é escrito como a variável `{{menu_link}}`. O CRM troca a variável pelo endereço da loja, acrescenta o identificador de rastreio (`?idtrack=…`) e abre a jornada do cliente.
 
-- **Automações:** escreva `{{menu_link}}` no texto de um passo "Enviar mensagem" (por exemplo, na automação que responde "quero fazer um pedido").
-- **IA de resposta:** ela já é instruída a usar `{{menu_link}}`. **Remova qualquer endereço de cardápio fixo** que esteja no prompt do negócio ou na base de conhecimento da IA, senão ela pode enviar um link sem rastreio.
+### Opção A. Automação por palavra-chave (resposta fixa)
 
-Onde a variável não funciona: botões, listas, templates e Flows. Nesses casos, envie o link em uma mensagem de texto.
+Indicada quando o pedido deve sempre receber o mesmo texto.
+
+1. Vá em **Automações** e crie uma automação nova.
+2. Em **Gatilho**, escolha **Palavra-chave** e informe as palavras separadas por vírgula, por exemplo: `pedido, cardápio, cardapio, pizza`. A mensagem "quero fazer um pedido" contém "pedido", então dispara.
+3. Adicione o passo **Enviar mensagem** com um texto como:
+   `Olá! Que bom ter você aqui. Faça seu pedido pelo nosso cardápio: {{menu_link}}`
+4. Se o cliente costuma escrever depois de 24 horas da última mensagem (WhatsApp), veja também o passo 6.
+5. Salve e **ative** a automação.
+
+Atenção: enquanto existir **qualquer** automação ativa com gatilho **Palavra-chave** ou **Nova mensagem recebida**, a resposta automática da IA fica **desligada para a conta inteira**, para não responder duas vezes. Se você quer que a IA converse sobre os outros assuntos (horário, produtos, dúvidas), use a Opção B.
+
+### Opção B. IA de resposta (conversa livre, com o link quando o cliente quiser pedir)
+
+Indicada quando a conversa pode seguir vários caminhos.
+
+1. Vá em **Agentes de IA → Configuração** e informe o **Provedor**, o **Modelo** e a **Chave de API** (use **Testar chave**).
+2. Em **Contexto do negócio e instruções**, descreva a loja e diga quando enviar o cardápio. Por exemplo:
+   `Somos a pizzaria X. Horário: 18h às 23h. Seja cordial e curta. Quando o cliente quiser fazer um pedido, envie o cardápio com o link {{menu_link}}. Não invente preços nem prazos; se o cliente pedir um humano ou reclamar, transfira.`
+3. **Remova qualquer endereço de cardápio fixo** que esteja nesse texto ou na base de conhecimento. A IA deve usar só `{{menu_link}}`, senão o link sai sem rastreio.
+4. Ative **Ativar assistente de IA** e **Responder automaticamente a mensagens recebidas**. Ajuste o **Máximo de respostas automáticas por conversa** e o destino de **Transferir para**.
+5. **Não deixe ativa** nenhuma automação com gatilho Palavra-chave ou Nova mensagem recebida (elas desligam a IA).
+
+A IA só responde se a conversa não tiver atendente atribuído e ainda não tiver sido transferida para um humano. O Playground não troca `{{menu_link}}` pelo link: teste com uma mensagem real.
+
+### Vale para as duas opções
+
+- A conversa precisa estar em um canal ligado a uma **loja com endereço do cardápio** (passo 2). Sem endereço, a mensagem com `{{menu_link}}` não é enviada.
+- Onde a variável **não** funciona: botões, listas, templates e Flows. Nesses casos, envie o link em uma mensagem de texto.
+- Para confirmar, mande uma mensagem de teste e veja o link recebido: ele deve ter `?idtrack=`, e o negócio deve aparecer em **Pipelines → Jornada de Pedido**, na etapa "Link enviado".
+
+### Se ninguém responde
+
+Confira nesta ordem:
+
+1. A mensagem aparece no **Inbox**? Se não, o problema é o canal (conexão desconectada ou webhook), não a resposta.
+2. Existe uma automação **ativa** com gatilho Palavra-chave que combine com o texto (Opção A), ou a IA está ativada com **Responder automaticamente** ligado (Opção B)?
+3. A conversa tem um atendente atribuído? Nesse caso a IA não responde.
+4. Veja o **log** da automação: se aparece falha de "sem endereço do cardápio" ou de "fora da janela de 24 h", o envio foi tentado e recusado (passos 2 e 6).
 
 ## Passo 4. Criar a chave de API para o time do cardápio
 
@@ -120,3 +158,6 @@ Antes de liberar para clientes, teste com um número seu e uma chave de teste:
 - O funil não tem filtro de datas.
 - A nota de transbordo e mensagens de erro do motor estão em inglês.
 - Não há mensagem para clientes inativos há 30 dias. A data da última compra já é guardada para uma fase futura.
+
+
+wacrm_live_1K8NTt2kC6KxyMFOgTa0UUs59MuCawFoKFnROH4EiI8

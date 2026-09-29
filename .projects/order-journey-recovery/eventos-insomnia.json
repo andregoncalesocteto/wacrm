@@ -1,0 +1,596 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-09-29T12:00:00.000Z",
+  "__export_source": "insomnia.desktop.app:v8.6.1",
+  "resources": [
+    {
+      "_id": "wrk_wacrm_journey",
+      "_type": "workspace",
+      "parentId": null,
+      "name": "wacrm - Jornada de pedido (eventos)",
+      "description": "Chamadas da API POST /api/v1/journey/events. Preencha o ambiente (base_url, api_key, idtrack, order_id) antes de enviar.",
+      "scope": "collection"
+    },
+    {
+      "_id": "env_base",
+      "_type": "environment",
+      "parentId": "wrk_wacrm_journey",
+      "name": "Base Environment",
+      "data": {
+        "base_url": "https://seu-crm.exemplo.com",
+        "api_key": "wacrm_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "idtrack": "cole-aqui-o-idtrack-do-link",
+        "order_id": "PED-2026-104233",
+        "replay_event_id": "00000000-0000-4000-8000-000000000001"
+      },
+      "dataPropertyOrder": null,
+      "color": null,
+      "isPrivate": false,
+      "metaSortKey": 1
+    },
+    {
+      "_id": "fld_0",
+      "_type": "request_group",
+      "parentId": "wrk_wacrm_journey",
+      "name": "0. Verificar chave",
+      "environment": {},
+      "metaSortKey": -100
+    },
+    {
+      "_id": "req_me",
+      "_type": "request",
+      "parentId": "fld_0",
+      "name": "GET /api/v1/me (verificar a chave)",
+      "description": "Não exige escopo. Deve listar events:write.",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/v1/me",
+      "headers": [],
+      "parameters": [],
+      "metaSortKey": -200,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "fld_1",
+      "_type": "request_group",
+      "parentId": "wrk_wacrm_journey",
+      "name": "1. Eventos de comportamento",
+      "environment": {},
+      "metaSortKey": -300
+    },
+    {
+      "_id": "req_view",
+      "_type": "request",
+      "parentId": "fld_1",
+      "name": "ViewContent",
+      "description": "Abriu o cardápio. Sem properties. Resposta: stage browsing.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -400,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"ViewContent\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_add1",
+      "_type": "request",
+      "parentId": "fld_1",
+      "name": "AddToCart (1 item)",
+      "description": "Envie sempre o carrinho INTEIRO. Pode repetir com event_id novo. Resposta: stage cart.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -500,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"AddToCart\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"currency\": \"BRL\",\n    \"cart\": {\n      \"value\": 59.9,\n      \"items\": [\n        {\n          \"id\": \"pizza-calabresa-g\",\n          \"name\": \"Pizza Calabresa G\",\n          \"quantity\": 1,\n          \"unit_price\": 59.9\n        }\n      ]\n    }\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_add2",
+      "_type": "request",
+      "parentId": "fld_1",
+      "name": "AddToCart (2 itens)",
+      "description": "",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -600,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"AddToCart\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"currency\": \"BRL\",\n    \"cart\": {\n      \"value\": 89.8,\n      \"items\": [\n        {\n          \"id\": \"pizza-calabresa-g\",\n          \"name\": \"Pizza Calabresa G\",\n          \"quantity\": 1,\n          \"unit_price\": 59.9\n        },\n        {\n          \"id\": \"refri-2l\",\n          \"name\": \"Refrigerante 2L\",\n          \"quantity\": 1,\n          \"unit_price\": 29.9\n        }\n      ]\n    }\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_chk",
+      "_type": "request",
+      "parentId": "fld_1",
+      "name": "InitiateCheckout",
+      "description": "Iniciou o fechamento. Resposta: stage checkout.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -700,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"InitiateCheckout\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"currency\": \"BRL\",\n    \"cart\": {\n      \"value\": 89.8,\n      \"items\": [\n        {\n          \"id\": \"pizza-calabresa-g\",\n          \"name\": \"Pizza Calabresa G\",\n          \"quantity\": 1,\n          \"unit_price\": 59.9\n        },\n        {\n          \"id\": \"refri-2l\",\n          \"name\": \"Refrigerante 2L\",\n          \"quantity\": 1,\n          \"unit_price\": 29.9\n        }\n      ]\n    }\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_buy",
+      "_type": "request",
+      "parentId": "fld_1",
+      "name": "Purchase",
+      "description": "Pedido feito. Fecha a Journey como ganha, cria o pedido e dispara o agradecimento. Grave o idtrack no pedido. Resposta: stage won.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -800,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"Purchase\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"order_id\": \"{{ _.order_id }}\",\n    \"currency\": \"BRL\",\n    \"value\": 89.8,\n    \"items\": [\n      {\n        \"id\": \"pizza-calabresa-g\",\n        \"name\": \"Pizza Calabresa G\",\n        \"quantity\": 1,\n        \"unit_price\": 59.9\n      },\n      {\n        \"id\": \"refri-2l\",\n        \"name\": \"Refrigerante 2L\",\n        \"quantity\": 1,\n        \"unit_price\": 29.9\n      }\n    ]\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "fld_2",
+      "_type": "request_group",
+      "parentId": "wrk_wacrm_journey",
+      "name": "2. Status do pedido",
+      "environment": {},
+      "metaSortKey": -900
+    },
+    {
+      "_id": "req_s1",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "received (APPROVED)",
+      "description": "Ordem: received, preparing, finished, out_for_delivery OU ready_for_pickup, delivered. cancelled vale antes de delivered. O status só avança; atrasado é aceito e ignorado.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1000,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"order_id\": \"{{ _.order_id }}\",\n    \"status\": \"received\"\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_s2",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "preparing (DOING)",
+      "description": "",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1100,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"order_id\": \"{{ _.order_id }}\",\n    \"status\": \"preparing\"\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_s3",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "finished (DONE)",
+      "description": "",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1200,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"order_id\": \"{{ _.order_id }}\",\n    \"status\": \"finished\"\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_s4",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "out_for_delivery (DISPACHED)",
+      "description": "Pedido para entrega.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1300,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"order_id\": \"{{ _.order_id }}\",\n    \"status\": \"out_for_delivery\"\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_s5",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "ready_for_pickup (READYTOPICKUP)",
+      "description": "Pedido para retirada; use no lugar de out_for_delivery.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1400,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"order_id\": \"{{ _.order_id }}\",\n    \"status\": \"ready_for_pickup\"\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_s6",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "delivered (DELIVERED)",
+      "description": "Na retirada, quando o cliente retira.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1500,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"order_id\": \"{{ _.order_id }}\",\n    \"status\": \"delivered\"\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_s7",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "cancelled (CANCELED)",
+      "description": "A qualquer momento antes de delivered. TODO não é enviado.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1600,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"order_id\": \"{{ _.order_id }}\",\n    \"status\": \"cancelled\"\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "fld_3",
+      "_type": "request_group",
+      "parentId": "wrk_wacrm_journey",
+      "name": "3. Idempotência e erros",
+      "environment": {},
+      "metaSortKey": -1700
+    },
+    {
+      "_id": "req_replay",
+      "_type": "request",
+      "parentId": "fld_3",
+      "name": "Idempotência: enviar 2x (mesmo event_id)",
+      "description": "Envie DUAS vezes seguidas. A segunda resposta traz duplicate:true e o cabeçalho Idempotent-Replayed: true. Para repetir o teste, troque replay_event_id no ambiente.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1800,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{{ _.replay_event_id }}\",\n  \"name\": \"ViewContent\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_404",
+      "_type": "request",
+      "parentId": "fld_3",
+      "name": "404 idtrack_not_found",
+      "description": "Não repita este erro.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1900,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"ViewContent\",\n  \"idtrack\": \"token-que-nao-existe\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_400s",
+      "_type": "request",
+      "parentId": "fld_3",
+      "name": "400 bad_request (status fora do conjunto)",
+      "description": "A mensagem lista os status válidos.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -2000,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"order_id\": \"{{ _.order_id }}\",\n    \"status\": \"TODO\"\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_400o",
+      "_type": "request",
+      "parentId": "fld_3",
+      "name": "400 order_not_found",
+      "description": "O pedido não é conhecido para este idtrack (por exemplo, o Purchase ainda não chegou). Reenvie com espera crescente.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -2100,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": {\n    \"order_id\": \"PEDIDO-INEXISTENTE\",\n    \"status\": \"received\"\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "req_401",
+      "_type": "request",
+      "parentId": "fld_3",
+      "name": "401 unauthorized (chave inválida)",
+      "description": "Chave inválida. Sem o escopo events:write o erro é 403.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -2200,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"ViewContent\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "wacrm_live_chave_invalida"
+      }
+    }
+  ]
+}
