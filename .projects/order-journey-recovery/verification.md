@@ -63,6 +63,7 @@ de pedido" (instalado por `installJourneyPreset` e ativado) + `sendOutbound` rea
   em ordem, uma transação por arquivo com `ON_ERROR_STOP`, como faz `docker/supabase/migrate.sh`: **61 aplicadas, 0
   falhas**.
 - `supabase/ci/verify-schema.sql` rodou em seguida: **`schema verification passed`**.
+- **Depois da revisão** foi acrescentada a migration `062_orders_origin_event.sql` (uma coluna nula, com assert em `verify-schema.sql`). Ela NÃO foi reaplicada nesse Postgres descartável: o resultado acima cobre `001` a `061`. Os testes das correções de revisão (ver `implementation-notes.md`, "Correções de revisão") usam os fakes em memória e simulam a concorrência por intercalamento controlado.
 - Ressalva do ambiente: a imagem pelada não traz as tabelas do serviço `storage` (a migration `008` precisa de
   `storage.buckets`). Elas foram copiadas do schema `storage` da stack de desenvolvimento em execução (`pg_dump -s -n
   storage`). O CI oficial usa o Supabase CLI, que traz o storage; não foi usado aqui. Isso não afeta as migrations `055` a
