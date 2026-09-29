@@ -9,6 +9,8 @@ const h = vi.hoisted(() => ({
   generateReply: vi.fn(),
   sendOutbound: vi.fn(),
   showTyping: vi.fn(),
+  resolveMenuLink: vi.fn(),
+  recordMenuLinkSent: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     autoResponders: [] as { id: string }[],
@@ -19,12 +21,19 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('./config', () => ({ loadAiConfig: h.loadAiConfig }))
-vi.mock('./context', () => ({ buildConversationContext: h.buildConversationContext }))
+vi.mock('./context', () => ({
+  buildConversationContext: h.buildConversationContext,
+}))
 vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
 vi.mock('@/lib/channels/send', () => ({
   sendOutbound: h.sendOutbound,
   showTyping: h.showTyping,
+}))
+vi.mock('@/lib/journeys', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveMenuLink: h.resolveMenuLink,
+  recordMenuLinkSent: h.recordMenuLinkSent,
 }))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
@@ -62,6 +71,7 @@ vi.mock('./admin-client', () => ({
 }))
 
 import { dispatchInboundToAiReply } from './auto-reply'
+import { MenuLinkError } from '@/lib/journeys'
 
 const ARGS = {
   accountId: 'acct-1',
@@ -97,7 +107,9 @@ beforeEach(() => {
   h.state.updatePayload = null
   h.state.rpcCalls = []
   h.loadAiConfig.mockResolvedValue(aiConfig())
-  h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
+  h.buildConversationContext.mockResolvedValue([
+    { role: 'user', content: 'hi' },
+  ])
   h.retrieveKnowledge.mockResolvedValue([])
   h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
   h.sendOutbound.mockResolvedValue({ externalMessageId: 'm1' })
@@ -268,7 +280,9 @@ describe('dispatchInboundToAiReply — handoff', () => {
     await dispatchInboundToAiReply(ARGS)
     expect(h.sendOutbound).not.toHaveBeenCalled()
     expect(h.state.rpcCalls).toHaveLength(0)
-    expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true })
+    expect(h.state.updatePayload).toMatchObject({
+      ai_autoreply_disabled: true,
+    })
     expect(h.state.updatePayload?.ai_handoff_summary).toContain(
       'AI agent handed off',
     )
@@ -284,5 +298,104 @@ describe('dispatchInboundToAiReply — handoff', () => {
       ai_autoreply_disabled: true,
       assigned_agent_id: 'agent-7',
     })
+  })
+})
+
+describe('dispatchInboundToAiReply — {{menu_link}}', () => {
+  const LINK = 'https://menu.example/loja-a?idtrack=tok123'
+
+  beforeEach(() => {
+    h.generateReply.mockResolvedValue({
+      text: 'Our menu: {{menu_link}} - enjoy!',
+      handoff: false,
+    })
+    h.resolveMenuLink.mockResolvedValue({
+      url: LINK,
+      connectionId: 'conn-1',
+      storeId: 'store-1',
+    })
+    h.recordMenuLinkSent.mockResolvedValue({ id: 'j-1' })
+  })
+
+  it('replaces the variable with the tracked store link and opens the Journey after the send', async () => {
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.resolveMenuLink).toHaveBeenCalledWith(expect.anything(), {
+      accountId: 'acct-1',
+      userId: 'user-1',
+      conversationId: 'conv-1',
+      contactId: 'contact-1',
+    })
+    expect(h.sendOutbound).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: { type: 'text', text: `Our menu: ${LINK} - enjoy!` },
+        actor: { type: 'ai' },
+      }),
+    )
+    expect(h.recordMenuLinkSent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        accountId: 'acct-1',
+        conversationId: 'conv-1',
+        contactId: 'contact-1',
+        connectionId: 'conn-1',
+      }),
+    )
+    expect(h.sendOutbound.mock.invocationCallOrder[0]).toBeLessThan(
+      h.recordMenuLinkSent.mock.invocationCallOrder[0],
+    )
+  })
+
+  it('does not resolve a link nor open a Journey for replies without the variable', async () => {
+    h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.resolveMenuLink).not.toHaveBeenCalled()
+    expect(h.recordMenuLinkSent).not.toHaveBeenCalled()
+  })
+
+  it('does not open a Journey when the send fails', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    h.sendOutbound.mockRejectedValue(new Error('window_closed'))
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.recordMenuLinkSent).not.toHaveBeenCalled()
+    err.mockRestore()
+  })
+
+  it('sends nothing and hands off with the reason when the store has no menu address', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    h.resolveMenuLink.mockRejectedValue(
+      new MenuLinkError('menu_link: store "Loja A" has no menu URL configured'),
+    )
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.sendOutbound).not.toHaveBeenCalled()
+    expect(h.recordMenuLinkSent).not.toHaveBeenCalled()
+    expect(h.state.rpcCalls).toHaveLength(0) // no reply slot consumed
+    expect(h.state.updatePayload).toMatchObject({
+      ai_autoreply_disabled: true,
+    })
+    expect(h.state.updatePayload?.ai_handoff_summary).toContain(
+      'has no menu URL configured',
+    )
+    expect(err).toHaveBeenCalledWith(
+      expect.stringContaining('menu link unavailable'),
+    )
+    err.mockRestore()
+  })
+
+  it('still respects the cap and the human assignment', async () => {
+    h.state.conv = {
+      assigned_agent_id: 'agent-9',
+      ai_autoreply_disabled: false,
+      ai_reply_count: 0,
+    }
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.resolveMenuLink).not.toHaveBeenCalled()
+    h.state.conv = {
+      assigned_agent_id: null,
+      ai_autoreply_disabled: false,
+      ai_reply_count: 3,
+    }
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.resolveMenuLink).not.toHaveBeenCalled()
+    expect(h.sendOutbound).not.toHaveBeenCalled()
   })
 })
