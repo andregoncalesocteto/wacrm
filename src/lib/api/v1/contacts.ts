@@ -20,6 +20,7 @@ import { resolveOrCreateContact, WA_PHONE_KIND } from '@/lib/channels/identity';
 import type { IdentityCandidate } from '@/lib/channels/types';
 import { resolveImportTagIds } from '@/lib/contacts/resolve-import-tags';
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
+import { IDTRACK_KIND } from '@/lib/journeys/constants';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 
 /** Row select that embeds the contact's tags for serialization. */
@@ -63,14 +64,20 @@ type RawIdentity = {
   handle?: string | null;
 };
 
-/** Public projection of embedded `contact_identities` rows. */
+/**
+ * Public projection of embedded `contact_identities` rows. `idtrack` rows are
+ * left out: a Tracking token is a credential of the events API, so a contacts
+ * key must not be able to read it (nor write it: no provider declares it).
+ */
 export function serializeIdentities(raw: unknown): ApiIdentity[] {
   if (!Array.isArray(raw)) return [];
-  return (raw as RawIdentity[]).map((i) => ({
-    kind: i.kind,
-    external_id: i.external_id,
-    handle: i.handle ?? null,
-  }));
+  return (raw as RawIdentity[])
+    .filter((i) => i.kind !== IDTRACK_KIND)
+    .map((i) => ({
+      kind: i.kind,
+      external_id: i.external_id,
+      handle: i.handle ?? null,
+    }));
 }
 
 type RawTagJoin = { tags: { id: string; name: string; color: string } | null };

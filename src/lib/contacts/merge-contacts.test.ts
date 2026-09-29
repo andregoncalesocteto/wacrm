@@ -35,7 +35,13 @@ function tablesWithContactId(): string[] {
 }
 
 describe('merge_contacts covers every table with contact_id', () => {
-  const merge = sql.get('049_merge_contacts.sql')!;
+  // The latest migration that (re)defines the function is the live one.
+  const merge = [...sql]
+    .filter(([, text]) =>
+      /CREATE OR REPLACE FUNCTION public\.merge_contacts/.test(text)
+    )
+    .map(([, text]) => text)
+    .at(-1)!;
 
   it('finds the known tables (sanity check on the discovery)', () => {
     expect(tablesWithContactId()).toEqual(

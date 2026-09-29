@@ -27,6 +27,13 @@ import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 import { getProvider, hasProvider } from '@/lib/channels/registry'
 import { registerBuiltinProviders } from '@/lib/channels/providers'
 import type { Capabilities } from '@/lib/channels/types'
+import {
+  hasMenuLinkVariable,
+  replaceMenuLinkVariable,
+  resolveMenuLink,
+  recordMenuLinkSent,
+  type ResolvedMenuLink,
+} from '@/lib/journeys'
 
 // ------------------------------------------------------------
 // Public API
@@ -425,16 +432,33 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'send_message': {
       const cfg = step.step_config as SendMessageStepConfig
       if (!args.contactId) throw new Error('send_message needs a contact')
-      const text = interpolate(cfg.text, args)
-      if (!text.trim()) throw new Error('send_message has empty text')
+      // `{{menu_link}}` resolves conversation -> connection -> store -> menu_url
+      // and mints/renews the Tracking token BEFORE the send; a failure there
+      // throws, so nothing is sent. The Journey opens only after the send.
+      const usesMenuLink = hasMenuLinkVariable(cfg.text)
+      const preText = usesMenuLink ? cfg.text : interpolate(cfg.text, args)
+      if (!preText.trim()) throw new Error('send_message has empty text')
       const conversationId = await resolveConversationId(args, 'text')
+      let menuLink: ResolvedMenuLink | null = null
+      let text = preText
+      if (usesMenuLink) {
+        menuLink = await resolveMenuLink(db, {
+          accountId: args.automation.account_id,
+          userId: args.automation.user_id,
+          conversationId,
+          contactId: args.contactId,
+        })
+        text = interpolate(replaceMenuLinkVariable(cfg.text, menuLink.url), args)
+      }
       const { whatsapp_message_id } = await engineSendText({
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
         conversationId,
         contactId: args.contactId,
         text,
-        fallbackTemplate: cfg.fallback_template?.name
+        // A template fallback would replace the text and drop the link, so a
+        // link message never falls back: outside the window it fails visibly.
+        fallbackTemplate: !menuLink && cfg.fallback_template?.name
           ? {
               name: cfg.fallback_template.name,
               // '' = unspecified: the core resolves it from the template row.
@@ -443,6 +467,15 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
             }
           : null,
       })
+      if (menuLink) {
+        await recordMenuLinkSent(db, {
+          accountId: args.automation.account_id,
+          userId: args.automation.user_id,
+          conversationId,
+          contactId: args.contactId,
+          connectionId: menuLink.connectionId,
+        })
+      }
       return `sent via Meta (${whatsapp_message_id})`
     }
 

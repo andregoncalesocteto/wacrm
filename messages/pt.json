@@ -1172,6 +1172,7 @@
       "config": {
         "messageText": "Texto da mensagem",
         "placeholderMessageText": "Olá! Obrigado por entrar em contato…",
+        "menuLinkHint": "insere o link do cardápio da loja com um token de rastreio e abre a Jornada de pedido. O passo falha, e nada é enviado, se a loja não tiver endereço de cardápio.",
         "tagLabel": "Tag",
         "modeLabel": "Modo",
         "modes": {

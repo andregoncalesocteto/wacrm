@@ -1172,6 +1172,7 @@
       "config": {
         "messageText": "Texto del mensaje",
         "placeholderMessageText": "¡Hola! Gracias por escribirnos…",
+        "menuLinkHint": "inserta el enlace del menú de la tienda con un token de seguimiento y abre el recorrido del pedido. El paso falla, y no se envía nada, si la tienda no tiene URL de menú.",
         "tagLabel": "Etiqueta",
         "modeLabel": "Modo",
         "modes": {

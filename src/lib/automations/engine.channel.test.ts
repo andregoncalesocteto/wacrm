@@ -15,6 +15,8 @@ import {
   resetRegistryForTests,
 } from '@/lib/channels/registry';
 import type { ChannelProvider } from '@/lib/channels/types';
+import { resolveTrackingToken } from '@/lib/journeys';
+import { supabaseAdmin as automationsDb } from './admin-client';
 import { resumePendingExecution, runAutomationsForTrigger } from './engine';
 
 type Row = Record<string, unknown>;
@@ -81,8 +83,7 @@ function registerNoTemplateChannel() {
   } as unknown as ChannelProvider);
 }
 
-const sent = () =>
-  h.db.messages.filter((m) => m.sender_type !== 'customer');
+const sent = () => h.db.messages.filter((m) => m.sender_type !== 'customer');
 
 function seed() {
   h.db = {
@@ -191,7 +192,7 @@ describe('wait step saves the conversation', () => {
     });
   });
 
-  it('resolves the contact\'s most recent conversation when the trigger has none in context', async () => {
+  it("resolves the contact's most recent conversation when the trigger has none in context", async () => {
     steps({ step_type: 'wait', step_config: { amount: 1, unit: 'hours' } });
 
     await fire();
@@ -209,7 +210,10 @@ describe('wait step saves the conversation', () => {
     await fire();
 
     expect(h.db.automation_pending_executions).toHaveLength(0);
-    const steps_executed = log().steps_executed as { status: string; detail: string }[];
+    const steps_executed = log().steps_executed as {
+      status: string;
+      detail: string;
+    }[];
     expect(steps_executed[0]).toMatchObject({
       status: 'failed',
       detail: expect.stringContaining('no existing conversation'),
@@ -402,5 +406,284 @@ describe('channel capabilities (US-051, real telegram provider)', () => {
     expect(log().steps_executed).toEqual([
       expect.objectContaining({ status: 'skipped' }),
     ]);
+  });
+});
+
+describe('{{menu_link}} (order journey, ticket #3)', () => {
+  const STORE_1_URL = 'https://loja1.example.com/cardapio?utm=wa';
+  const STORE_2_URL = 'https://loja2.example.org/menu';
+
+  beforeEach(() => {
+    h.db.stores = [
+      {
+        id: 'store-1',
+        account_id: 'acct-1',
+        name: 'Loja 1',
+        menu_url: STORE_1_URL,
+      },
+      {
+        id: 'store-2',
+        account_id: 'acct-1',
+        name: 'Loja 2',
+        menu_url: STORE_2_URL,
+      },
+    ];
+    h.db.channel_connections.find((c) => c.id === WA_CONN)!.store_id =
+      'store-1';
+    h.db.channel_connections.find((c) => c.id === TG_CONN)!.store_id =
+      'store-1';
+    h.db.channel_connections.push({
+      ...whatsappConnectionRow('acct-1', 'pn-2'),
+      id: 'conn-wa-2',
+      store_id: 'store-2',
+    });
+    h.db.conversations.push({
+      id: 'cv-store2',
+      account_id: 'acct-1',
+      contact_id: 'ct-1',
+      connection_id: 'conn-wa-2',
+      last_message_text: 'hi',
+      last_message_at: '2024-02-01T00:00:00Z',
+    });
+    h.db.messages.push({
+      conversation_id: 'cv-store2',
+      sender_type: 'customer',
+      created_at: new Date().toISOString(),
+    });
+    h.db.accounts = [{ id: 'acct-1', default_currency: 'BRL' }];
+    h.db.pipelines = [];
+    h.db.pipeline_stages = [];
+    h.db.deals = [];
+    h.db.journeys = [];
+    h.db.tracking_tokens = [];
+    steps({
+      step_type: 'send_message',
+      step_config: { text: 'Peça aqui: {{menu_link}}' },
+    });
+  });
+
+  const linkIn = (text: unknown) =>
+    new URL(String(text).replace('Peça aqui: ', ''));
+
+  it('sends each store its own address, with an opaque idtrack and the other params kept', async () => {
+    await fire({ conversation_id: 'cv-new-wa' });
+    await fire({ conversation_id: 'cv-store2' });
+
+    expect(log().status).toBe('success');
+    const [first, second] = sent().map((m) => linkIn(m.content_text));
+    expect(first.origin + first.pathname).toBe(
+      'https://loja1.example.com/cardapio'
+    );
+    expect(first.searchParams.get('utm')).toBe('wa');
+    expect(second.origin + second.pathname).toBe(
+      'https://loja2.example.org/menu'
+    );
+    const t1 = first.searchParams.get('idtrack')!;
+    const t2 = second.searchParams.get('idtrack')!;
+    expect(t1).toMatch(/^[A-Za-z0-9_-]{32}$/);
+    expect(t1).not.toBe(t2);
+    // Opaque: not derived from any id or phone of the contact/conversation.
+    for (const t of [t1, t2]) {
+      expect(t).not.toContain('ct-1');
+      expect(t).not.toContain('cv-');
+      expect(t).not.toContain('5551234567');
+    }
+  });
+
+  it('creates a token that resolves contact, conversation and connection, and mirrors it as an idtrack identity', async () => {
+    await fire({ conversation_id: 'cv-store2' });
+
+    const token = linkIn(sent()[0].content_text).searchParams.get('idtrack')!;
+    const resolved = await resolveTrackingToken(automationsDb() as never, {
+      accountId: 'acct-1',
+      token,
+    });
+    expect(resolved).toMatchObject({
+      ok: true,
+      contactId: 'ct-1',
+      conversationId: 'cv-store2',
+      connectionId: 'conn-wa-2',
+    });
+    expect(
+      await resolveTrackingToken(automationsDb() as never, {
+        accountId: 'acct-other',
+        token,
+      })
+    ).toEqual({ ok: false, reason: 'invalid' });
+    expect(h.db.contact_identities).toEqual([
+      expect.objectContaining({
+        account_id: 'acct-1',
+        contact_id: 'ct-1',
+        kind: 'idtrack',
+        external_id: token,
+      }),
+    ]);
+  });
+
+  it('a resend renews the same token for 30 days instead of creating a second one', async () => {
+    await fire({ conversation_id: 'cv-new-wa' });
+    const row = h.db.tracking_tokens[0];
+    const token = row.token;
+    row.expires_at = new Date(Date.now() + 1000).toISOString();
+
+    await fire({ conversation_id: 'cv-new-wa' });
+
+    expect(h.db.tracking_tokens).toHaveLength(1);
+    expect(h.db.tracking_tokens[0].token).toBe(token);
+    const days =
+      (new Date(String(h.db.tracking_tokens[0].expires_at)).getTime() -
+        Date.now()) /
+      86_400_000;
+    expect(days).toBeGreaterThan(29.9);
+    expect(
+      h.db.contact_identities.filter((i) => i.kind === 'idtrack')
+    ).toHaveLength(1);
+    expect(
+      sent().map((m) => linkIn(m.content_text).searchParams.get('idtrack'))
+    ).toEqual([token, token]);
+  });
+
+  it('an expired token is replaced by a new value (the old link never revives)', async () => {
+    await fire({ conversation_id: 'cv-new-wa' });
+    const old = String(h.db.tracking_tokens[0].token);
+    h.db.tracking_tokens[0].expires_at = '2020-01-01T00:00:00Z';
+
+    await fire({ conversation_id: 'cv-new-wa' });
+
+    expect(h.db.tracking_tokens).toHaveLength(1);
+    expect(h.db.tracking_tokens[0].token).not.toBe(old);
+    expect(h.db.contact_identities.map((i) => i.external_id)).toEqual([
+      h.db.tracking_tokens[0].token,
+    ]);
+    expect(
+      await resolveTrackingToken(automationsDb() as never, {
+        accountId: 'acct-1',
+        token: old,
+      })
+    ).toEqual({ ok: false, reason: 'invalid' });
+  });
+
+  it('opens the Journey with its deal at "Link enviado" and reuses both on resend', async () => {
+    await fire({ conversation_id: 'cv-new-wa' });
+
+    const [pipeline] = h.db.pipelines;
+    expect(pipeline).toMatchObject({
+      account_id: 'acct-1',
+      name: 'Jornada de Pedido',
+    });
+    expect(
+      [...h.db.pipeline_stages]
+        .sort((a, b) => Number(a.position) - Number(b.position))
+        .map((s) => s.name)
+    ).toEqual([
+      'Link enviado',
+      'Navegando',
+      'Carrinho',
+      'Checkout',
+      'Comprou',
+      'Perdido',
+    ]);
+    const [journey] = h.db.journeys;
+    expect(journey).toMatchObject({
+      account_id: 'acct-1',
+      contact_id: 'ct-1',
+      conversation_id: 'cv-new-wa',
+      connection_id: WA_CONN,
+      state: 'open',
+      stage: 'link_sent',
+      link_count: 1,
+    });
+    expect(typeof journey.link_sent_at).toBe('string');
+    const linkSentStage = h.db.pipeline_stages.find(
+      (s) => s.name === 'Link enviado'
+    )!;
+    expect(h.db.deals).toEqual([
+      expect.objectContaining({
+        id: journey.deal_id,
+        journey_id: journey.id,
+        pipeline_id: pipeline.id,
+        stage_id: linkSentStage.id,
+        contact_id: 'ct-1',
+        conversation_id: 'cv-new-wa',
+        connection_id: WA_CONN,
+        status: 'open',
+        currency: 'BRL',
+      }),
+    ]);
+
+    await fire({ conversation_id: 'cv-new-wa' });
+
+    expect(h.db.journeys).toHaveLength(1);
+    expect(h.db.journeys[0].link_count).toBe(2);
+    expect(h.db.deals).toHaveLength(1);
+    expect(h.db.pipelines).toHaveLength(1);
+    expect(h.db.pipeline_stages).toHaveLength(6);
+  });
+
+  it('a second store opens its own Journey in the same pipeline', async () => {
+    await fire({ conversation_id: 'cv-new-wa' });
+    await fire({ conversation_id: 'cv-store2' });
+
+    expect(h.db.pipelines).toHaveLength(1);
+    expect(h.db.journeys.map((j) => j.connection_id)).toEqual([
+      WA_CONN,
+      'conn-wa-2',
+    ]);
+    expect(h.db.deals).toHaveLength(2);
+  });
+
+  it('a store without a menu URL fails the step visibly and sends nothing', async () => {
+    h.db.stores.find((s) => s.id === 'store-2')!.menu_url = null;
+
+    await fire({ conversation_id: 'cv-store2' });
+
+    expect(log().status).toBe('failed');
+    expect(String(log().error_message)).toMatch(/Loja 2.*no menu URL/);
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(sent()).toHaveLength(0);
+    expect(h.db.tracking_tokens).toHaveLength(0);
+    expect(h.db.journeys).toHaveLength(0);
+    expect(h.db.deals).toHaveLength(0);
+  });
+
+  it('a failed send (window closed) leaves no Journey, and a link never falls back to a template', async () => {
+    h.db.messages = h.db.messages.filter(
+      (m) => m.conversation_id !== 'cv-store2'
+    );
+    steps({
+      step_type: 'send_message',
+      step_config: {
+        text: 'Peça aqui: {{menu_link}}',
+        fallback_template: { name: 'order_link' },
+      },
+    });
+
+    await fire({ conversation_id: 'cv-store2' });
+
+    expect(log().status).toBe('failed');
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    expect(h.db.journeys).toHaveLength(0);
+    expect(h.db.deals).toHaveLength(0);
+  });
+
+  it('works on a Telegram connection through the same chain (no channel-specific code)', async () => {
+    // The stand-in channel has no sender; the chain is what is under test.
+    const { resolveMenuLink } = await import('@/lib/journeys');
+    h.db.conversations.push({
+      id: 'cv-tg',
+      account_id: 'acct-1',
+      contact_id: 'ct-1',
+      connection_id: TG_CONN,
+      last_message_text: 'oi',
+      last_message_at: '2024-03-01T00:00:00Z',
+    });
+    const link = await resolveMenuLink(automationsDb() as never, {
+      accountId: 'acct-1',
+      userId: 'user-1',
+      conversationId: 'cv-tg',
+      contactId: 'ct-1',
+    });
+    expect(link.connectionId).toBe(TG_CONN);
+    expect(new URL(link.url).origin).toBe('https://loja1.example.com');
   });
 });

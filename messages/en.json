@@ -1172,6 +1172,7 @@
       "config": {
         "messageText": "Message text",
         "placeholderMessageText": "Hi! Thanks for reaching out…",
+        "menuLinkHint": "inserts the store's menu link with a tracking token and opens the order Journey. The step fails, and nothing is sent, if the store has no menu URL.",
         "tagLabel": "Tag",
         "modeLabel": "Mode",
         "modes": {

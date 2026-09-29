@@ -301,6 +301,36 @@ BEGIN
     RAISE EXCEPTION 'stores.menu_url is missing (migration 055)';
   END IF;
 
+  -- 056: order journeys (journeys, tracking_tokens, deals.connection_id/journey_id).
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'journeys'
+      AND column_name = 'link_sent_at'
+  ) THEN
+    RAISE EXCEPTION 'journeys.link_sent_at is missing (migration 056)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'tracking_tokens'
+      AND column_name = 'token'
+  ) THEN
+    RAISE EXCEPTION 'tracking_tokens.token is missing (migration 056)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'deals'
+      AND column_name = 'connection_id'
+  ) THEN
+    RAISE EXCEPTION 'deals.connection_id is missing (migration 056)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND tablename = 'deals'
+      AND indexname = 'uq_deals_open_journey'
+  ) THEN
+    RAISE EXCEPTION 'uq_deals_open_journey is missing (migration 056)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

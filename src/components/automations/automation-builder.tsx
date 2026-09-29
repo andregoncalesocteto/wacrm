@@ -1317,6 +1317,10 @@ function StepEditor({
             placeholder={t("config.placeholderMessageText")}
             className="min-h-24 bg-muted text-foreground"
           />
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            <code className="rounded bg-muted px-1">{"{{menu_link}}"}</code>{" "}
+            {t("config.menuLinkHint")}
+          </p>
         </FieldBlock>
       )
     case "send_buttons":

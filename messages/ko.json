@@ -1172,6 +1172,7 @@
       "config": {
         "messageText": "메시지 텍스트",
         "placeholderMessageText": "안녕하세요! 문의해주셔서 감사합니다…",
+        "menuLinkHint": "매장의 메뉴 링크를 추적 토큰과 함께 삽입하고 주문 여정을 시작합니다. 매장에 메뉴 주소가 없으면 단계가 실패하고 아무것도 전송되지 않습니다.",
         "tagLabel": "태그",
         "modeLabel": "모드",
         "modes": {
