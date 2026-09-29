@@ -1,6 +1,6 @@
 # Spec: Jornada de pedido com eventos do cardápio e retomadas
 
-Vocabulário conforme `CONTEXT.md`. Decisão de arquitetura registrada em `docs/adr/0001-journey-events-server-to-server-with-tracking-token.md`. Triagem e contexto em `triage.md`.
+Vocabulário conforme `CONTEXT.md`. Decisão de arquitetura registrada em `adr/0001-journey-events-server-to-server-with-tracking-token.md`. Triagem e contexto em `triage.md`.
 
 ## Problem Statement
 

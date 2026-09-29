@@ -1,6 +1,6 @@
 # PRD: contrato de eventos do cardápio digital para o CRM
 
-Documento para o **time do cardápio digital**. Derivado de `spec.md` (decisões em `docs/adr/0001-journey-events-server-to-server-with-tracking-token.md`). O CRM é o **wacrm**; o cardápio é o **Digital menu**.
+Documento para o **time do cardápio digital**. Derivado de `spec.md` (decisões em `adr/0001-journey-events-server-to-server-with-tracking-token.md`). O CRM é o **wacrm**; o cardápio é o **Digital menu**.
 
 > Status do contrato: rascunho até a API pública de eventos ser implementada. Depois da implementação, ele segue a regra da API v1: pré-estável até o primeiro cliente, depois congelado (uma quebra exige `v2`).
 
