@@ -5,7 +5,23 @@ export const STORE_LIMITS = {
   address: 300,
   phone: 40,
   manager_name: 120,
+  menu_url: 2048,
 } as const;
+
+/**
+ * A Digital menu address must be an absolute https:// URL with a host.
+ * Blank is not valid here; callers treat blank as "no menu" before calling.
+ */
+export function isValidMenuUrl(raw: string): boolean {
+  const v = raw.trim();
+  if (!v || v.length > STORE_LIMITS.menu_url) return false;
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' && u.hostname !== '';
+  } catch {
+    return false;
+  }
+}
 
 export interface StoreInput {
   name?: string;
@@ -13,6 +29,7 @@ export interface StoreInput {
   phone?: string | null;
   business_hours?: Record<string, unknown> | null;
   manager_name?: string | null;
+  menu_url?: string | null;
   settings?: Record<string, unknown>;
 }
 
@@ -44,7 +61,7 @@ export function parseStoreInput(body: unknown, partial: boolean): StoreParse {
     out.name = name;
   }
 
-  for (const key of ['address', 'phone', 'manager_name'] as const) {
+  for (const key of ['address', 'phone', 'manager_name', 'menu_url'] as const) {
     if (!(key in body)) continue;
     const raw = body[key];
     if (raw === null || raw === undefined) {
@@ -60,6 +77,9 @@ export function parseStoreInput(body: unknown, partial: boolean): StoreParse {
         ok: false,
         error: `${key} must be at most ${STORE_LIMITS[key]} characters`,
       };
+    }
+    if (key === 'menu_url' && v && !isValidMenuUrl(v)) {
+      return { ok: false, error: 'menu_url must be a valid https:// URL' };
     }
     out[key] = v || null;
   }

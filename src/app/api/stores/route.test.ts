@@ -203,6 +203,12 @@ describe('POST /api/stores', () => {
     expect((await POST(json({ name: 'a', settings: [] }))).status).toBe(400);
   });
 
+  it('rejects a non-https menu_url on create', async () => {
+    const res = await POST(json({ name: 'a', menu_url: 'http://a.com' }));
+    expect(res.status).toBe(400);
+    expect(h.inserted).toHaveLength(0);
+  });
+
   it('is admin-only: agent gets 403', async () => {
     h.role = 'agent';
     const res = await POST(json({ name: 'Sul' }));
@@ -225,6 +231,28 @@ describe('PATCH /api/stores/[id]', () => {
       name: 'Novo',
       manager_name: 'Ana',
     });
+  });
+
+  it('sets, changes and clears menu_url', async () => {
+    const set = await PATCH(
+      patch({ menu_url: ' https://menu.loja-a.com/pedir ' }),
+      params('s1')
+    );
+    expect(set.status).toBe(200);
+    expect((await set.json()).store.menu_url).toBe(
+      'https://menu.loja-a.com/pedir'
+    );
+    const cleared = await PATCH(patch({ menu_url: '  ' }), params('s1'));
+    expect(cleared.status).toBe(200);
+    expect((await cleared.json()).store.menu_url).toBeNull();
+  });
+
+  it('rejects invalid or non-https menu_url with a clear message', async () => {
+    for (const bad of ['http://a.com', 'not a url', 'ftp://a.com', 42]) {
+      const res = await PATCH(patch({ menu_url: bad }), params('s1'));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/menu_url/);
+    }
   });
 
   it('validates and rejects an empty patch', async () => {

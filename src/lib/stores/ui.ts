@@ -1,6 +1,6 @@
 // Pure helpers for the stores settings screen (no React, no i18n).
 
-import { STORE_LIMITS } from './validation';
+import { STORE_LIMITS, isValidMenuUrl } from './validation';
 
 export type ConnectionChipState =
   'connected' | 'degraded' | 'disconnected' | 'needs_action' | 'disabled';
@@ -37,9 +37,10 @@ export interface StoreDraft {
   phone: string;
   hours: string;
   manager_name: string;
+  menu_url: string;
 }
 
-export type DraftError = 'nameRequired' | 'nameTooLong' | 'fieldTooLong' | null;
+export type DraftError = 'nameRequired' | 'nameTooLong' | 'fieldTooLong' | 'menuUrlInvalid' | null;
 
 export function validateDraft(d: StoreDraft): DraftError {
   if (!d.name.trim()) return 'nameRequired';
@@ -51,5 +52,7 @@ export function validateDraft(d: StoreDraft): DraftError {
   ) {
     return 'fieldTooLong';
   }
+  const menu = d.menu_url.trim();
+  if (menu && !isValidMenuUrl(menu)) return 'menuUrlInvalid';
   return null;
 }

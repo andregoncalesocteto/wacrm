@@ -80,7 +80,13 @@ beforeEach(() => {
   h.key = keyRow(['connections:read']);
   h.db = {
     stores: [
-      { id: 's1', account_id: 'acct-1', name: 'Loja A', address: 'Rua 1' },
+      {
+        id: 's1',
+        account_id: 'acct-1',
+        name: 'Loja A',
+        address: 'Rua 1',
+        menu_url: 'https://menu.loja-a.com',
+      },
       { id: 's2', account_id: 'acct-2', name: 'Outra conta' },
     ],
     channel_connections: [
@@ -129,6 +135,15 @@ describe('GET /api/v1/stores', () => {
     const body = await res.json();
     expect(body.data.map((s: Row) => s.id)).toEqual(['s1']);
     expect(body.meta.next_cursor).toBeNull();
+  });
+
+  it('returns menu_url (null when the store has no menu)', async () => {
+    h.db.stores.push({ id: 's4', account_id: 'acct-1', name: 'Sem menu' });
+    const body = await (await listStores(req('/api/v1/stores'))).json();
+    expect(body.data.map((s: Row) => s.menu_url)).toEqual([
+      'https://menu.loja-a.com',
+      null,
+    ]);
   });
 
   it('403s for a key without connections:read', async () => {

@@ -7,7 +7,10 @@ import {
   validateDraft,
 } from './ui';
 
-const base = { name: 'A', address: '', phone: '', hours: '', manager_name: '' };
+const base = { name: 'A', address: '', phone: '', hours: '',
+  manager_name: '',
+  menu_url: '',
+};
 
 describe('connectionChipState', () => {
   it('maps known statuses', () => {
@@ -48,6 +51,13 @@ describe('validateDraft', () => {
     expect(validateDraft({ ...base, phone: '1'.repeat(41) })).toBe(
       'fieldTooLong'
     );
+  });
+  it('accepts blank or https menu url, rejects the rest', () => {
+    expect(validateDraft({ ...base, menu_url: '  ' })).toBeNull();
+    expect(validateDraft({ ...base, menu_url: 'https://a.com/m' })).toBeNull();
+    for (const bad of ['http://a.com', 'a.com', 'ftp://a.com', 'https://']) {
+      expect(validateDraft({ ...base, menu_url: bad })).toBe('menuUrlInvalid');
+    }
   });
   it('accepts a valid draft', () => {
     expect(validateDraft(base)).toBeNull();

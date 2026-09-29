@@ -292,6 +292,15 @@ BEGIN
     RAISE EXCEPTION 'idx_broadcast_recipients_external_message_id is missing (migration 053)';
   END IF;
 
+  -- 055: stores.menu_url (Digital menu address, nullable, https-only CHECK).
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'stores'
+      AND column_name = 'menu_url'
+  ) THEN
+    RAISE EXCEPTION 'stores.menu_url is missing (migration 055)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;
