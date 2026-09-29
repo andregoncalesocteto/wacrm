@@ -1107,3 +1107,337 @@ describe('journey_stage and conversation_unattended conditions', () => {
     expect(out()).toEqual(['No']);
   });
 });
+
+describe('Abandoned cart chain (journey_event AddToCart/InitiateCheckout -> wait 10 -> checks -> message, once)', () => {
+  const MIN = 60_000;
+  const T0 = Date.parse('2026-09-29T12:00:00Z');
+  const at = (ms: number) => new Date(ms).toISOString();
+  const CART_EVENTS = ['AddToCart', 'InitiateCheckout'];
+
+  const step = (automation: string, id: string, st: Row): Row => ({
+    automation_id: automation,
+    parent_step_id: null,
+    branch: null,
+    position: 0,
+    id: `${automation}-${id}`,
+    ...st,
+  });
+  const child = (automation: string, id: string, parent: string, branch: 'yes' | 'no', st: Row) =>
+    step(automation, id, { ...st, parent_step_id: `${automation}-${parent}`, branch });
+
+  /** The pattern the abandoned-cart preset is made of, as data. */
+  function cartChain(text = 'Cart?', extra: Row = {}) {
+    return [
+      step('au-1', 'wait', { step_type: 'wait', step_config: { amount: 10, unit: 'minutes' } }),
+      step('au-1', 'unattended', {
+        position: 1,
+        step_type: 'condition',
+        step_config: { subject: 'conversation_unattended' },
+      }),
+      child('au-1', 'open', 'unattended', 'yes', {
+        step_type: 'condition',
+        step_config: { subject: 'journey_open' },
+      }),
+      child('au-1', 'replied', 'open', 'yes', {
+        step_type: 'condition',
+        step_config: { subject: 'customer_replied_since', operand: 'run_start' },
+      }),
+      child('au-1', 'flag', 'replied', 'no', {
+        step_type: 'condition',
+        step_config: { subject: 'journey_flag', operand: 'abandoned_cart_sent' },
+      }),
+      child('au-1', 'send', 'flag', 'no', {
+        step_type: 'send_message',
+        step_config: { text, mark_journey_flag: 'abandoned_cart_sent', ...extra },
+      }),
+    ];
+  }
+
+  /** The generic Resumption (#9): wait 10 -> unattended -> before cart -> no reply -> send. */
+  function genericChain() {
+    return [
+      step('au-2', 'wait', { step_type: 'wait', step_config: { amount: 10, unit: 'minutes' } }),
+      step('au-2', 'unattended', {
+        position: 1,
+        step_type: 'condition',
+        step_config: { subject: 'conversation_unattended' },
+      }),
+      child('au-2', 'stage', 'unattended', 'yes', {
+        step_type: 'condition',
+        step_config: { subject: 'journey_stage', operand: 'cart', value: 'before' },
+      }),
+      child('au-2', 'replied', 'stage', 'yes', {
+        step_type: 'condition',
+        step_config: { subject: 'customer_replied_since', operand: 'link_sent' },
+      }),
+      child('au-2', 'send', 'replied', 'no', {
+        step_type: 'send_message',
+        step_config: { text: 'Generic' },
+      }),
+    ];
+  }
+
+  const pending = () => h.db.automation_pending_executions.filter((p) => p.status === 'pending');
+  const sent = () => messages().map((m) => m.content_text);
+  const journey = () => h.db.journeys[0];
+
+  /** A cart / checkout event accepted for the Journey at `minute`. */
+  async function event(name: string, minute: number) {
+    vi.setSystemTime(T0 + minute * MIN);
+    await runAutomationsForTrigger({
+      accountId: 'acct-1',
+      triggerType: 'journey_event',
+      contactId: 'ct-1',
+      context: {
+        conversation_id: 'cv-1',
+        connection_id: 'conn-acct-1',
+        journey_id: 'jr-1',
+        journey_event_name: name,
+        journey_stage: name === 'InitiateCheckout' ? 'checkout' : 'cart',
+      },
+    });
+  }
+
+  async function tick(minute: number) {
+    vi.setSystemTime(T0 + minute * MIN);
+    const due = pending().filter((p) => Date.parse(p.run_at as string) <= Date.now());
+    for (const p of due) {
+      await resumePendingExecution(p as unknown as Parameters<typeof resumePendingExecution>[0]);
+    }
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    conv().connection_id = 'conn-acct-1';
+    for (const m of h.db.messages) m.created_at = at(T0 - 5 * MIN);
+    Object.assign(h.db.automations[0], {
+      trigger_type: 'journey_event',
+      trigger_config: { event_names: CART_EVENTS },
+    });
+    h.db.journeys = [
+      {
+        id: 'jr-1',
+        account_id: 'acct-1',
+        contact_id: 'ct-1',
+        connection_id: 'conn-acct-1',
+        state: 'open',
+        stage: 'cart',
+        link_sent_at: at(T0 - 30 * MIN),
+        abandoned_cart_sent_at: null,
+      },
+    ];
+    h.db.automation_steps = cartChain();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('sends 10 minutes after the AddToCart, not before', async () => {
+    await event('AddToCart', 0);
+    expect(pending()).toHaveLength(1);
+    expect(Date.parse(pending()[0].run_at as string) - T0).toBe(10 * MIN);
+    await tick(9);
+    expect(sent()).toEqual([]);
+    await tick(10);
+    expect(sent()).toEqual(['Cart?']);
+    expect(journey().abandoned_cart_sent_at).toBe(at(T0 + 10 * MIN));
+  });
+
+  it('InitiateCheckout arms the same message', async () => {
+    await event('InitiateCheckout', 0);
+    await tick(10);
+    expect(sent()).toEqual(['Cart?']);
+  });
+
+  it('ignores other events (ViewContent does not arm the wait)', async () => {
+    await event('ViewContent', 0);
+    expect(pending()).toHaveLength(0);
+  });
+
+  it('a new AddToCart restarts the count: only one message, 10 min after the last', async () => {
+    await event('AddToCart', 0);
+    const first = pending()[0];
+    await event('AddToCart', 6);
+    expect(first.status).toBe('cancelled');
+    expect(pending()).toHaveLength(1);
+    await tick(10);
+    expect(sent()).toEqual([]);
+    await tick(15);
+    expect(sent()).toEqual([]);
+    await tick(16);
+    expect(sent()).toEqual(['Cart?']);
+  });
+
+  it('a burst of cart and checkout events leaves one wait and sends once', async () => {
+    const names = ['AddToCart', 'AddToCart', 'InitiateCheckout', 'AddToCart', 'AddToCart'];
+    for (const [i, n] of names.entries()) await event(n, i * 2);
+    expect(h.db.automation_pending_executions).toHaveLength(names.length);
+    expect(pending()).toHaveLength(1);
+    // last event at minute 8 -> due at minute 18
+    await tick(17);
+    expect(sent()).toEqual([]);
+    await tick(18);
+    expect(sent()).toEqual(['Cart?']);
+    await tick(60);
+    expect(sent()).toEqual(['Cart?']);
+  });
+
+  it('a Purchase (Journey won) before the due time suppresses it', async () => {
+    await event('AddToCart', 0);
+    Object.assign(journey(), { state: 'won', stage: 'won' });
+    await tick(10);
+    expect(sent()).toEqual([]);
+    expect(journey().abandoned_cart_sent_at).toBeNull();
+  });
+
+  it('a customer reply after the event suppresses it', async () => {
+    await event('AddToCart', 0);
+    customerSays(T0 + 4 * MIN);
+    await tick(10);
+    expect(sent()).toEqual([]);
+  });
+
+  it('an agent assigned during the wait suppresses it (checked at fire time)', async () => {
+    await event('AddToCart', 0);
+    conv().assigned_agent_id = 'agent-1';
+    await tick(10);
+    expect(sent()).toEqual([]);
+  });
+
+  it('an AI handoff during the wait suppresses it (checked at fire time)', async () => {
+    await event('AddToCart', 0);
+    conv().ai_autoreply_disabled = true;
+    await tick(10);
+    expect(sent()).toEqual([]);
+  });
+
+  it('is sent once per Journey: a later AddToCart re-arms but the mark blocks the send', async () => {
+    await event('AddToCart', 0);
+    await tick(10);
+    expect(sent()).toEqual(['Cart?']);
+    await event('AddToCart', 30);
+    await tick(40);
+    expect(sent()).toEqual(['Cart?']);
+  });
+
+  it('a new Journey (after a purchase) may get its own message', async () => {
+    await event('AddToCart', 0);
+    await tick(10);
+    Object.assign(journey(), { state: 'won', stage: 'won' });
+    h.db.journeys.push({
+      id: 'jr-2',
+      account_id: 'acct-1',
+      contact_id: 'ct-1',
+      connection_id: 'conn-acct-1',
+      state: 'open',
+      stage: 'cart',
+      abandoned_cart_sent_at: null,
+    });
+    vi.setSystemTime(T0 + 60 * MIN);
+    await runAutomationsForTrigger({
+      accountId: 'acct-1',
+      triggerType: 'journey_event',
+      contactId: 'ct-1',
+      context: {
+        conversation_id: 'cv-1',
+        journey_id: 'jr-2',
+        journey_event_name: 'AddToCart',
+      },
+    });
+    await tick(70);
+    expect(sent()).toEqual(['Cart?', 'Cart?']);
+    expect(h.db.journeys[1].abandoned_cart_sent_at).toBeTruthy();
+  });
+
+  it('the step itself claims the mark: two runs racing to send produce one message', async () => {
+    h.db.automation_steps = [
+      step('au-1', 'send', {
+        step_type: 'send_message',
+        step_config: { text: 'Once', mark_journey_flag: 'abandoned_cart_sent' },
+      }),
+    ];
+    await event('AddToCart', 0);
+    await event('AddToCart', 1);
+    expect(sent()).toEqual(['Once']);
+    expect(log().steps_executed).toEqual([
+      expect.objectContaining({ status: 'success', detail: expect.stringContaining('sent via') }),
+    ]);
+    expect(h.db.automation_logs[1].steps_executed).toEqual([
+      expect.objectContaining({ status: 'success', detail: expect.stringContaining('skipped') }),
+    ]);
+  });
+
+  it('a failed send gives the mark back so a later event can retry', async () => {
+    for (const m of h.db.messages) m.created_at = at(T0 - 30 * 60 * MIN); // window closed
+    await event('AddToCart', 0);
+    await tick(10);
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(journey().abandoned_cart_sent_at).toBeNull();
+    expect(h.db.automation_logs[0].status).toBe('failed');
+  });
+
+  it('outside the 24 h window sends the fallback template and marks the Journey', async () => {
+    h.db.automation_steps = cartChain('Cart?', {
+      fallback_template: { name: 'cart_tpl', language: 'en_US' },
+    });
+    h.db.message_templates = [
+      {
+        id: 'tpl-1',
+        account_id: 'acct-1',
+        user_id: 'u-1',
+        name: 'cart_tpl',
+        category: 'Utility',
+        language: 'en_US',
+        body_text: 'You left something',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ];
+    for (const m of h.db.messages) m.created_at = at(T0 - 30 * 60 * MIN);
+    await event('AddToCart', 0);
+    await tick(10);
+    expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
+    expect(journey().abandoned_cart_sent_at).toBeTruthy();
+  });
+
+  describe('with the generic Resumption chain active too', () => {
+    beforeEach(() => {
+      h.db.automations.push({
+        id: 'au-2',
+        account_id: 'acct-1',
+        user_id: 'user-1',
+        trigger_type: 'menu_link_sent',
+        trigger_config: {},
+        is_active: true,
+      });
+      h.db.automation_steps = [...cartChain(), ...genericChain()];
+      Object.assign(journey(), { stage: 'link_sent', link_sent_at: at(T0) });
+    });
+
+    const linkSent = () =>
+      runAutomationsForTrigger({
+        accountId: 'acct-1',
+        triggerType: 'menu_link_sent',
+        contactId: 'ct-1',
+        context: {
+          conversation_id: 'cv-1',
+          journey_id: 'jr-1',
+          menu_link_sent_at: at(T0),
+        },
+      });
+
+    it('a customer who reached the cart gets only the cart message', async () => {
+      await linkSent();
+      vi.setSystemTime(T0 + 2 * MIN);
+      journey().stage = 'cart';
+      await event('AddToCart', 2);
+      await tick(12);
+      expect(sent()).toEqual(['Cart?']);
+    });
+
+    it('a customer who only browsed gets only the generic Resumption', async () => {
+      await linkSent();
+      journey().stage = 'browsing';
+      await tick(10);
+      expect(sent()).toEqual(['Generic']);
+    });
+  });
+});

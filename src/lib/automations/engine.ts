@@ -36,7 +36,12 @@ import {
   recordMenuLinkSent,
   findOpenJourney,
   JOURNEY_STAGES,
+  isJourneyFlag,
+  isJourneyFlagSet,
+  claimJourneyFlag,
+  releaseJourneyFlag,
   type JourneyRow,
+  type JourneyFlag,
   type ResolvedMenuLink,
 } from '@/lib/journeys'
 
@@ -139,9 +144,13 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
     for (const automation of automations as Automation[]) {
       if (!triggerMatches(automation, input.context)) continue
       try {
-        // A renewed link starts the automation's timers over: park-and-resume
-        // runs from the previous link must not also fire.
-        if (input.triggerType === 'menu_link_sent' && input.contactId) {
+        // A renewed link (or a new cart / checkout event) starts the
+        // automation's timers over: park-and-resume runs from the previous
+        // one must not also fire, so the wait always counts from the LAST.
+        if (
+          (input.triggerType === 'menu_link_sent' || input.triggerType === 'journey_event') &&
+          input.contactId
+        ) {
           await supersedePendingRuns(db, automation, input.contactId)
         }
         await executeAutomation(automation, input)
@@ -510,23 +519,52 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         })
         text = interpolate(replaceMenuLinkVariable(cfg.text, menuLink.url), args)
       }
-      const { whatsapp_message_id } = await engineSendText({
-        accountId: args.automation.account_id,
-        userId: args.automation.user_id,
-        conversationId,
-        contactId: args.contactId,
-        text,
-        // A template fallback would replace the text and drop the link, so a
-        // link message never falls back: outside the window it fails visibly.
-        fallbackTemplate: !menuLink && cfg.fallback_template?.name
-          ? {
-              name: cfg.fallback_template.name,
-              // '' = unspecified: the core resolves it from the template row.
-              language: cfg.fallback_template.language ?? '',
-              provider: { params: templateParams(cfg.fallback_template.variables) },
-            }
-          : null,
-      })
+      // One-shot mark: claim it atomically BEFORE sending, so a second run
+      // (or a concurrent one) finds it taken and sends nothing.
+      let claimed: { journeyId: string; flag: JourneyFlag } | null = null
+      if (cfg.mark_journey_flag) {
+        if (!isJourneyFlag(cfg.mark_journey_flag)) {
+          throw new Error(`unknown journey flag: ${String(cfg.mark_journey_flag)}`)
+        }
+        const journey = await currentJourney(args)
+        if (!journey) throw new Error('mark_journey_flag needs a Journey')
+        const won = await claimJourneyFlag(db, {
+          accountId: args.automation.account_id,
+          journeyId: journey.id,
+          flag: cfg.mark_journey_flag,
+        })
+        if (!won) return `skipped: ${cfg.mark_journey_flag} already set on the Journey`
+        claimed = { journeyId: journey.id, flag: cfg.mark_journey_flag }
+      }
+      let whatsapp_message_id: string | undefined
+      try {
+        ;({ whatsapp_message_id } = await engineSendText({
+          accountId: args.automation.account_id,
+          userId: args.automation.user_id,
+          conversationId,
+          contactId: args.contactId,
+          text,
+          // A template fallback would replace the text and drop the link, so a
+          // link message never falls back: outside the window it fails visibly.
+          fallbackTemplate: !menuLink && cfg.fallback_template?.name
+            ? {
+                name: cfg.fallback_template.name,
+                // '' = unspecified: the core resolves it from the template row.
+                language: cfg.fallback_template.language ?? '',
+                provider: { params: templateParams(cfg.fallback_template.variables) },
+              }
+            : null,
+        }))
+      } catch (err) {
+        // Nothing went out: give the mark back so a later trigger can retry.
+        if (claimed) {
+          await releaseJourneyFlag(db, {
+            accountId: args.automation.account_id,
+            ...claimed,
+          })
+        }
+        throw err
+      }
       if (menuLink) {
         await recordMenuLinkSent(db, {
           accountId: args.automation.account_id,
@@ -1026,6 +1064,11 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       const conv = await conditionConversation(args)
       if (!conv) return false
       return !conv.assigned_agent_id && !conv.ai_autoreply_disabled
+    }
+    case 'journey_flag': {
+      // The one-shot mark is read NOW, so a send by a concurrent run counts.
+      if (!isJourneyFlag(cfg.operand)) return false
+      return isJourneyFlagSet(await currentJourney(args), cfg.operand)
     }
     case 'customer_replied_since': {
       // Both sides are read from the database NOW (this runs when the step

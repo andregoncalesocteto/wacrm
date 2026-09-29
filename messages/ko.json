@@ -1208,7 +1208,8 @@
           "customer_replied_since": "고객이 답장한 시점 이후",
           "journey_open": "Journey 진행 중",
           "journey_stage": "Journey 단계",
-          "conversation_unattended": "담당자 없음, AI 이관 없음"
+          "conversation_unattended": "담당자 없음, AI 이관 없음",
+          "journey_flag": "Journey에서 장바구니 이탈 메시지 발송됨"
         },
         "replyReferenceLabel": "기준 시점",
         "replyReferences": {
@@ -1220,6 +1221,13 @@
         "journeyEventsLabel": "Journey 이벤트",
         "journeyEventsHint": "고객의 Journey에 대해 선택한 이벤트 중 하나라도 수락되면 실행됩니다.",
         "conversationUnattendedHint": "대화에 배정된 상담원이 없고 AI가 이관하지 않은 동안 참입니다. 단계가 실행될 때(대기 이후 포함) 확인합니다.",
+        "journeyFlagLabel": "표시",
+        "journeyFlags": {
+          "abandoned_cart_sent": "장바구니 이탈 메시지"
+        },
+        "journeyFlagHint": "이 Journey에 장바구니 이탈 메시지가 발송된 뒤에는 참입니다. 단계가 실행될 때(대기 이후 포함) 확인합니다.",
+        "markJourneyFlagLabel": "Journey당 한 번 발송(장바구니 이탈)",
+        "markJourneyFlagHint": "발송 직전에 Journey에 표시하므로, 여러 실행이 도달해도 이 메시지는 Journey당 최대 한 번만 나갑니다. 발송이 실패하면 표시가 취소됩니다.",
         "stageComparisonLabel": "비교",
         "stageComparisons": {
           "before": "이전 단계",

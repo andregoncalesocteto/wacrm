@@ -1208,7 +1208,8 @@
           "customer_replied_since": "Cliente respondeu desde",
           "journey_open": "Journey aberta",
           "journey_stage": "Etapa da Journey",
-          "conversation_unattended": "Sem humano e sem transbordo da IA"
+          "conversation_unattended": "Sem humano e sem transbordo da IA",
+          "journey_flag": "Mensagem de carrinho abandonado já enviada na Journey"
         },
         "replyReferenceLabel": "Instante de referência",
         "replyReferences": {
@@ -1220,6 +1221,13 @@
         "journeyEventsLabel": "Eventos de Journey",
         "journeyEventsHint": "Dispara quando qualquer um dos eventos marcados é aceito para a Journey do cliente.",
         "conversationUnattendedHint": "Verdadeiro enquanto nenhum agente está atribuído à conversa e a IA não fez o transbordo. Verificado quando o passo executa, inclusive depois de uma espera.",
+        "journeyFlagLabel": "Marca",
+        "journeyFlags": {
+          "abandoned_cart_sent": "Mensagem de carrinho abandonado"
+        },
+        "journeyFlagHint": "Verdadeiro depois que a mensagem de carrinho abandonado saiu nesta Journey. Verificado quando o passo executa, inclusive depois de uma espera.",
+        "markJourneyFlagLabel": "Enviar uma vez por Journey (carrinho abandonado)",
+        "markJourneyFlagHint": "A Journey é marcada logo antes do envio, então esta mensagem sai no máximo uma vez por Journey, mesmo que várias execuções cheguem até ela. Se o envio falhar, a marca é desfeita.",
         "stageComparisonLabel": "Comparação",
         "stageComparisons": {
           "before": "é anterior a",

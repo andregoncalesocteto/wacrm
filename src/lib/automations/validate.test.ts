@@ -347,6 +347,22 @@ describe("validateStepsForActivation — journey conditions", () => {
     expect(cond({ subject: "journey_stage", operand: "cart", value: "after" })).toHaveLength(1);
   });
 
+  it("journey_flag needs a known flag", () => {
+    expect(cond({ subject: "journey_flag", operand: "abandoned_cart_sent" })).toEqual([]);
+    expect(cond({ subject: "journey_flag" }).map((i) => i.path)).toEqual(["steps[0].operand"]);
+    expect(cond({ subject: "journey_flag", operand: "nope" })).toHaveLength(1);
+  });
+
+  it("send_message mark_journey_flag must be a known flag", () => {
+    const send = (config: Record<string, unknown>) =>
+      validateStepsForActivation([{ step_type: "send_message", step_config: config }] as never);
+    expect(send({ text: "hi", mark_journey_flag: "abandoned_cart_sent" })).toEqual([]);
+    expect(send({ text: "hi" })).toEqual([]);
+    expect(send({ text: "hi", mark_journey_flag: "nope" }).map((i) => i.path)).toEqual([
+      "steps[0].mark_journey_flag",
+    ]);
+  });
+
   it("other subjects still require an operand", () => {
     expect(cond({ subject: "tag_presence" })).toHaveLength(1);
   });

@@ -590,6 +590,11 @@ export interface SendMessageStepConfig {
     language?: string;
     variables?: Record<string, string>;
   };
+  /**
+   * One-shot Journey mark set right before the send (atomically) and undone if
+   * the send fails. When the Journey already carries it, nothing is sent.
+   */
+  mark_journey_flag?: 'abandoned_cart_sent';
 }
 
 /**
@@ -652,7 +657,9 @@ export type ConditionSubject =
   /** The Journey's funnel stage is / is before a stage (`operand`, `value`). */
   | 'journey_stage'
   /** No human is assigned and the AI has not handed the conversation off. */
-  | 'conversation_unattended';
+  | 'conversation_unattended'
+  /** The Journey carries the one-shot mark named by `operand`. */
+  | 'journey_flag';
 
 /** `customer_replied_since` reference instants (the condition's `operand`). */
 export type ReplyReference = 'link_sent' | 'run_start';

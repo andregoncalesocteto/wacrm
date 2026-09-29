@@ -1208,7 +1208,8 @@
           "customer_replied_since": "Customer replied since",
           "journey_open": "Journey is open",
           "journey_stage": "Journey stage",
-          "conversation_unattended": "No human and no AI handoff"
+          "conversation_unattended": "No human and no AI handoff",
+          "journey_flag": "Journey abandoned-cart message already sent"
         },
         "replyReferenceLabel": "Reference instant",
         "replyReferences": {
@@ -1220,6 +1221,13 @@
         "journeyEventsLabel": "Journey events",
         "journeyEventsHint": "Fires when any of the checked events is accepted for the customer's Journey.",
         "conversationUnattendedHint": "True while no agent is assigned to the conversation and the AI has not handed it off. Checked when the step runs, including after a wait.",
+        "journeyFlagLabel": "Flag",
+        "journeyFlags": {
+          "abandoned_cart_sent": "Abandoned-cart message"
+        },
+        "journeyFlagHint": "True once the abandoned-cart message went out for this Journey. Checked when the step runs, including after a wait.",
+        "markJourneyFlagLabel": "Send once per Journey (abandoned cart)",
+        "markJourneyFlagHint": "The Journey is marked right before the send, so this message goes out at most once per Journey, even if several runs reach it. If the send fails, the mark is undone.",
         "stageComparisonLabel": "Comparison",
         "stageComparisons": {
           "before": "is before",

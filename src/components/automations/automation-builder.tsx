@@ -1438,6 +1438,22 @@ function StepEditor({
             onChange={(fallback) => set({ fallback_template: fallback })}
             t={t}
           />
+          <label className="mt-2 flex items-start gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={cfg.mark_journey_flag === "abandoned_cart_sent"}
+              onChange={(e) =>
+                set({ mark_journey_flag: e.target.checked ? "abandoned_cart_sent" : undefined })
+              }
+            />
+            <span>
+              {t("config.markJourneyFlagLabel")}
+              <span className="block text-[11px] text-muted-foreground">
+                {t("config.markJourneyFlagHint")}
+              </span>
+            </span>
+          </label>
         </FieldBlock>
       )
     case "send_buttons":
@@ -1585,7 +1601,9 @@ function StepEditor({
                       ? "link_sent"
                       : subject === "journey_stage"
                         ? "cart"
-                        : "",
+                        : subject === "journey_flag"
+                          ? "abandoned_cart_sent"
+                          : "",
                   ...(subject === "journey_stage" ? { value: "before" } : {}),
                 })
               }}
@@ -1603,6 +1621,7 @@ function StepEditor({
               <option value="conversation_unattended">
                 {t("config.subjects.conversation_unattended")}
               </option>
+              <option value="journey_flag">{t("config.subjects.journey_flag")}</option>
             </select>
           </FieldBlock>
           {cfg.subject === "journey_open" && (
@@ -1612,6 +1631,22 @@ function StepEditor({
             <p className="text-xs text-muted-foreground">
               {t("config.conversationUnattendedHint")}
             </p>
+          )}
+          {cfg.subject === "journey_flag" && (
+            <FieldBlock label={t("config.journeyFlagLabel")}>
+              <select
+                value={(cfg.operand as string) || "abandoned_cart_sent"}
+                onChange={(e) => set({ operand: e.target.value })}
+                className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+              >
+                <option value="abandoned_cart_sent">
+                  {t("config.journeyFlags.abandoned_cart_sent")}
+                </option>
+              </select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {t("config.journeyFlagHint")}
+              </p>
+            </FieldBlock>
           )}
           {cfg.subject === "journey_stage" && (
             <>
@@ -1661,6 +1696,7 @@ function StepEditor({
           {cfg.subject !== "journey_open" &&
             cfg.subject !== "customer_replied_since" &&
             cfg.subject !== "journey_stage" &&
+            cfg.subject !== "journey_flag" &&
             cfg.subject !== "conversation_unattended" && (
           <FieldBlock label={t("config.operandLabel")}>
             <Input

@@ -1,6 +1,7 @@
 import type { AutomationTriggerType } from '@/types'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { JOURNEY_STAGES } from '@/lib/journeys/constants'
+import { JOURNEY_FLAGS, isJourneyFlag } from '@/lib/journeys/flags'
 import { JOURNEY_TRIGGER_EVENTS } from './trigger-meta'
 
 // ------------------------------------------------------------
@@ -59,6 +60,12 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
     case 'send_message':
       if (!nonEmpty(c.text)) {
         issues.push({ path: `${path}.text`, message: 'message text is required' })
+      }
+      if (c.mark_journey_flag !== undefined && !isJourneyFlag(c.mark_journey_flag)) {
+        issues.push({
+          path: `${path}.mark_journey_flag`,
+          message: `journey flag must be among: ${Object.keys(JOURNEY_FLAGS).join(', ')}`,
+        })
       }
       break
     case 'send_buttons':
@@ -139,6 +146,13 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
           issues.push({
             path: `${path}.value`,
             message: 'stage comparison must be "is" or "before"',
+          })
+        }
+      } else if (c.subject === 'journey_flag') {
+        if (!isJourneyFlag(c.operand)) {
+          issues.push({
+            path: `${path}.operand`,
+            message: `flag must be among: ${Object.keys(JOURNEY_FLAGS).join(', ')}`,
           })
         }
       } else if (c.subject === 'customer_replied_since') {
