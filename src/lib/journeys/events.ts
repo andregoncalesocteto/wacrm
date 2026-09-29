@@ -148,17 +148,57 @@ async function moveTo(ctx: HandlerContext, stage: JourneyStage) {
   });
 }
 
+/**
+ * ViewContent counts views: a read-modify-write, so the write is a
+ * compare-and-swap on the count read (`eq`, or `is null`). Concurrent events
+ * that lose it re-read the Journey and try again, so no increment is lost.
+ */
+const VIEW_COUNT_TRIES = 5;
+
 const viewContent: EventHandler = {
   parseProperties: () => null,
   async handle(ctx) {
-    const first = !ctx.journey.first_view_content_at;
-    await updateJourney(ctx, {
-      view_content_count: ((ctx.journey.view_content_count as number) ?? 0) + 1,
-      ...(first
-        ? { first_view_content_at: ctx.event.occurredAt.toISOString() }
-        : {}),
-    });
-    await moveTo(ctx, 'browsing');
+    let row: Record<string, unknown> = ctx.journey;
+    for (let attempt = 0; attempt < VIEW_COUNT_TRIES; attempt++) {
+      const seen =
+        (row.view_content_count as number | null | undefined) ?? null;
+      const first = !row.first_view_content_at;
+      const guarded = ctx.db
+        .from('journeys')
+        .update({
+          view_content_count: (seen ?? 0) + 1,
+          last_event_at: ctx.now.toISOString(),
+          ...(first
+            ? { first_view_content_at: ctx.event.occurredAt.toISOString() }
+            : {}),
+        })
+        .eq('id', ctx.journey.id)
+        .eq('account_id', ctx.accountId);
+      const { data, error } = await (
+        seen === null
+          ? guarded.is('view_content_count', null)
+          : guarded.eq('view_content_count', seen)
+      ).select('id');
+      if (error) {
+        throw new Error(`journey event update failed: ${error.message}`);
+      }
+      if (Array.isArray(data) && data.length > 0) {
+        await moveTo(ctx, 'browsing');
+        return;
+      }
+      const { data: fresh, error: readErr } = await ctx.db
+        .from('journeys')
+        .select('*')
+        .eq('id', ctx.journey.id)
+        .eq('account_id', ctx.accountId)
+        .maybeSingle();
+      if (readErr) {
+        throw new Error(`journey lookup failed: ${readErr.message}`);
+      }
+      if (!fresh) return;
+      row = fresh as Record<string, unknown>;
+    }
+    throw new Error('view count update kept conflicting; retry');
   },
 };
 

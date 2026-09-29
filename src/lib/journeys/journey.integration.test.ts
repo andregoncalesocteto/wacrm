@@ -418,6 +418,37 @@ describe.each(CHANNELS)('order journey on $label', (channel) => {
     });
   });
 
+  it('concurrent ViewContent events do not lose increments', async () => {
+    const idtrack = await sendMenuLink();
+    await post('ViewContent', idtrack);
+    expect(journeys()[0].view_content_count).toBe(1);
+
+    // Another ViewContent lands between this one's read and its write.
+    const realFrom = db.from.bind(db);
+    let raced = false;
+    vi.spyOn(db, 'from').mockImplementation((table: string) => {
+      const q = realFrom(table) as unknown as {
+        update: (p: Row) => unknown;
+      };
+      if (table === 'journeys' && !raced) {
+        const update = q.update.bind(q);
+        q.update = (patch: Row) => {
+          if ('view_content_count' in patch) {
+            raced = true;
+            journeys()[0].view_content_count = 2;
+          }
+          return update(patch);
+        };
+      }
+      return q as never;
+    });
+
+    const res = await post('ViewContent', idtrack);
+    expect(res.status).toBe(200);
+    expect(raced).toBe(true);
+    expect(journeys()[0].view_content_count).toBe(3);
+  });
+
   it('an unknown idtrack is 404 and an expired one is 410', async () => {
     const idtrack = await sendMenuLink();
     const notFound = await post('ViewContent', 'nope');
