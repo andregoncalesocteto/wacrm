@@ -511,7 +511,10 @@ export type AutomationTriggerType =
   | 'time_based'
   /** Customer tapped a reply button / list row whose id matches; lets
    *  multi-step menus be chained across automations. */
-  | 'interactive_reply';
+  | 'interactive_reply'
+  /** A behaviour event of an order Journey (ViewContent, AddToCart, ...) was
+   *  accepted by `POST /api/v1/journey/events`. */
+  | 'journey_event';
 
 export type AutomationStepType =
   | 'send_message'
@@ -559,12 +562,18 @@ export interface InteractiveReplyTriggerConfig {
   reply_ids: string[];
 }
 
+export interface JourneyEventTriggerConfig {
+  /** Journey event names to match; any one fires. */
+  event_names: string[];
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig
   | InteractiveReplyTriggerConfig
+  | JourneyEventTriggerConfig
   | Record<string, unknown>;
 
 export interface SendMessageStepConfig {
@@ -632,11 +641,19 @@ export type ConditionSubject =
   | 'contact_field'
   | 'tag_presence'
   | 'message_content'
-  | 'time_of_day';
+  | 'time_of_day'
+  /** Customer sent a message after a reference instant (`operand`). */
+  | 'customer_replied_since'
+  /** The contact's Journey (conversation's connection) is open right now. */
+  | 'journey_open';
+
+/** `customer_replied_since` reference instants (the condition's `operand`). */
+export type ReplyReference = 'link_sent' | 'run_start';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;
-  /** e.g. field name, tag id, substring, or "HH:mm-HH:mm" depending on subject */
+  /** e.g. field name, tag id, substring, "HH:mm-HH:mm", or (for
+   *  `customer_replied_since`) a `ReplyReference`; unused by `journey_open`. */
   operand?: string;
   /** For contact_field equals / message_content contains — comparison value */
   value?: string;

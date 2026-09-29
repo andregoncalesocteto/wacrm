@@ -13,21 +13,39 @@ export interface AcceptedJourneyEvent {
   connectionId: string;
   /** Journey stage after the event (never behind where it was before). */
   stage: JourneyStage;
+  /** Validated event properties (cart, order...), when the caller has them. */
+  properties?: Record<string, unknown>;
 }
 
 /**
  * THE extension point for "an event was accepted". Called once per event, after
  * its effects are committed and only for the first delivery of an `event_id`
- * (replays never reach it). Ticket #7 fills it in to fire automations whose
- * trigger is a journey event; until then it does nothing.
+ * (replays never reach it). It fires the automations whose trigger is
+ * `journey_event` and lists this event's name; every accepted event goes
+ * through here, Purchase included.
  *
- * It must not throw into the request: the caller logs and swallows failures, so
- * a broken automation never turns an accepted event into an error the menu
- * would retry.
+ * It must not throw into the request: the caller also logs and swallows
+ * failures, and the automation engine never throws on its own, so a broken
+ * automation never turns an accepted event into an error the menu would retry.
  */
 export async function onJourneyEventAccepted(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _db: SupabaseClient,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _event: AcceptedJourneyEvent
-): Promise<void> {}
+  event: AcceptedJourneyEvent
+): Promise<void> {
+  // Loaded lazily: the engine imports this module's package (`@/lib/journeys`).
+  const { runAutomationsForTrigger } = await import('@/lib/automations/engine');
+  await runAutomationsForTrigger({
+    accountId: event.accountId,
+    triggerType: 'journey_event',
+    contactId: event.contactId,
+    context: {
+      conversation_id: event.conversationId,
+      connection_id: event.connectionId,
+      journey_id: event.journeyId,
+      journey_event_id: event.eventId,
+      journey_event_name: event.name,
+      journey_event_properties: event.properties ?? {},
+      journey_stage: event.stage,
+    },
+  });
+}

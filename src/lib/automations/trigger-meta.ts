@@ -37,7 +37,18 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
   interactive_reply: {
     pillClass: 'border-pink-500/30 bg-pink-500/10 text-pink-300',
   },
+  journey_event: {
+    pillClass: 'border-orange-500/30 bg-orange-500/10 text-orange-300',
+  },
 }
+
+/** Journey event names a `journey_event` trigger can listen to. */
+export const JOURNEY_TRIGGER_EVENTS = [
+  'ViewContent',
+  'AddToCart',
+  'InitiateCheckout',
+  'Purchase',
+] as const
 
 export function isKnownTrigger(t: string): t is AutomationTriggerType {
   return Object.prototype.hasOwnProperty.call(TRIGGER_META, t)

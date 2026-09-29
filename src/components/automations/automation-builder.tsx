@@ -73,6 +73,7 @@ import {
   type StepPath,
 } from "@/lib/automations/builder-tree"
 import { cn } from "@/lib/utils"
+import { JOURNEY_TRIGGER_EVENTS } from "@/lib/automations/trigger-meta"
 import { StepWarnings } from "@/components/channels/step-warnings"
 import { stepRequirements } from "@/lib/channels/step-capabilities"
 
@@ -149,6 +150,7 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "new_contact_created" },
   { value: "conversation_assigned" },
   { value: "tag_added" },
+  { value: "journey_event" },
   { value: "time_based" },
 ]
 
@@ -863,6 +865,9 @@ function TriggerCard({
             {type === "interactive_reply" && (
               <InteractiveReplyConfig config={config} onChange={onConfigChange} t={t} />
             )}
+            {type === "journey_event" && (
+              <JourneyEventConfig config={config} onChange={onConfigChange} t={t} />
+            )}
             {type === "tag_added" && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -986,6 +991,44 @@ function KeywordMatchConfig({
           </p>
         )}
       </div>
+    </div>
+  )
+}
+
+function JourneyEventConfig({
+  config,
+  onChange,
+  t,
+}: {
+  config: Record<string, unknown>
+  onChange: (c: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const selected = (config?.event_names as string[] | undefined) ?? []
+  function toggle(name: string, checked: boolean) {
+    const next = JOURNEY_TRIGGER_EVENTS.filter((n) =>
+      n === name ? checked : selected.includes(n),
+    )
+    onChange({ ...config, event_names: next })
+  }
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+        {t("config.journeyEventsLabel")}
+      </label>
+      <div className="space-y-1">
+        {JOURNEY_TRIGGER_EVENTS.map((name) => (
+          <label key={name} className="flex items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={selected.includes(name)}
+              onChange={(e) => toggle(name, e.target.checked)}
+            />
+            <span className="font-mono text-xs">{name}</span>
+          </label>
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground">{t("config.journeyEventsHint")}</p>
     </div>
   )
 }
@@ -1456,15 +1499,47 @@ function StepEditor({
           <FieldBlock label={t("config.subjectLabel")}>
             <select
               value={(cfg.subject as string) ?? "tag_presence"}
-              onChange={(e) => set({ subject: e.target.value })}
+              onChange={(e) => {
+                const subject = e.target.value
+                // The reply condition always carries an explicit reference
+                // (what the select shows is what gets saved); journey_open
+                // has no operand.
+                set({
+                  subject,
+                  operand: subject === "customer_replied_since" ? "link_sent" : "",
+                })
+              }}
               className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
             >
               <option value="tag_presence">{t("config.subjects.tag_presence")}</option>
               <option value="contact_field">{t("config.subjects.contact_field")}</option>
               <option value="message_content">{t("config.subjects.message_content")}</option>
               <option value="time_of_day">{t("config.subjects.time_of_day")}</option>
+              <option value="customer_replied_since">
+                {t("config.subjects.customer_replied_since")}
+              </option>
+              <option value="journey_open">{t("config.subjects.journey_open")}</option>
             </select>
           </FieldBlock>
+          {cfg.subject === "journey_open" && (
+            <p className="text-xs text-muted-foreground">{t("config.journeyOpenHint")}</p>
+          )}
+          {cfg.subject === "customer_replied_since" && (
+            <FieldBlock label={t("config.replyReferenceLabel")}>
+              <select
+                value={(cfg.operand as string) || "link_sent"}
+                onChange={(e) => set({ operand: e.target.value })}
+                className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+              >
+                <option value="link_sent">{t("config.replyReferences.link_sent")}</option>
+                <option value="run_start">{t("config.replyReferences.run_start")}</option>
+              </select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {t("config.replyReferenceHint")}
+              </p>
+            </FieldBlock>
+          )}
+          {cfg.subject !== "journey_open" && cfg.subject !== "customer_replied_since" && (
           <FieldBlock label={t("config.operandLabel")}>
             <Input
               placeholder={
@@ -1481,6 +1556,7 @@ function StepEditor({
               className="bg-muted text-foreground"
             />
           </FieldBlock>
+          )}
           {(cfg.subject === "contact_field" || cfg.subject === "message_content") && (
             <FieldBlock label={t("config.valueLabel")}>
               <Input

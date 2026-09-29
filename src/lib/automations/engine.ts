@@ -6,6 +6,7 @@ import type {
   ConditionStepConfig,
   KeywordMatchTriggerConfig,
   InteractiveReplyTriggerConfig,
+  JourneyEventTriggerConfig,
   TagTriggerConfig,
   SendMessageStepConfig,
   SendButtonsStepConfig,
@@ -32,6 +33,8 @@ import {
   replaceMenuLinkVariable,
   resolveMenuLink,
   recordMenuLinkSent,
+  findOpenJourney,
+  type JourneyRow,
   type ResolvedMenuLink,
 } from '@/lib/journeys'
 
@@ -52,6 +55,19 @@ export interface AutomationContext {
   agent_id?: string
   /** Button / list-row id the customer tapped, for interactive_reply. */
   interactive_reply_id?: string
+  /** Journey the event belongs to, for journey_event (also read by the
+   *  journey conditions, which then look at THAT Journey's current state). */
+  journey_id?: string
+  /** Name of the accepted Journey event, for journey_event. */
+  journey_event_name?: string
+  /** Client-supplied id of the accepted Journey event. */
+  journey_event_id?: string
+  /** Validated properties of the accepted Journey event (cart, order...). */
+  journey_event_properties?: Record<string, unknown>
+  /** Journey stage right after the event. */
+  journey_stage?: string
+  /** Connection the Journey runs on. */
+  connection_id?: string
 }
 
 export interface DispatchInput {
@@ -207,6 +223,9 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
       contact_id: input.contactId ?? null,
       trigger_event: input.triggerType,
       steps_executed: [],
+      // Explicit so "start of this run" (customer_replied_since) has a fixed
+      // instant that survives waits: resumes reuse this same log row.
+      created_at: new Date().toISOString(),
       // Seeded pessimistically. The row is written BEFORE any step runs,
       // and every terminal path below overwrites it (`appendResults` at
       // the outermost scope, or `finalizeLog`). Seeding 'success' meant a
@@ -862,6 +881,16 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
     return cfg.reply_ids.includes(replyId)
   }
 
+  // Fires for the accepted Journey event's name (any one of the configured).
+  if (automation.trigger_type === 'journey_event') {
+    const cfg = automation.trigger_config as JourneyEventTriggerConfig
+    const name = ctx?.journey_event_name
+    if (!name || !Array.isArray(cfg?.event_names) || cfg.event_names.length === 0) {
+      return false
+    }
+    return cfg.event_names.includes(name)
+  }
+
   if (automation.trigger_type === 'tag_added') {
     const cfg = automation.trigger_config as TagTriggerConfig
     const tagId = ctx?.tag_id
@@ -934,9 +963,109 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       const t = parse(to)
       return f <= t ? mins >= f && mins < t : mins >= f || mins < t
     }
+    case 'journey_open': {
+      const journey = await currentJourney(args)
+      return journey?.state === 'open'
+    }
+    case 'customer_replied_since': {
+      // Both sides are read from the database NOW (this runs when the step
+      // executes, also after a wait resumes), never from a scheduling snapshot.
+      const since = await replyReferenceInstant(cfg.operand, args)
+      if (since === null) return false
+      const conv = await conditionConversation(args)
+      if (!conv) return false
+      const { data } = await db
+        .from('messages')
+        .select('created_at')
+        .eq('conversation_id', conv.id)
+        .eq('sender_type', 'customer')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const last = (data as { created_at?: string } | null)?.created_at
+      if (!last) return false
+      return Date.parse(last) > since
+    }
     default:
       return false
   }
+}
+
+/** Conversation (and its connection) the journey conditions look at. */
+async function conditionConversation(
+  args: ExecuteArgs,
+): Promise<{ id: string; connection_id: string | null } | null> {
+  const db = supabaseAdmin()
+  const accountId = args.automation.account_id
+  const fromCtx = args.context.conversation_id
+  if (fromCtx) {
+    const { data } = await db
+      .from('conversations')
+      .select('id, connection_id')
+      .eq('id', fromCtx)
+      .eq('account_id', accountId)
+      .maybeSingle()
+    return (data as { id: string; connection_id: string | null } | null) ?? null
+  }
+  if (!args.contactId) return null
+  const { data } = await db
+    .from('conversations')
+    .select('id, connection_id')
+    .eq('account_id', accountId)
+    .eq('contact_id', args.contactId)
+    .order('last_message_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return (data as { id: string; connection_id: string | null } | null) ?? null
+}
+
+/**
+ * The Journey the run is about: the one the trigger named (`journey_id`, so a
+ * Purchase that just closed it reads as closed), otherwise the contact's open
+ * Journey on the conversation's connection. Always read fresh.
+ */
+async function currentJourney(args: ExecuteArgs): Promise<JourneyRow | null> {
+  const db = supabaseAdmin()
+  const accountId = args.automation.account_id
+  const journeyId = args.context.journey_id
+  if (journeyId) {
+    const { data } = await db
+      .from('journeys')
+      .select('*')
+      .eq('id', journeyId)
+      .eq('account_id', accountId)
+      .maybeSingle()
+    return (data as JourneyRow | null) ?? null
+  }
+  if (!args.contactId) return null
+  const conv = await conditionConversation(args)
+  if (!conv?.connection_id) return null
+  return findOpenJourney(db, {
+    accountId,
+    contactId: args.contactId,
+    connectionId: conv.connection_id,
+  })
+}
+
+/** Epoch ms of `customer_replied_since`'s reference, or null if unknown. */
+async function replyReferenceInstant(
+  reference: string | undefined,
+  args: ExecuteArgs,
+): Promise<number | null> {
+  let iso: string | null | undefined
+  if (reference === 'link_sent') {
+    iso = (await currentJourney(args))?.link_sent_at
+  } else if (reference === 'run_start') {
+    if (!args.logId) return null
+    const { data } = await supabaseAdmin()
+      .from('automation_logs')
+      .select('created_at')
+      .eq('id', args.logId)
+      .maybeSingle()
+    iso = (data as { created_at?: string } | null)?.created_at
+  }
+  const ms = iso ? Date.parse(iso) : NaN
+  return Number.isNaN(ms) ? null : ms
 }
 
 // Meta templates use positional {{1}}, {{2}}, … placeholders, so we MUST emit

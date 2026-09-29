@@ -294,7 +294,43 @@ describe("validateTriggerForActivation", () => {
     );
   });
 
+  it("requires known event names on journey_event triggers", () => {
+    expect(validateTriggerForActivation("journey_event", {})).toEqual([
+      { path: "trigger.event_names", message: "at least one event name is required" },
+    ]);
+    expect(
+      validateTriggerForActivation("journey_event", {
+        event_names: ["AddToCart", "Purchase"],
+      }),
+    ).toEqual([]);
+    expect(
+      validateTriggerForActivation("journey_event", { event_names: ["Nope"] }),
+    ).toHaveLength(1);
+  });
+
   it("does not flag unknown trigger types (handled elsewhere)", () => {
     expect(validateTriggerForActivation("some_future_trigger", {})).toEqual([]);
+  });
+});
+
+describe("validateStepsForActivation — journey conditions", () => {
+  const cond = (step_config: Record<string, unknown>) =>
+    validateStepsForActivation([{ step_type: "condition", step_config }]);
+
+  it("journey_open needs no operand", () => {
+    expect(cond({ subject: "journey_open" })).toEqual([]);
+  });
+
+  it("customer_replied_since needs a known reference instant", () => {
+    expect(cond({ subject: "customer_replied_since", operand: "link_sent" })).toEqual([]);
+    expect(cond({ subject: "customer_replied_since", operand: "run_start" })).toEqual([]);
+    expect(cond({ subject: "customer_replied_since" }).map((i) => i.path)).toEqual([
+      "steps[0].operand",
+    ]);
+    expect(cond({ subject: "customer_replied_since", operand: "x" })).toHaveLength(1);
+  });
+
+  it("other subjects still require an operand", () => {
+    expect(cond({ subject: "tag_presence" })).toHaveLength(1);
   });
 });

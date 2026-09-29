@@ -1,5 +1,6 @@
 import type { AutomationTriggerType } from '@/types'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
+import { JOURNEY_TRIGGER_EVENTS } from './trigger-meta'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -122,7 +123,16 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       if (!nonEmpty(c.subject)) {
         issues.push({ path: `${path}.subject`, message: 'condition subject is required' })
       }
-      if (!nonEmpty(c.operand)) {
+      if (c.subject === 'journey_open') {
+        // Reads the Journey's current state; nothing to configure.
+      } else if (c.subject === 'customer_replied_since') {
+        if (c.operand !== 'link_sent' && c.operand !== 'run_start') {
+          issues.push({
+            path: `${path}.operand`,
+            message: 'reference instant must be "link_sent" or "run_start"',
+          })
+        }
+      } else if (!nonEmpty(c.operand)) {
         issues.push({ path: `${path}.operand`, message: 'condition operand is required' })
       }
       break
@@ -189,6 +199,21 @@ export function validateTriggerForActivation(
   } else if (triggerType === 'tag_added') {
     if (!nonEmpty(cfg.tag_id)) {
       issues.push({ path: 'trigger.tag_id', message: 'tag is required' })
+    }
+  } else if (triggerType === 'journey_event') {
+    const names = cfg.event_names
+    if (!Array.isArray(names) || names.length === 0) {
+      issues.push({
+        path: 'trigger.event_names',
+        message: 'at least one event name is required',
+      })
+    } else if (
+      names.some((v) => typeof v !== 'string' || !(JOURNEY_TRIGGER_EVENTS as readonly string[]).includes(v))
+    ) {
+      issues.push({
+        path: 'trigger.event_names',
+        message: `event names must be among: ${JOURNEY_TRIGGER_EVENTS.join(', ')}`,
+      })
     }
   } else if (triggerType === 'interactive_reply') {
     const ids = cfg.reply_ids

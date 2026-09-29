@@ -516,3 +516,218 @@ describe('phone-variant retry in automation sends', () => {
     expect(messages()[0].message_id).toBe('wamid.v2');
   });
 });
+
+describe('journey_event trigger and journey conditions', () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const HOUR = 3_600_000;
+
+  /** cv-1 on the WhatsApp connection, its last customer message 2 h ago. */
+  function journeySeed(journey: Row | null = {}) {
+    conv().connection_id = 'conn-acct-1';
+    for (const m of h.db.messages) m.created_at = ago(2 * HOUR);
+    h.db.journeys = journey
+      ? [
+          {
+            id: 'jr-1',
+            account_id: 'acct-1',
+            contact_id: 'ct-1',
+            connection_id: 'conn-acct-1',
+            state: 'open',
+            link_sent_at: ago(HOUR),
+            ...journey,
+          },
+        ]
+      : [];
+  }
+
+  /** condition -> 'Yes' / 'No' text, so the sent message names the branch. */
+  function conditionSteps(cfg: Row, ...before: Row[]) {
+    const n = before.length;
+    steps(
+      ...before,
+      { step_type: 'condition', step_config: cfg },
+      {
+        id: 'st-yes',
+        parent_step_id: `st-${n + 1}`,
+        branch: 'yes',
+        step_type: 'send_message',
+        step_config: { text: 'Yes' },
+      },
+      {
+        id: 'st-no',
+        parent_step_id: `st-${n + 1}`,
+        branch: 'no',
+        step_type: 'send_message',
+        step_config: { text: 'No' },
+      }
+    );
+    // helper numbered by index: the two branch rows sit at position 0 of
+    // their own scope.
+    for (const s of h.db.automation_steps)
+      if (s.parent_step_id) s.position = 0;
+  }
+  const sent = () => messages().map((m) => m.content_text);
+  const customerSays = (atMs: number) =>
+    h.db.messages.push({
+      conversation_id: 'cv-1',
+      sender_type: 'customer',
+      created_at: new Date(atMs).toISOString(),
+    });
+  const resume = () =>
+    resumePendingExecution(
+      h.db.automation_pending_executions[0] as unknown as Parameters<
+        typeof resumePendingExecution
+      >[0]
+    );
+
+  describe('trigger', () => {
+    const fireJourney = (name: string) =>
+      runAutomationsForTrigger({
+        accountId: 'acct-1',
+        triggerType: 'journey_event',
+        contactId: 'ct-1',
+        context: {
+          conversation_id: 'cv-1',
+          journey_id: 'jr-1',
+          journey_event_name: name,
+        },
+      });
+
+    beforeEach(() => {
+      journeySeed();
+      h.db.automations[0].trigger_type = 'journey_event';
+      h.db.automations[0].trigger_config = {
+        event_names: ['AddToCart', 'Purchase'],
+      };
+      steps({ step_type: 'send_message', step_config: { text: 'Hi' } });
+    });
+
+    it('fires for a configured event name', async () => {
+      await fireJourney('Purchase');
+      expect(sent()).toEqual(['Hi']);
+      expect(log().trigger_event).toBe('journey_event');
+    });
+
+    it('does not fire for another event name', async () => {
+      await fireJourney('ViewContent');
+      expect(sent()).toEqual([]);
+      expect(h.db.automation_logs).toHaveLength(0);
+    });
+  });
+
+  describe('journey_open', () => {
+    it('reads the open Journey as true and a closed one as false', async () => {
+      journeySeed({ state: 'open' });
+      conditionSteps({ subject: 'journey_open' });
+      await fire();
+      expect(sent()).toEqual(['Yes']);
+    });
+
+    it('is false once the Journey is won', async () => {
+      journeySeed({ state: 'won' });
+      conditionSteps({ subject: 'journey_open' });
+      await fire();
+      expect(sent()).toEqual(['No']);
+    });
+
+    it('is false when the contact has no Journey', async () => {
+      journeySeed(null);
+      conditionSteps({ subject: 'journey_open' });
+      await fire();
+      expect(sent()).toEqual(['No']);
+    });
+
+    it('looks at the Journey named by the trigger, so a just-closed one is closed', async () => {
+      journeySeed({ state: 'won' });
+      conditionSteps({ subject: 'journey_open' });
+      await fire({ conversation_id: 'cv-1', journey_id: 'jr-1' });
+      expect(sent()).toEqual(['No']);
+    });
+
+    it('is re-read on resume: the Journey closing during the wait flips the branch', async () => {
+      journeySeed({ state: 'open' });
+      conditionSteps(
+        { subject: 'journey_open' },
+        { step_type: 'wait', step_config: { amount: 1, unit: 'minutes' } }
+      );
+      await fire();
+      expect(sent()).toEqual([]);
+
+      h.db.journeys[0].state = 'won';
+      await resume();
+
+      expect(sent()).toEqual(['No']);
+    });
+  });
+
+  describe('customer_replied_since', () => {
+    it('link_sent: false when the last customer message predates the link', async () => {
+      journeySeed({ link_sent_at: ago(HOUR) });
+      conditionSteps({ subject: 'customer_replied_since', operand: 'link_sent' });
+      await fire();
+      expect(sent()).toEqual(['No']);
+    });
+
+    it('link_sent: true when the customer wrote after the link', async () => {
+      journeySeed({ link_sent_at: ago(HOUR) });
+      customerSays(Date.now() - 60_000);
+      conditionSteps({ subject: 'customer_replied_since', operand: 'link_sent' });
+      await fire();
+      expect(sent()).toEqual(['Yes']);
+    });
+
+    it('link_sent: ignores the bot and agent messages', async () => {
+      journeySeed({ link_sent_at: ago(HOUR) });
+      h.db.messages.push({
+        conversation_id: 'cv-1',
+        sender_type: 'bot',
+        created_at: ago(60_000),
+      });
+      conditionSteps({ subject: 'customer_replied_since', operand: 'link_sent' });
+      await fire();
+      expect(sent().filter((t) => t === 'Yes' || t === 'No')).toEqual(['No']);
+    });
+
+    it('link_sent: false without a Journey', async () => {
+      journeySeed(null);
+      customerSays(Date.now() - 60_000);
+      conditionSteps({ subject: 'customer_replied_since', operand: 'link_sent' });
+      await fire();
+      expect(sent()).toEqual(['No']);
+    });
+
+    it('run_start: is re-evaluated on resume, so a reply DURING the wait counts', async () => {
+      journeySeed();
+      conditionSteps(
+        { subject: 'customer_replied_since', operand: 'run_start' },
+        { step_type: 'wait', step_config: { amount: 1, unit: 'minutes' } }
+      );
+      await fire();
+      expect(sent()).toEqual([]);
+
+      customerSays(Date.now() + 5_000);
+      await resume();
+
+      expect(sent()).toEqual(['Yes']);
+    });
+
+    it('run_start: no reply during the wait takes the no branch', async () => {
+      journeySeed();
+      conditionSteps(
+        { subject: 'customer_replied_since', operand: 'run_start' },
+        { step_type: 'wait', step_config: { amount: 1, unit: 'minutes' } }
+      );
+      await fire();
+      await resume();
+      expect(sent()).toEqual(['No']);
+    });
+
+    it('an unknown reference is false', async () => {
+      journeySeed();
+      customerSays(Date.now() + 5_000);
+      conditionSteps({ subject: 'customer_replied_since', operand: 'bogus' });
+      await fire();
+      expect(sent()).toEqual(['No']);
+    });
+  });
+});

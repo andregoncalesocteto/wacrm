@@ -388,6 +388,33 @@ describe("triggerMatches — interactive_reply", () => {
   });
 });
 
+describe("triggerMatches — journey_event", () => {
+  const automation = (event_names: string[]): Automation => ({
+    id: "a1",
+    account_id: ACCOUNT,
+    user_id: "u1",
+    name: "journey",
+    trigger_type: "journey_event",
+    trigger_config: { event_names },
+    is_active: true,
+    execution_count: 0,
+    created_at: "",
+    updated_at: "",
+  });
+
+  it("matches any configured event name", () => {
+    const a = automation(["AddToCart", "Purchase"]);
+    expect(triggerMatches(a, { journey_event_name: "AddToCart" })).toBe(true);
+    expect(triggerMatches(a, { journey_event_name: "Purchase" })).toBe(true);
+  });
+
+  it("does not match another name, no name, or an empty config", () => {
+    expect(triggerMatches(automation(["Purchase"]), { journey_event_name: "ViewContent" })).toBe(false);
+    expect(triggerMatches(automation(["Purchase"]), {})).toBe(false);
+    expect(triggerMatches(automation([]), { journey_event_name: "Purchase" })).toBe(false);
+  });
+});
+
 describe("triggerMatches — tag_added", () => {
   function automation(tagId?: string): Automation {
     return {
