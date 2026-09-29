@@ -369,6 +369,55 @@ describe.each(CHANNELS)('order journey on $label', (channel) => {
     expect(t('orders')).toHaveLength(1);
   });
 
+  describe('two Purchases racing for the same order_id', () => {
+    /** The winner inserted the order and has not closed the Journey yet. */
+    async function winnerInsertedOrder(idtrack: string, originEventId: string) {
+      await post('ViewContent', idtrack);
+      (world.tables.orders ??= []).push({
+        id: 'ord-race',
+        account_id: ACCOUNT,
+        external_order_id: 'PED-RACE',
+        contact_id: 'ct-1',
+        journey_id: journeys()[0].id,
+        idtrack,
+        origin_event_id: originEventId,
+        status: 'placed',
+      });
+    }
+
+    it('the loser (other event_id) answers duplicate: no close, no thank-you', async () => {
+      const idtrack = await sendMenuLink();
+      await winnerInsertedOrder(idtrack, 'evt-winner');
+      const sent = channel.sent().length;
+
+      const res = await post(
+        'Purchase',
+        idtrack,
+        purchase('PED-RACE'),
+        'evt-loser'
+      );
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.duplicate).toBe(true);
+      expect(journeys()[0].state).toBe('open');
+      expect(t('orders')).toHaveLength(1);
+      expect(channel.sent()).toHaveLength(sent);
+    });
+
+    it('a retry of the SAME event_id finishes the pending work', async () => {
+      const idtrack = await sendMenuLink();
+      await winnerInsertedOrder(idtrack, 'evt-winner');
+
+      const res = await post(
+        'Purchase',
+        idtrack,
+        purchase('PED-RACE'),
+        'evt-winner'
+      );
+      expect((await res.json()).data.duplicate).toBe(false);
+      expect(journeys()[0].state).toBe('won');
+    });
+  });
+
   it('an unknown idtrack is 404 and an expired one is 410', async () => {
     const idtrack = await sendMenuLink();
     const notFound = await post('ViewContent', 'nope');

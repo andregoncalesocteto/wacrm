@@ -220,8 +220,9 @@ export async function findCompletedPurchase(
  *   - the Order (unique per account + `order_id`);
  *   - the deal's value / currency follow the order;
  *   - `contacts.last_purchase_at` (never moves backwards).
- * Returns `duplicate: true` when the `order_id` belongs to another Journey (a
- * concurrent Purchase won the race): the caller must then do nothing more.
+ * Returns `duplicate: true` when the `order_id` belongs to another Journey or
+ * was created by another `event_id` (a concurrent Purchase won the race): the
+ * caller must then do nothing more, and answer as a duplicate.
  */
 export async function recordPurchase(
   db: SupabaseClient,
@@ -229,10 +230,14 @@ export async function recordPurchase(
     accountId: string;
     journey: JourneyRow;
     idtrack: string;
+    /** `event_id` of the Purchase: stored as the order's origin. */
+    eventId: string;
     occurredAt: Date;
     purchase: PurchaseProperties;
   }
-): Promise<{ duplicate: boolean }> {
+): Promise<
+  { duplicate: false } | { duplicate: true; journeyId: string | null }
+> {
   const { accountId, journey, purchase } = args;
 
   const { error } = await db.from('orders').insert({
@@ -244,6 +249,7 @@ export async function recordPurchase(
     journey_id: journey.id,
     deal_id: journey.deal_id,
     idtrack: args.idtrack,
+    origin_event_id: args.eventId,
     status: 'placed',
     value: purchase.value,
     currency: purchase.currency,
@@ -259,8 +265,18 @@ export async function recordPurchase(
       accountId,
       purchase.orderId
     );
-    if (existing?.journey_id !== journey.id) return { duplicate: true };
-    // Same Journey: a previous attempt died before closing it. Carry on.
+    if (existing?.journey_id !== journey.id) {
+      return { duplicate: true, journeyId: existing?.journey_id ?? null };
+    }
+    // Same Journey, but the order came from ANOTHER event_id: a concurrent
+    // Purchase for the same order_id reused this still-open Journey. It is a
+    // duplicate; only a retry of the SAME event_id finishes the job.
+    const origin = existing.origin_event_id as string | null | undefined;
+    if (origin && origin !== args.eventId) {
+      return { duplicate: true, journeyId: existing.journey_id };
+    }
+    // Same event (or an order from before 062): a previous attempt died before
+    // closing the Journey. Carry on.
   }
 
   if (journey.deal_id) {

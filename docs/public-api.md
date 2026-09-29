@@ -284,7 +284,7 @@ recover abandoned carts and notify the customer. The operator-side setup is in
 
 > **Pre-stable until the first client.** This contract is frozen when the
 > first client integrates; after that a breaking change needs `v2`.
-> **Migrations required:** `055` to `061` (see [order-journey.md](./order-journey.md#what-to-apply-and-configure)).
+> **Migrations required:** `055` to `062` (see [order-journey.md](./order-journey.md#what-to-apply-and-configure)).
 
 **One event per call**, JSON body, no batching. Common fields:
 

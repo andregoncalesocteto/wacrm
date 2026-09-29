@@ -42,6 +42,7 @@ Docker stack's `migrate` service applies them for you, see
 | `059`     | Order status history                                                    |
 | `060`     | The `cancelled` state of parked automation runs                         |
 | `061`     | The preset key of automations                                           |
+| `062`     | The event that created each order (concurrent duplicate Purchases)      |
 
 **2. The menu address of each store.** **Settings → Stores → edit a store →
 Digital menu URL** (`https://…`). Each store sends its own domain. A store with

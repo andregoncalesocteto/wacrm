@@ -376,6 +376,14 @@ BEGIN
     RAISE EXCEPTION 'automations_account_preset_key index is missing (migration 061)';
   END IF;
 
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'orders'
+      AND column_name = 'origin_event_id'
+  ) THEN
+    RAISE EXCEPTION 'orders.origin_event_id is missing (migration 062)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

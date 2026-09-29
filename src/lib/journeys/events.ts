@@ -84,8 +84,15 @@ interface EventHandler {
     accountId: string,
     properties: unknown
   ): Promise<{ journeyId: string } | null>;
-  /** Apply the event to the (open) Journey and its deal. */
-  handle?(ctx: HandlerContext): Promise<void>;
+  /**
+   * Apply the event to the (open) Journey and its deal. Returns
+   * `{ duplicateOf }` when the event turned out to be a duplicate found while
+   * handling (Purchase that lost the order race): answered as `duplicate`,
+   * with no hook.
+   */
+  handle?(
+    ctx: HandlerContext
+  ): Promise<void | { duplicateOf: { journeyId: string | null } }>;
   /**
    * For events about something that already exists (an Order) and so must not
    * open or touch a Journey. Replaces `handle`; the Journey is only reported.
@@ -222,14 +229,17 @@ const purchase: EventHandler = {
     ),
   async handle(ctx) {
     const props = ctx.event.properties as PurchaseProperties;
-    const { duplicate } = await recordPurchase(ctx.db, {
+    const outcome = await recordPurchase(ctx.db, {
       accountId: ctx.accountId,
       journey: ctx.journey,
       idtrack: ctx.event.idtrack,
+      eventId: ctx.event.eventId,
       occurredAt: ctx.event.occurredAt,
       purchase: props,
     });
-    if (duplicate) return;
+    if (outcome.duplicate) {
+      return { duplicateOf: { journeyId: outcome.journeyId } };
+    }
     await updateJourney(ctx, {
       purchased_at: ctx.event.occurredAt.toISOString(),
     });
@@ -499,12 +509,21 @@ export async function processJourneyEvent(
         linkSentAt: now,
       }));
 
-    await handler.handle?.({ db, accountId, userId, event, journey, now });
+    const handled = await handler.handle?.({
+      db,
+      accountId,
+      userId,
+      event,
+      journey,
+      now,
+    });
 
+    // Duplicate found while handling: answer it, without hook nor effects.
+    const reportedId = handled ? handled.duplicateOf.journeyId : journey.id;
     const { data: after, error } = await db
       .from('journeys')
       .select('stage')
-      .eq('id', journey.id)
+      .eq('id', reportedId ?? journey.id)
       .eq('account_id', accountId)
       .single();
     if (error) throw new Error(`journey lookup failed: ${error.message}`);
@@ -512,11 +531,12 @@ export async function processJourneyEvent(
 
     const result: JourneyEventResult = {
       event_id: event.eventId,
-      journey_id: journey.id,
+      journey_id: reportedId,
       stage,
-      duplicate: false,
+      duplicate: !!handled,
     };
     await saveResponse(db, accountId, claim.claimId, result, now);
+    if (handled) return result;
 
     try {
       await onJourneyEventAccepted(db, {
