@@ -70,3 +70,17 @@ wacrm is multi-store, multi-channel: `account` is the network/tenant (unchanged)
 - Commits/PRs: imperative, terse first line; run `npm run typecheck` and `npm run format` before pushing; one logical change per PR; branch off latest `main`. Follow `git log` style.
 - Docs for users live in `docs/` (`public-api.md`, `mcp.md`, `multi-waba.md`, …) — update them alongside API or MCP changes.
 - Spec-driven development (SDD) documents live in `.projects/`, the global folder for projects, and never at the repo root. **Each feature discussed gets its own subfolder** (`.projects/<feature-slug>/`, e.g. `channel-abstraction/`, `i18n-pt-br/`) holding that feature's triage (`triage.md`), BMAD artifacts (brief, PRD, architecture, epics/stories) and Spec Kit specs/plans/tasks. Point the tool's output folder at the feature's subfolder when installing or running it (BMAD: `output_folder`), and move anything a tool writes elsewhere (the triage skill writes `triage.md` at the root by default).
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`andregoncalesocteto/wacrm`), via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context: `CONTEXT-MAP.md` at the repo root points to each feature's `CONTEXT.md` (e.g. `.projects/order-journey-recovery/CONTEXT.md`), and its ADRs live beside it in `.projects/<feature>/adr/`. See `docs/agents/domain.md`.
