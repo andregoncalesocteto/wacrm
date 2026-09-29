@@ -217,16 +217,22 @@ export async function advanceJourneyStage(
 
   const at = (args.at ?? new Date()).toISOString();
   const terminal = args.stage === 'won' || args.stage === 'lost';
-  const { error: upErr } = await db
+  // Conditional on `state = 'open'`: of two concurrent closers (Purchase, the
+  // abandonment sweep, two cron runs) only one flips the row and goes on to
+  // move the deal. `lost` is not engagement, so it leaves `last_event_at` be.
+  const { data: moved, error: upErr } = await db
     .from('journeys')
     .update({
       stage: args.stage,
-      last_event_at: at,
+      ...(args.stage === 'lost' ? {} : { last_event_at: at }),
       ...(terminal ? { state: args.stage, closed_at: at } : {}),
     })
     .eq('id', journey.id)
-    .eq('account_id', args.accountId);
+    .eq('account_id', args.accountId)
+    .eq('state', 'open')
+    .select('id');
   if (upErr) throw new Error(`journey advance failed: ${upErr.message}`);
+  if (!moved || moved.length === 0) return false;
 
   if (journey.deal_id) {
     const { stageIds } = await ensureJourneyPipeline(db, args);

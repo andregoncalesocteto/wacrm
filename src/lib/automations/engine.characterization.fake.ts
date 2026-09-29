@@ -44,6 +44,23 @@ export function fakeAdmin(h: Harness) {
       this.filters.push((r) => (r[col] ?? null) === v);
       return this;
     }
+    lt(col: string, v: unknown) {
+      this.filters.push((r) => r[col] != null && String(r[col]) < String(v));
+      return this;
+    }
+    /** Only `col.is.null` and `col.lt.<value>` terms, as the sweep uses. */
+    or(expr: string) {
+      const terms = expr.split(',').map((t) => {
+        const [col, op, ...rest] = t.split('.');
+        const v = rest.join('.');
+        return (r: Row) =>
+          op === 'is'
+            ? (r[col] ?? null) === null
+            : r[col] != null && String(r[col]) < v;
+      });
+      this.filters.push((r) => terms.some((f) => f(r)));
+      return this;
+    }
     gte(col: string, v: number) {
       this.filters.push((r) => (r[col] as number) >= v);
       return this;

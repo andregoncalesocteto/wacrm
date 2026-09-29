@@ -145,3 +145,13 @@ docker run -d --env-file .env.local -e PORT=3000 -p 3000:3000 wacrm
   resumes the step, not when the link was sent. Applying migration `060`
   is needed for a renewed link to cancel the previous link's parked
   Resumptions.
+- The same `GET /api/automations/cron` call also closes abandoned
+  Journeys as "Perdido" (deal status `lost`, "Perdido" stage): an open
+  Journey becomes lost when 24 h have passed since its latest engagement
+  (the most recent of the last behavior event, the menu link and the
+  customer's last message) **and** no Resumption or abandoned-cart run of
+  that Journey is still waiting. Since those end within 30 minutes, the
+  practical rule is 24 h of silence with nothing left to send. It needs no
+  extra scheduler or migration, handles up to 50 Journeys per call, and two
+  overlapping calls never close the same Journey twice. Won Journeys are
+  never touched, and a later `Purchase` opens a new Journey.
