@@ -216,6 +216,7 @@ describe('buildJourneyPreset', () => {
     expect(send.step_config).toEqual({
       text: CATALOGS.en.texts.abandonedCart,
       mark_journey_flag: 'abandoned_cart_sent',
+      consent_purpose: 'marketing',
     });
     expect(
       p.steps.map((s) => (s.step_config as { subject?: string }).subject)
@@ -267,7 +268,7 @@ describe('installJourneyPreset consent purposes', () => {
   const purposeOf = (s: Row) =>
     (s.step_config as { consent_purpose?: string }).consent_purpose;
 
-  it('the thank-you and every status notice use notifications; cart and resumptions declare nothing', async () => {
+  it('the thank-you and every status notice use notifications; the abandoned cart declares marketing; resumptions declare nothing', async () => {
     const { db, client } = fakeDb();
     await installJourneyPreset(client, args());
     for (const key of [
@@ -276,9 +277,22 @@ describe('installJourneyPreset consent purposes', () => {
     ]) {
       expect(sends(db, key).map(purposeOf)).toEqual(['notifications']);
     }
-    for (const key of ['order_journey.abandoned_cart', 'order_journey.resumption']) {
-      expect(sends(db, key).map(purposeOf).every((p) => p === undefined)).toBe(true);
-    }
+    expect(sends(db, 'order_journey.abandoned_cart').map(purposeOf)).toEqual(['marketing']);
+    expect(sends(db, 'order_journey.resumption').map(purposeOf).every((p) => p === undefined)).toBe(true);
+  });
+
+  it('backfills an abandoned cart installed before with an explicit marketing', async () => {
+    const { db, client } = fakeDb();
+    await installJourneyPreset(client, args());
+    const cart = sends(db, 'order_journey.abandoned_cart')[0];
+    cart.step_config = { text: 'Editado', mark_journey_flag: 'abandoned_cart_sent' };
+    const again = await installJourneyPreset(client, args());
+    expect(again.backfilled).toContain('order_journey.abandoned_cart');
+    expect(cart.step_config).toEqual({
+      text: 'Editado',
+      mark_journey_flag: 'abandoned_cart_sent',
+      consent_purpose: 'marketing',
+    });
   });
 
   it('backfills ONLY consent_purpose on automations installed before it, keeping edits', async () => {

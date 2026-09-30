@@ -2092,3 +2092,300 @@ describe('consent gate and conversation creation for customers who never wrote (
     expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Abandoned cart for a DIRECT Journey (no link, customer who never wrote) (#24)', () => {
+  const MIN = 60_000;
+  const T0 = Date.parse('2026-09-29T12:00:00Z');
+  const at = (ms: number) => new Date(ms).toISOString();
+
+  const consent = (purpose: string) => ({
+    account_id: 'acct-1',
+    contact_id: 'ct-new',
+    purpose,
+    granted: true,
+    given_at: '2026-01-01T00:00:00Z',
+    revoked_at: null,
+  });
+  const st = (id: string, st: Row) => ({
+    automation_id: 'au-1',
+    parent_step_id: null,
+    branch: null,
+    position: 0,
+    id: `au-1-${id}`,
+    ...st,
+  });
+  const kid = (id: string, parent: string, st2: Row) =>
+    st(id, { ...st2, parent_step_id: `au-1-${parent}`, branch: parent === 'flag' ? 'no' : 'yes' });
+
+  /** The preset's chain, with the send stating `marketing` and a template. */
+  const chain = () => [
+    st('wait', { step_type: 'wait', step_config: { amount: 10, unit: 'minutes' } }),
+    st('unattended', { position: 1, step_type: 'condition', step_config: { subject: 'conversation_unattended' } }),
+    kid('open', 'unattended', { step_type: 'condition', step_config: { subject: 'journey_open' } }),
+    {
+      ...kid('replied', 'open', {
+        step_type: 'condition',
+        step_config: { subject: 'customer_replied_since', operand: 'run_start' },
+      }),
+      branch: 'yes',
+    },
+    {
+      ...kid('flag', 'replied', {
+        step_type: 'condition',
+        step_config: { subject: 'journey_flag', operand: 'abandoned_cart_sent' },
+      }),
+      branch: 'no',
+    },
+    {
+      ...kid('send', 'flag', {
+        step_type: 'send_message',
+        step_config: {
+          text: 'Cart?',
+          mark_journey_flag: 'abandoned_cart_sent',
+          consent_purpose: 'marketing',
+          fallback_template: { name: 'cart_tpl', language: 'pt_BR' },
+        },
+      }),
+      branch: 'no',
+    },
+  ];
+
+  const pending = () => h.db.automation_pending_executions.filter((p) => p.status === 'pending');
+  const convsOfNew = () => h.db.conversations.filter((c) => c.contact_id === 'ct-new');
+  const journey = () => h.db.journeys[0];
+
+  async function event(name: string, minute: number) {
+    vi.setSystemTime(T0 + minute * MIN);
+    await runAutomationsForTrigger({
+      accountId: 'acct-1',
+      triggerType: 'journey_event',
+      contactId: 'ct-new',
+      context: {
+        store_id: 'st-1',
+        journey_id: 'jr-d',
+        journey_event_name: name,
+        journey_stage: name === 'InitiateCheckout' ? 'checkout' : 'cart',
+      },
+    });
+  }
+  async function tick(minute: number) {
+    vi.setSystemTime(T0 + minute * MIN);
+    const due = pending().filter((p) => Date.parse(p.run_at as string) <= Date.now());
+    for (const p of due) {
+      await resumePendingExecution(p as unknown as Parameters<typeof resumePendingExecution>[0]);
+    }
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    h.db.contacts.push({ id: 'ct-new', account_id: 'acct-1', phone: '+5511999990000' });
+    h.db.stores = [
+      { id: 'st-1', account_id: 'acct-1', name: 'Loja Centro', notification_connection_id: null },
+    ];
+    h.db.channel_connections[0].store_id = 'st-1';
+    h.db.contact_consents = [consent('marketing')];
+    h.db.message_templates = [
+      {
+        id: 'tpl-1',
+        account_id: 'acct-1',
+        user_id: 'u-1',
+        name: 'cart_tpl',
+        category: 'Marketing',
+        language: 'pt_BR',
+        body_text: 'Esqueceu algo',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ];
+    Object.assign(h.db.automations[0], {
+      trigger_type: 'journey_event',
+      trigger_config: { event_names: ['AddToCart', 'InitiateCheckout'] },
+    });
+    h.db.journeys = [
+      {
+        id: 'jr-d',
+        account_id: 'acct-1',
+        contact_id: 'ct-new',
+        connection_id: null,
+        store_id: 'st-1',
+        origin: 'menu_direct',
+        state: 'open',
+        stage: 'cart',
+        link_sent_at: null,
+        abandoned_cart_sent_at: null,
+      },
+    ];
+    h.db.automation_steps = chain();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('parks without a conversation and sends the template 10 minutes later, once, on a closed conversation', async () => {
+    await event('AddToCart', 0);
+    expect(pending()).toHaveLength(1);
+    expect(pending()[0]).toMatchObject({ conversation_id: null, connection_id: null });
+    expect(h.db.automation_logs[0].status).toBe('partial');
+
+    await tick(9);
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    expect(convsOfNew()).toHaveLength(0);
+
+    await tick(10);
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
+    expect(convsOfNew()).toHaveLength(1);
+    expect(convsOfNew()[0]).toMatchObject({ status: 'closed', connection_id: 'conn-acct-1' });
+    expect(messages()[0]).toMatchObject({ template_name: 'cart_tpl' });
+    expect(journey().abandoned_cart_sent_at).toBe(at(T0 + 10 * MIN));
+    expect(h.db.automation_logs[0].status).toBe('success');
+    expect(h.db.automation_pending_executions[0].status).toBe('done');
+
+    // Once per Journey: a later AddToCart re-arms but the mark blocks the send.
+    await event('AddToCart', 30);
+    await tick(40);
+    expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('notifications alone is not enough: nothing is sent, the reason is logged, the mark stays free', async () => {
+    h.db.contact_consents = [consent('notifications')];
+    await event('AddToCart', 0);
+    await tick(10);
+
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(convsOfNew()).toHaveLength(0);
+    expect(journey().abandoned_cart_sent_at).toBeNull();
+    expect(JSON.stringify(h.db.automation_logs[0].steps_executed)).toContain(
+      'ignored: sem consentimento: marketing'
+    );
+    expect(JSON.stringify(h.db.automation_logs[0])).not.toContain('99999');
+  });
+
+  it('a revoked marketing consent blocks it too', async () => {
+    h.db.contact_consents = [{ ...consent('marketing'), granted: false, revoked_at: '2026-01-02T00:00:00Z' }];
+    await event('AddToCart', 0);
+    await tick(10);
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+  });
+
+  it('a Purchase before the due time cancels it', async () => {
+    await event('AddToCart', 0);
+    Object.assign(journey(), { state: 'won', stage: 'won' });
+    await tick(10);
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    expect(convsOfNew()).toHaveLength(0);
+    expect(journey().abandoned_cart_sent_at).toBeNull();
+  });
+
+  it('a burst of events leaves one wait (no conversation needed to supersede) and sends once, 10 min after the last', async () => {
+    const names = ['AddToCart', 'AddToCart', 'InitiateCheckout', 'AddToCart'];
+    for (const [i, n] of names.entries()) await event(n, i * 2);
+    expect(h.db.automation_pending_executions).toHaveLength(names.length);
+    expect(pending()).toHaveLength(1);
+    await tick(15);
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    await tick(16);
+    expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
+    await tick(60);
+    expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('a reply during the wait (the customer wrote to us) suppresses it', async () => {
+    await event('AddToCart', 0);
+    h.db.conversations.push({
+      id: 'cv-new',
+      account_id: 'acct-1',
+      contact_id: 'ct-new',
+      connection_id: 'conn-acct-1',
+      status: 'open',
+      last_message_at: at(T0 + 4 * MIN),
+    });
+    h.db.messages.push({
+      conversation_id: 'cv-new',
+      sender_type: 'customer',
+      created_at: at(T0 + 4 * MIN),
+    });
+    await tick(10);
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('a customer who already wrote keeps the implicit consent and the existing conversation', async () => {
+    h.db.contact_consents = [];
+    h.db.contacts.push({ id: 'ct-w', account_id: 'acct-1', phone: '+5511888880000' });
+    h.db.conversations.push({
+      id: 'cv-w',
+      account_id: 'acct-1',
+      contact_id: 'ct-w',
+      connection_id: 'conn-acct-1',
+      status: 'open',
+      last_message_at: at(T0 - 60 * MIN),
+    });
+    h.db.messages.push({ conversation_id: 'cv-w', sender_type: 'customer', created_at: at(T0 - 60 * MIN) });
+    h.db.journeys[0].contact_id = 'ct-w';
+    vi.setSystemTime(T0);
+    await runAutomationsForTrigger({
+      accountId: 'acct-1',
+      triggerType: 'journey_event',
+      contactId: 'ct-w',
+      context: { conversation_id: 'cv-w', store_id: 'st-1', journey_id: 'jr-d', journey_event_name: 'AddToCart' },
+    });
+    await tick(10);
+    expect(h.sendTemplateMessage.mock.calls.length + h.sendTextMessage.mock.calls.length).toBe(1);
+    expect(h.db.conversations.filter((c) => c.contact_id === 'ct-w')).toHaveLength(1);
+  });
+
+  describe('the 10/30 minute Resumptions never apply to a direct Journey', () => {
+    beforeEach(() => {
+      h.db.automations.push({
+        id: 'au-2',
+        account_id: 'acct-1',
+        user_id: 'user-1',
+        trigger_type: 'menu_link_sent',
+        trigger_config: {},
+        is_active: true,
+      });
+      h.db.automation_steps = [
+        ...chain(),
+        {
+          id: 'au-2-wait',
+          automation_id: 'au-2',
+          parent_step_id: null,
+          branch: null,
+          position: 0,
+          step_type: 'wait',
+          step_config: { amount: 10, unit: 'minutes' },
+        },
+        {
+          id: 'au-2-send',
+          automation_id: 'au-2',
+          parent_step_id: null,
+          branch: null,
+          position: 1,
+          step_type: 'send_message',
+          step_config: { text: 'Resumption', consent_purpose: 'marketing' },
+        },
+      ];
+    });
+
+    it('direct events (every kind) never start the menu_link_sent chain', async () => {
+      for (const n of ['ViewContent', 'AddToCart', 'InitiateCheckout']) await event(n, 1);
+      await tick(30);
+      expect(h.db.automation_logs.every((l) => l.automation_id !== 'au-2')).toBe(true);
+      expect(h.db.automation_pending_executions.every((p) => p.automation_id !== 'au-2')).toBe(true);
+      expect(JSON.stringify(messages())).not.toContain('Resumption');
+    });
+
+    it('the link-sent hook ignores a Journey whose origin is menu_direct', async () => {
+      const { onMenuLinkSent } = await import('@/lib/journeys/link-hooks');
+      await onMenuLinkSent({} as never, {
+        accountId: 'acct-1',
+        contactId: 'ct-new',
+        conversationId: 'cv-1',
+        connectionId: 'conn-acct-1',
+        journey: journey() as never,
+      });
+      expect(h.db.automation_logs).toHaveLength(0);
+      expect(pending()).toHaveLength(0);
+    });
+  });
+});

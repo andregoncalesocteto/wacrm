@@ -227,16 +227,21 @@ BEGIN
     WHERE table_schema = 'public' AND is_nullable = 'YES' AND (
       (table_name = 'message_templates' AND column_name = 'connection_id')
       OR (table_name = 'broadcasts' AND column_name = 'connection_id')
-      OR (table_name = 'automation_pending_executions' AND column_name IN ('conversation_id', 'connection_id'))
     )
   ) <> 0 THEN
-    RAISE EXCEPTION 'message_templates/broadcasts/automation_pending_executions connection columns must be NOT NULL (migration 051)';
+    RAISE EXCEPTION 'message_templates/broadcasts connection columns must be NOT NULL (migration 051)';
   END IF;
   IF EXISTS (SELECT 1 FROM message_templates WHERE connection_id IS NULL)
      OR EXISTS (SELECT 1 FROM broadcasts WHERE connection_id IS NULL)
-     OR EXISTS (SELECT 1 FROM automation_pending_executions WHERE conversation_id IS NULL OR connection_id IS NULL)
   THEN
     RAISE EXCEPTION 'NULL connection rows left after migration 051';
+  END IF;
+  IF (
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'automation_pending_executions'
+      AND column_name IN ('conversation_id', 'connection_id') AND is_nullable = 'YES'
+  ) <> 2 THEN
+    RAISE EXCEPTION 'automation_pending_executions.conversation_id/connection_id must be nullable (migration 066)';
   END IF;
   IF to_regclass('public.message_templates_user_name_language_key') IS NOT NULL THEN
     RAISE EXCEPTION 'the old message_templates (user_id, name, language) index must be gone (migration 051)';

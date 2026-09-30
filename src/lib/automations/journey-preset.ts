@@ -97,7 +97,12 @@ function abandonedCartSteps(text: string): TemplateStepSeed[] {
     cond({ subject: 'journey_open' }, 1, 'yes'), // 2
     cond({ subject: 'customer_replied_since', operand: 'run_start' }, 2, 'yes'), // 3
     cond({ subject: 'journey_flag', operand: 'abandoned_cart_sent' }, 3, 'no'), // 4
-    send(text, { mark_journey_flag: 'abandoned_cart_sent' }, 4, 'no'), // 5
+    send(
+      text,
+      { mark_journey_flag: 'abandoned_cart_sent', consent_purpose: 'marketing' },
+      4,
+      'no'
+    ), // 5
   ];
 }
 
@@ -122,8 +127,9 @@ export function buildJourneyPreset(
   };
 
   // The order notices declare `notifications`; the abandoned cart and the
-  // resumptions declare nothing on purpose (strict `marketing` default; the
-  // abandoned cart is settled in its own ticket).
+  // resumptions declare nothing on purpose (strict `marketing` default); the
+  // abandoned cart states `marketing` explicitly (a direct customer who never
+  // wrote needs that explicit consent).
   const notice = (text: string) => send(text, { consent_purpose: 'notifications' });
   return [
     make(

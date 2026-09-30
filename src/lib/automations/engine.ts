@@ -441,38 +441,48 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<RunStatus> {
       // (time-based, tag-based, new-contact) resolves the contact's most
       // recent one, same rule as a send step (design.md R4); a contact with
       // none at all fails the step, same as a send that can't resolve one.
-      let waitConversationId: string
-      try {
-        waitConversationId = await resolveConversationId(args, 'text')
-      } catch (err) {
-        if (err instanceof ExecutionIgnored) {
+      // A direct event (customer who never wrote) has a store but no
+      // conversation: the run parks WITHOUT one (columns are nullable since
+      // 066) and the send step creates it, closed, after the consent check.
+      let waitConversationId: string | null = null
+      if (!args.context.conversation_id && args.context.store_id) {
+        // no conversation to resolve
+      } else {
+        try {
+          waitConversationId = await resolveConversationId(args, 'text')
+        } catch (err) {
+          if (err instanceof ExecutionIgnored) {
+            results.push({
+              step_id: step.id,
+              step_type: step.step_type,
+              status: 'skipped',
+              detail: `ignored: ${err.message}`,
+            })
+            break
+          }
+          const msg = err instanceof Error ? err.message : String(err)
           results.push({
             step_id: step.id,
             step_type: step.step_type,
-            status: 'skipped',
-            detail: `ignored: ${err.message}`,
+            status: 'failed',
+            detail: msg,
           })
+          status = 'failed'
+          errorMessage = msg
           break
         }
-        const msg = err instanceof Error ? err.message : String(err)
-        results.push({
-          step_id: step.id,
-          step_type: step.step_type,
-          status: 'failed',
-          detail: msg,
-        })
-        status = 'failed'
-        errorMessage = msg
-        break
       }
-      const { data: convRow } = await db
-        .from('conversations')
-        .select('connection_id')
-        .eq('id', waitConversationId)
-        .eq('account_id', args.automation.account_id)
-        .maybeSingle()
-      const waitConnectionId =
-        (convRow as { connection_id?: string | null } | null)?.connection_id ?? null
+      let waitConnectionId: string | null = null
+      if (waitConversationId) {
+        const { data: convRow } = await db
+          .from('conversations')
+          .select('connection_id')
+          .eq('id', waitConversationId)
+          .eq('account_id', args.automation.account_id)
+          .maybeSingle()
+        waitConnectionId =
+          (convRow as { connection_id?: string | null } | null)?.connection_id ?? null
+      }
       await db.from('automation_pending_executions').insert({
         automation_id: args.automation.id,
         // Tenancy: account_id required NOT NULL post-017.
@@ -1208,7 +1218,8 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
     case 'conversation_unattended': {
       // No human owns the conversation and the AI has not handed it off.
       const conv = await conditionConversation(args)
-      if (!conv) return false
+      // No conversation yet (a direct event): nobody attends the customer.
+      if (!conv) return true
       return !conv.assigned_agent_id && !conv.ai_autoreply_disabled
     }
     case 'journey_flag': {
@@ -1237,6 +1248,7 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       const since = await replyReferenceInstant(cfg.operand, args)
       if (since === null) return false
       const conv = await conditionConversation(args)
+      // No conversation: the customer never wrote, so there is no reply.
       if (!conv) return false
       const { data } = await db
         .from('messages')

@@ -125,3 +125,19 @@ Sem migration (conversas já aceitam `status='closed'`; `consent_purpose` vive e
 - Condição `business_acronym_is` usa a loja do `store_id` do contexto quando ainda não há conversa.
 
 **Fora / atenção para o #24**: o passo `wait` exige conversa (colunas NOT NULL) e falha em execução de evento direto sem conversa ("contact has no existing conversation"); o carrinho abandonado (espera de 10 min) precisa resolver isso e declarar sua finalidade (`marketing`). `conversation_unattended` e `customer_replied_since` sem conversa avaliam falso. Edições de teste: `route.direct.test.ts` (o gancho agora dispara para evento direto sem consentimento/conversa) — único teste existente alterado; os de `idtrack` passaram sem alteração.
+
+## #24 Carrinho abandonado para jornadas diretas, com consentimento de marketing
+
+**Migration `066_pending_execution_without_conversation.sql`** (aplicada do zero com as 066 migrations num Postgres descartável + schema `storage` copiado; `verify-schema.sql` passou, reaplicação idempotente): `automation_pending_executions.conversation_id` e `.connection_id` voltam a aceitar NULL (eram NOT NULL desde a 051). `verify-schema.sql` agora exige que as duas sejam NULAS (antes exigia NOT NULL; `message_templates`/`broadcasts` seguem NOT NULL).
+
+**Mudanças no motor (`src/lib/automations/engine.ts`)**
+- `wait`: execução SEM conversa no contexto e COM `store_id` (evento direto) estaciona com `conversation_id`/`connection_id` nulos, sem resolver conversa. O contexto guarda `store_id`/`journey_id`; o passo de envio cria a conversa FECHADA depois do consentimento (#22), como sempre. Sem `store_id` a regra antiga continua (resolve a conversa mais recente ou falha "contact has no existing conversation").
+- `conversation_unattended` sem conversa = VERDADEIRO. `customer_replied_since` sem conversa = falso (já era; agora comentado). Sem conversa no contexto, as condições ainda procuram a conversa mais recente do contato: se o cliente escreveu durante a espera, a resposta suprime o envio.
+- `supersedePendingRuns` já funcionava sem conversa (filtra por automação e contato): rajada de AddToCart deixa uma espera só.
+- Retomadas: `onMenuLinkSent` (`journeys/link-hooks.ts`) ignora Journey de origem `menu_direct` (defesa; o gatilho só dispara em envio de link, e Jornada direta não tem conexão/link). Os passos `journey_stage`/`journey_open` leem a Journey do contexto, então nenhuma corrente `menu_link_sent` pega Journey direta.
+
+**Preset**: o envio do carrinho abandonado agora traz `consent_purpose: 'marketing'` explícito; o backfill do #22 o preenche em automações já instaladas (texto/template editados preservados). Retomadas seguem sem declarar (padrão estrito `marketing`; não se aplicam a jornadas diretas).
+
+**Testes**: `engine.characterization.test.ts` (describe "Abandoned cart for a DIRECT Journey"): 10 min/uma vez/template/conversa fechada, espera sem conversa, só `notifications` = nada enviado + motivo no log, revogação, Purchase cancela, rajada, resposta durante a espera, quem já escreveu, retomadas nunca disparam. `journey-preset.test.ts` atualizado (cart = marketing).
+
+**Decisões / fora**: `docs/order-journey.md` ganhou frase sobre o carrinho direto e a exclusão das retomadas; `docs/docker.md` (faixa "055 a 062") não foi atualizado (já estava defasado desde a 063). Sem UI nova, sem texto i18n. Uma execução parada com a conversa criada DEPOIS (o cliente escreve na espera) não reescreve `conversation_id` da linha pendente; o envio acha a conversa pela busca do contato/loja.

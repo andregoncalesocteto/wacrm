@@ -69,7 +69,10 @@ preset** creates ten automations, all **off**:
   replied, has no cart yet, no agent is assigned and the AI did not hand off; all
   re-checked when the reminder is due);
 - the abandoned-cart message, 10 minutes after the last "add to cart" or
-  "checkout" without a purchase, once per Journey;
+  "checkout" without a purchase, once per Journey. For a direct order (no CRM
+  link) it is sent only with the customer's **marketing** consent (unless they
+  already wrote to you and did not revoke it), by template on a conversation
+  created closed; the 10 and 30 minute reminders do not apply to direct orders;
 - the thank-you, on `Purchase`;
 - one message per order status: `received`, `preparing`, `finished`,
   `out_for_delivery`, `ready_for_pickup`, `delivered`, `cancelled`. `delivered`

@@ -20,6 +20,9 @@ export async function onMenuLinkSent(
     journey: JourneyRow;
   }
 ): Promise<void> {
+  // The Resumptions hang on the link; a direct Journey has none and is never
+  // part of them (the abandoned cart is its only recovery).
+  if (args.journey.origin === 'menu_direct') return;
   try {
     // Loaded lazily: the engine imports this module's package (`@/lib/journeys`).
     const { runAutomationsForTrigger } =
