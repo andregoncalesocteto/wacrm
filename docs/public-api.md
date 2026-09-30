@@ -271,7 +271,7 @@ Read-only discovery of the ids you pass to `POST /api/v1/messages`
 `config` are never returned. Both return the whole list (`next_cursor` is
 always `null`).
 
-- `stores[]`: `id`, `name`, `address`, `phone`, `manager_name`, `menu_url`, `store_code`, `store_acronym`, `business_acronym`, `store_key`, `created_at`. `menu_url` is the store's Digital menu address (an `https://` URL, or `null` when the store has no menu). `store_code`, `store_acronym` and `business_acronym` are the three parts of the store key, each optional (`null` when unset, at most 40 characters, no `/`). `store_key` is computed: `CODE/STORE ACRONYM/BUSINESS ACRONYM` (for example `89/RPA/BLC`), or `null` unless all three parts are set. It is unique per account, ignoring case and edge spaces; two stores of the same site and code but different business acronyms (`89/RPA/BLC`, `89/RPA/PZA`) are different stores. **Migration required:** `063`.
+- `stores[]`: `id`, `name`, `address`, `phone`, `manager_name`, `menu_url`, `store_code`, `store_acronym`, `business_acronym`, `store_key`, `created_at`. `menu_url` is the store's Digital menu address (an `https://` URL, or `null` when the store has no menu). `store_code`, `store_acronym` and `business_acronym` are the three parts of the store key, each optional (`null` when unset, at most 40 characters, no `/`). `store_key` is computed: `CODE/STORE ACRONYM/BUSINESS ACRONYM` (for example `89/RPA/BLC`), or `null` unless all three parts are set. It is unique per account, ignoring case and edge spaces; two stores of the same site and code but different business acronyms (`89/RPA/BLC`, `89/RPA/PZA`) are different stores. The store's WhatsApp connection for order notices is chosen in Settings → Stores and is not exposed here. **Migration required:** `063`.
 - `connections[]`: `id`, `store_id`, `channel` (e.g. `whatsapp_cloud`, `telegram`), `display_name`, `external_id`, `status`, `enabled` (`false` when the connection was disabled), `last_inbound_at`, `last_outbound_at`, `connected_at`, `created_at`. Optional filter: `?store_id=`.
 
 ### `POST /api/v1/journey/events`
@@ -285,7 +285,7 @@ recover abandoned carts and notify the customer. The operator-side setup is in
 
 > **Pre-stable until the first client.** This contract is frozen when the
 > first client integrates; after that a breaking change needs `v2`.
-> **Migrations required:** `055` to `062`, and `064` for events without `idtrack` (see [order-journey.md](./order-journey.md#what-to-apply-and-configure)).
+> **Migrations required:** `055` to `066` (`055` to `062` for the order Journey, `063` to `066` for events without `idtrack`; see [order-journey.md](./order-journey.md#what-to-apply-and-configure)).
 
 **One event per call**, JSON body, no batching. Common fields:
 
@@ -301,15 +301,20 @@ The `idtrack` is created by the CRM when it sends the store's menu link
 (`https://<menu-url>/?idtrack=<token>`, other query parameters of the store's
 menu address are kept). It is valid for **30 days**, renewed each time a new
 link is sent. It resolves to the contact, conversation and channel connection
-that received the link; a customer who opens the menu without `idtrack` (a
-bookmark, a direct URL) cannot be attributed, so **do not send events for
-that session**. Keep the `idtrack` in the order you store at `Purchase`:
+that received the link. A customer who opens the menu without `idtrack` (a
+bookmark, a direct URL, Instagram) is **not** a reason to stay silent: send the
+same events identified by `store_key` and `customer.phone` instead, see
+[Events without `idtrack`](#events-without-idtrack-direct-events). Keep the
+`idtrack` (or the phone) in the order you store at `Purchase`:
 `OrderStatusChanged` arrives hours later, when the browser session is gone.
 
 Every call answers `200` with `{ "data": { "event_id", "journey_id", "stage", "duplicate", "messaging" } }`.
 `stage` is the Journey stage after the event: `link_sent`, `browsing`,
-`cart`, `checkout` or `won` (`lost` never comes from an event). `messaging` is
-described under [Events without `idtrack`](#events-without-idtrack-direct-events).
+`cart`, `checkout` or `won` (`lost` never comes from an event; `link_sent` only
+for Journeys that started from a CRM link). `messaging` is `eligible`,
+`no_consent` or `no_connection`, described under
+[Events without `idtrack`](#events-without-idtrack-direct-events). A replay of an
+event recorded before `messaging` existed answers without it.
 
 #### Events without `idtrack` (direct events)
 
@@ -323,7 +328,7 @@ instead. These fields are valid on **every** event and optional when an
 | `store_key`             | The whole store key in one field, `CODE/STORE ACRONYM/BUSINESS ACRONYM` (for example `89/RPA/BLC`). Case and edge spaces are ignored. Set on the store in Settings, see `GET /api/v1/stores`. |
 | `customer.phone`        | International E.164 **with the `+`** (`+5511999998888`, matching `^\+[1-9]\d{6,14}$`). Any other format is `400`. |
 | `customer.name`         | Optional. Used only when the contact does not exist yet; an existing name is **never** overwritten.           |
-| `consent.notifications`, `consent.marketing`, `consent.given_at` | The customer's consent per purpose (booleans) and when it was given (ISO 8601 UTC). **`given_at` is required** when any purpose is sent (`400` otherwise). Stored on the contact, see [Consent](#consent). |
+| `consent.notifications`, `consent.marketing`, `consent.given_at` | The customer's consent per purpose (booleans) and when it was given (ISO 8601 UTC). **`given_at` is required** when any purpose is sent (`400` otherwise) and **may not be more than 5 minutes ahead of the server clock** (`400 bad_request`, see [Consent](#consent)). Stored on the contact. |
 
 - **Identification.** The event needs an `idtrack`, **or** `store_key` together
   with `customer.phone`; otherwise `400 bad_request`. With both, the `idtrack`
@@ -377,8 +382,19 @@ the consent and sending its current state.
   as consenting to both purposes, as before. An **explicit revocation wins** over
   it: someone who asked to stop is not messaged, until a newer explicit consent
   reactivates the purpose. A contact who never wrote needs the explicit consent.
+- **A `given_at` in the future is rejected.** More than 5 minutes ahead of the
+  server clock is `400 bad_request` ("`consent.given_at` is in the future"), and
+  nothing from the event is stored or created. Reason: an update only lands when
+  its `given_at` is newer than the stored decision, so a menu with a wrong clock
+  would freeze that purpose until that date passed. Up to 5 minutes of clock skew
+  is tolerated. Fix the clock (or send the real moment of the customer's choice)
+  and re-send.
 - **Conflict.** If `idtrack` and `customer.phone` resolve to different
-  contacts, the event's `consent` is ignored.
+  contacts, the event's `consent` is ignored and nothing is updated.
+- **"PARAR".** If the customer answers the CRM on WhatsApp with a message that is
+  just "PARAR" (or `stop`, `sair`, and the other opt-out words), both purposes
+  are revoked with source `chat`, and the customer gets a confirmation. A newer
+  `given_at` from the menu reactivates them; an older one does not.
 - The operator sees the state, date and source of each purpose in the contact
   panel (read-only).
 
@@ -450,7 +466,8 @@ as a duplicate: `200`, `"duplicate": true`, `Idempotent-Replayed: true`, and
 nothing is created or sent again. `order_id` is unique per account.
 
 `OrderStatusChanged`: the order moved on after being placed. Use the `idtrack`
-stored with the order.
+stored with the order (or `store_key` and `customer.phone`, see the direct
+examples).
 
 ```bash
 curl -X POST $URL -H "$AUTH" -H "Content-Type: application/json" -d '{
@@ -477,6 +494,54 @@ the valid values):
 The `placed` state is the `Purchase` itself and is not accepted as a status.
 Translate your internal states on your side; an internal state with no message
 for the customer (such as a "ready to produce" step) is simply not sent.
+
+##### Direct examples (no `idtrack`)
+
+A direct `Purchase`, with consent to order notices only. The CRM creates the
+contact if the phone is new, opens a direct Journey, creates the order and
+answers `messaging` (here `eligible` if the store has a WhatsApp connection,
+otherwise `no_connection`; without `consent` it would be `no_consent`):
+
+```bash
+curl -X POST $URL -H "$AUTH" -H "Content-Type: application/json" -d '{
+  "event_id": "f2d1…", "name": "Purchase",
+  "store_key": "89/RPA/BLC",
+  "customer": { "phone": "+5511999998888", "name": "Maria Souza" },
+  "consent": { "notifications": true, "marketing": false, "given_at": "2026-10-02T21:10:00Z" },
+  "occurred_at": "2026-10-02T21:22:11Z",
+  "properties": { "order_id": "PED-2026-104233", "currency": "BRL", "value": 89.8, "items": [
+    { "id": "pizza-g", "name": "Pizza G", "quantity": 1, "unit_price": 59.9 } ] }
+}'
+# → 200 { "data": { "event_id": "f2d1…", "journey_id": "…", "stage": "won", "duplicate": false, "messaging": "eligible" } }
+```
+
+An event that only updates the consent (here a revocation of marketing; the
+customer changed their mind on the menu). Purposes left out are not touched, and
+`given_at` must be newer than the stored decision:
+
+```bash
+curl -X POST $URL -H "$AUTH" -H "Content-Type: application/json" -d '{
+  "event_id": "a91c…", "name": "ViewContent",
+  "store_key": "89/RPA/BLC", "customer": { "phone": "+5511999998888" },
+  "consent": { "marketing": false, "given_at": "2026-10-09T18:00:00Z" },
+  "occurred_at": "2026-10-09T18:00:00Z"
+}'
+# → 200 { "data": { …, "stage": "browsing", "duplicate": false, "messaging": "eligible" } }
+```
+
+`OrderStatusChanged` also works by phone: it finds the order of that contact by
+`order_id`. It never creates a contact, so an unknown phone (or order) is
+`400 order_not_found`.
+
+Errors specific to direct events:
+
+```bash
+# Unknown store key → 404, do not retry
+# { "error": { "code": "store_not_found", "message": "…" } }
+# Phone without "+" / not E.164 → 400 bad_request naming 'customer.phone'
+# Neither idtrack nor store_key + customer.phone → 400 bad_request
+# consent.given_at more than 5 minutes ahead of the server clock → 400 bad_request
+```
 
 #### Behavior
 

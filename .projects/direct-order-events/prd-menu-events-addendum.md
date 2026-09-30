@@ -44,6 +44,7 @@ Esta é uma funcionalidade **nova do lado do cardápio**: o cliente precisa pode
 
 - Envie o estado atual dos dois valores. **Omitir `consent` não revoga nada**; só um `false` explícito revoga.
 - Se o cliente revogar no cardápio, envie `false` para a finalidade correspondente.
+- `consent.given_at` não pode estar mais de 5 minutos no futuro em relação ao relógio do CRM: senão o retorno é `400 bad_request`. Um relógio errado travaria as atualizações seguintes daquela finalidade (só vale um `given_at` mais novo que o guardado).
 - O CRM guarda a data, a origem ("cardápio") e a finalidade como prova. O cliente também pode parar de receber respondendo "PARAR" no WhatsApp.
 - **Sem consentimento o CRM não envia nenhuma mensagem.** O evento continua sendo registrado (pedido, funil, data da última compra).
 
