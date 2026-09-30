@@ -48,7 +48,10 @@ vi.mock('@/lib/whatsapp/meta-api', async (importOriginal) => ({
     h.waSends.push({ to: a.to, text: a.text });
     return { messageId: `wamid.${h.waSends.length}` };
   },
-  sendTemplateMessage: async (a: { to: string; template: { name: string } }) => {
+  sendTemplateMessage: async (a: {
+    to: string;
+    template: { name: string };
+  }) => {
     h.waTemplates.push({ to: a.to, name: a.template.name });
     return { messageId: `wamid.tpl.${h.waTemplates.length}` };
   },
@@ -622,7 +625,9 @@ describe('direct events to a customer who never wrote (consent, closed conversat
   beforeEach(async () => {
     resetWorld();
     world.tables = {
-      accounts: [{ id: ACCOUNT, owner_user_id: 'owner-1', default_currency: 'BRL' }],
+      accounts: [
+        { id: ACCOUNT, owner_user_id: 'owner-1', default_currency: 'BRL' },
+      ],
       stores: [
         {
           id: 'store-1',
@@ -705,7 +710,11 @@ describe('direct events to a customer who never wrote (consent, closed conversat
     const { ingestInbound } = await import('@/lib/channels/ingest');
     const [r] = await ingestInbound(
       db as never,
-      { id: 'conn-1', account_id: ACCOUNT, channel_type: 'whatsapp_cloud' } as never,
+      {
+        id: 'conn-1',
+        account_id: ACCOUNT,
+        channel_type: 'whatsapp_cloud',
+      } as never,
       [
         {
           kind: 'message',
@@ -760,5 +769,241 @@ describe('direct events to a customer who never wrote (consent, closed conversat
     expect(h.waTemplates).toEqual([]);
     expect(h.waSends).toEqual([]);
     expect(logs().some((l) => l.status === 'failed')).toBe(true);
+  });
+
+  const consentRow = (purpose: string) =>
+    t('contact_consents').find((r) => r.purpose === purpose);
+  const sentCount = () => h.waSends.length + h.waTemplates.length;
+  const skippedReasons = () =>
+    logs()
+      .flatMap((l) => l.steps_executed as Row[])
+      .filter((st) => st.status === 'skipped')
+      .map((st) => st.detail);
+
+  it('revoking with false after true stops the next notice, end to end', async () => {
+    await direct('Purchase', { consent, ...purchase('PED-5') });
+    await direct('OrderStatusChanged', status('PED-5', 'received'));
+    expect(h.waTemplates).toHaveLength(2);
+
+    at(10);
+    const rev = await direct('ViewContent', {
+      consent: { notifications: false, given_at: iso(Date.now()) },
+    });
+    expect(rev.status).toBe(200);
+    expect((await rev.json()).data.messaging).toBe('no_consent');
+    expect(consentRow('notifications')).toMatchObject({
+      granted: false,
+      revoked_at: iso(T0 + 10 * MIN),
+    });
+
+    const before = sentCount();
+    const st = await direct('OrderStatusChanged', status('PED-5', 'preparing'));
+    expect(st.status).toBe(200);
+    expect(sentCount()).toBe(before);
+    expect(skippedReasons()).toContain(
+      'ignored: sem consentimento: notifications'
+    );
+  });
+
+  it('PARAR after consent silences the notices; a NEWER consent from the menu reactivates them', async () => {
+    await direct('Purchase', { consent, ...purchase('PED-6') });
+    expect(h.waTemplates).toHaveLength(1);
+
+    // The customer answers PARAR (same ingest the webhook uses).
+    at(5);
+    const { ingestInbound } = await import('@/lib/channels/ingest');
+    const inbound = (id: string, text: string) =>
+      ingestInbound(
+        db as never,
+        {
+          id: 'conn-1',
+          account_id: ACCOUNT,
+          channel_type: 'whatsapp_cloud',
+        } as never,
+        [
+          {
+            kind: 'message',
+            externalId: id,
+            sender: [{ kind: 'whatsapp:phone', externalId: DIGITS }],
+            at: new Date(),
+            content: { type: 'text', text },
+            senderName: 'Ana',
+          },
+        ],
+        { auditUserId: 'owner-1' }
+      );
+    const [r] = await inbound('wamid.in.parar', 'PARAR');
+    expect(r.status).toBe('stored');
+    expect(consentRow('notifications')).toMatchObject({
+      granted: false,
+      source: 'chat',
+    });
+    expect(consentRow('marketing')).toMatchObject({ granted: false });
+
+    // Even though the customer has now written (implicit consent), the
+    // explicit revocation wins: nothing goes out.
+    let before = sentCount();
+    await direct('OrderStatusChanged', status('PED-6', 'preparing'));
+    expect(sentCount()).toBe(before);
+
+    // An OLDER (or equal) consent from the menu does not undo the PARAR.
+    const old = await direct('ViewContent', { consent });
+    expect((await old.json()).data.messaging).toBe('no_consent');
+
+    // A newer one does.
+    at(20);
+    const fresh = await direct('ViewContent', {
+      consent: { notifications: true, given_at: iso(Date.now()) },
+    });
+    expect((await fresh.json()).data.messaging).toBe('eligible');
+    before = sentCount();
+    await direct('OrderStatusChanged', status('PED-6', 'finished'));
+    expect(sentCount()).toBe(before + 1);
+  });
+
+  it('a store with no WhatsApp connection accepts the event: contact, order and Journey exist, nothing is sent', async () => {
+    world.tables.channel_connections = [];
+    const res = await direct('Purchase', { consent, ...purchase('PED-7') });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.messaging).toBe('no_connection');
+    expect(t('contacts')).toHaveLength(1);
+    expect(t('orders')).toHaveLength(1);
+    expect(journeys()).toHaveLength(1);
+    expect(journeys()[0]).toMatchObject({
+      origin: 'menu_direct',
+      store_id: 'store-1',
+      connection_id: null,
+    });
+    expect(conversations()).toHaveLength(0);
+    expect(sentCount()).toBe(0);
+    expect(skippedReasons().join(' ')).toContain('sem conexão de avisos');
+  });
+
+  it('a replay of a direct event with the new fields sends, stores and creates nothing again', async () => {
+    const body = { event_id: 'evt-replay-1', consent, ...purchase('PED-8') };
+    const first = await direct('Purchase', body);
+    expect(first.status).toBe(200);
+    expect(h.waTemplates).toHaveLength(1);
+    const consentBefore = JSON.stringify(t('contact_consents'));
+
+    const again = await direct('Purchase', body);
+    expect(again.status).toBe(200);
+    expect(again.headers.get('Idempotent-Replayed')).toBe('true');
+    const json = (await again.json()).data;
+    expect(json.duplicate).toBe(true);
+    expect(json.messaging).toBe('eligible');
+    expect(h.waTemplates).toHaveLength(1);
+    expect(t('orders')).toHaveLength(1);
+    expect(t('contacts')).toHaveLength(1);
+    expect(JSON.stringify(t('contact_consents'))).toBe(consentBefore);
+
+    // Same order, other event_id: a duplicate, nothing new either.
+    const dup = await direct('Purchase', purchase('PED-8'));
+    expect((await dup.json()).data.duplicate).toBe(true);
+    expect(h.waTemplates).toHaveLength(1);
+  });
+
+  it('two brands in one account (BLC and PZA): ONE set of automations, {{store_name}} names each store', async () => {
+    const PHONE_B = '+5511888887777';
+    const DIGITS_B = '5511888887777';
+    world.tables.stores = [
+      {
+        id: 'store-1',
+        account_id: ACCOUNT,
+        name: 'Bella Capri Centro',
+        store_key_normalized: '89/rpa/blc',
+      },
+      {
+        id: 'store-2',
+        account_id: ACCOUNT,
+        name: 'Pizza Agora Centro',
+        store_key_normalized: '89/rpa/pza',
+      },
+    ];
+    world.tables.channel_connections = [
+      ...t('channel_connections'),
+      {
+        id: 'conn-2',
+        account_id: ACCOUNT,
+        store_id: 'store-2',
+        channel_type: 'whatsapp_cloud',
+        external_id: 'pn-2',
+        status: 'connected',
+        disabled_at: null,
+        config: {},
+      },
+    ];
+    // Both customers already wrote to "their" brand (window open, implicit consent).
+    for (const name of [
+      'contacts',
+      'contact_identities',
+      'conversations',
+      'messages',
+    ]) {
+      world.tables[name] ??= [];
+    }
+    const wrote = (ct: string, cv: string, conn: string, digits: string) => {
+      t('contacts').push({
+        id: ct,
+        account_id: ACCOUNT,
+        name: ct,
+        phone: digits,
+      });
+      t('contact_identities').push({
+        account_id: ACCOUNT,
+        contact_id: ct,
+        kind: 'whatsapp:phone',
+        external_id: digits,
+      });
+      t('conversations').push({
+        id: cv,
+        account_id: ACCOUNT,
+        contact_id: ct,
+        connection_id: conn,
+        status: 'open',
+      });
+      t('messages').push({
+        id: `m-${cv}`,
+        conversation_id: cv,
+        sender_type: 'customer',
+        content_type: 'text',
+        content_text: 'oi',
+        created_at: iso(T0 - 5 * MIN),
+      });
+    };
+    wrote('ct-a', 'cv-a', 'conn-1', DIGITS);
+    wrote('ct-b', 'cv-b', 'conn-2', DIGITS_B);
+
+    // The single thank-you automation names the store.
+    for (const step of t('automation_steps')) {
+      const cfg = step.step_config as Row;
+      if (
+        step.step_type === 'send_message' &&
+        cfg.consent_purpose === 'notifications' &&
+        /order/i.test(String(cfg.text))
+      ) {
+        cfg.text = 'Thanks for ordering at {{store_name}}!';
+      }
+    }
+
+    const brand = (key: string, phone: string, order: string) =>
+      direct('Purchase', {
+        store_key: key,
+        customer: { phone },
+        ...purchase(order),
+      });
+    expect((await brand('89/RPA/BLC', PHONE, 'PED-BLC')).status).toBe(200);
+    expect((await brand('89/RPA/PZA', PHONE_B, 'PED-PZA')).status).toBe(200);
+
+    const thanks = h.waSends.filter((m) =>
+      m.text.startsWith('Thanks for ordering')
+    );
+    expect(thanks).toEqual([
+      { to: DIGITS, text: 'Thanks for ordering at Bella Capri Centro!' },
+      { to: DIGITS_B, text: 'Thanks for ordering at Pizza Agora Centro!' },
+    ]);
+    // Each Journey belongs to the store of its key, and each order is separate.
+    expect(journeys().map((j) => j.store_id ?? j.connection_id).length).toBe(2);
+    expect(t('orders')).toHaveLength(2);
   });
 });
