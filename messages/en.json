@@ -1316,7 +1316,8 @@
           "journey_open": "Journey is open",
           "journey_stage": "Journey stage",
           "conversation_unattended": "No human and no AI handoff",
-          "journey_flag": "Journey abandoned-cart message already sent"
+          "journey_flag": "Journey abandoned-cart message already sent",
+          "business_acronym_is": "Store business acronym is"
         },
         "replyReferenceLabel": "Reference instant",
         "replyReferences": {
@@ -1331,6 +1332,10 @@
         "orderStatusesHint": "Fires when the order moves to any of the checked statuses. A status with no automation sends nothing.",
         "orderVariablesHint": "insert the order data (id, status code and value) into the text. Available in this trigger and in Journey Event automations for Purchase.",
         "conversationUnattendedHint": "True while no agent is assigned to the conversation and the AI has not handed it off. Checked when the step runs, including after a wait.",
+        "businessAcronymLabel": "Business acronym",
+        "businessAcronymPlaceholder": "e.g. RPA",
+        "businessAcronymHint": "True when the business acronym of the conversation's store equals this text (case and surrounding spaces ignored). Checked when the step runs, including after a wait. False if the store has no acronym.",
+        "storeNameHint": "inserts the name of the conversation's store. Empty (with a warning in the log) if the conversation has no store.",
         "journeyFlagLabel": "Flag",
         "journeyFlags": {
           "abandoned_cart_sent": "Abandoned-cart message"

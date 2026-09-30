@@ -115,6 +115,30 @@ in [docker.md](./docker.md#notes).
 - When a conversation is handed to a human (AI handoff), the note includes the
   Journey stage, the active order and its status, and the last event.
 
+## One set of automations for several brands
+
+The rule is **one set of automations for every brand** in the account. Two tools
+keep it that way:
+
+- **`{{store_name}}`** in the text of a "send message" step is replaced by the
+  name of the store of the conversation (conversation → connection → store, the
+  store's `name`). It works in the texts sent by the Journey event, order status
+  and menu link sent triggers. If the conversation has no store (or the run has
+  no conversation), the variable becomes empty text and the step log records a
+  warning; the send does not fail.
+- **Condition "Store business acronym is X"** (`business_acronym_is`) is for the
+  rare brand that needs a really different text: duplicate the automation and
+  add the condition. The acronym is the store's **business acronym** field,
+  compared ignoring case and surrounding spaces. It is read from the database
+  when the step runs (also when a run resumes after a wait), never from a
+  snapshot. No store or no acronym means false.
+
+**WhatsApp templates.** Templates may have the **same name in every WABA**, each
+brand with its own content. A single `fallback_template` then serves all brands:
+the send goes out through the store's connection, and Meta resolves the name in
+that connection's WABA. This naming convention has **not been tested with two
+real WABAs**.
+
 ## Known limitations
 
 - **Precision of the reminders** depends on the scheduler interval (step 7).

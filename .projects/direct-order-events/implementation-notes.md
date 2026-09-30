@@ -19,3 +19,19 @@ Memória entre tickets, na branch `feat/direct-order-events`. Cada ticket acresc
 - `ON DELETE SET NULL` no FK; o servidor é quem garante mesma loja/conta/WhatsApp (sem FK composta nem trigger).
 
 **Fora**: a API v1 não expõe a conexão padrão; nenhuma rota pública usa ainda `findStoreByKey`/`resolveNotificationConnection` (tickets seguintes).
+
+## #19 Variável `{{store_name}}` e condição `business_acronym_is`
+
+Sem migration (usa `stores.business_acronym` do #17). Tudo em `src/lib/automations/engine.ts`.
+
+**Para reaproveitar**
+- `storeOfConversation(args, conversationId)` (privada do motor): conversa -> `channel_connections.store_id` -> `stores` (`name`, `business_acronym`), tudo filtrado por `account_id`; null sem conexão/loja.
+- `interpolate(s, args, extra?)` ganhou o 3º parâmetro `{ store_name }`: a substituição é síncrona, então o passo `send_message` resolve a loja ANTES (só se o texto usa `{{store_name}}`) e passa o valor, sem reinterpretar o nome da loja como variável.
+- Condição `business_acronym_is`: sigla em `operand`; tipo em `src/types`, `validate.ts`, construtor, textos nos 4 idiomas.
+
+**Decisões**
+- Aviso de loja ausente vai no `detail` do passo (`sent via Meta (id); warning: ...`), status continua `success`.
+- `{{store_name}}` usa a conversa que o envio vai usar (`resolveConversationId`); a condição usa a da `conditionConversation` (contexto, senão a mais recente do contato), como as demais.
+- Validação: operando em branco é inválido; sem limite de tamanho.
+
+**Fora**: preset inalterado; convenção de templates com mesmo nome por WABA documentada em `docs/order-journey.md`, não testada com duas WABAs reais.

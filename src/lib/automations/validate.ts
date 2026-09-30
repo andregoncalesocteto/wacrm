@@ -155,6 +155,13 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
             message: `flag must be among: ${Object.keys(JOURNEY_FLAGS).join(', ')}`,
           })
         }
+      } else if (c.subject === 'business_acronym_is') {
+        if (typeof c.operand !== 'string' || !c.operand.trim()) {
+          issues.push({
+            path: `${path}.operand`,
+            message: 'business acronym is required',
+          })
+        }
       } else if (c.subject === 'customer_replied_since') {
         if (c.operand !== 'link_sent' && c.operand !== 'run_start') {
           issues.push({

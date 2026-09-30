@@ -678,7 +678,9 @@ export type ConditionSubject =
   /** No human is assigned and the AI has not handed the conversation off. */
   | 'conversation_unattended'
   /** The Journey carries the one-shot mark named by `operand`. */
-  | 'journey_flag';
+  | 'journey_flag'
+  /** The conversation's store has this business acronym (`operand`), case-insensitive. */
+  | 'business_acronym_is';
 
 /** `customer_replied_since` reference instants (the condition's `operand`). */
 export type ReplyReference = 'link_sent' | 'run_start';

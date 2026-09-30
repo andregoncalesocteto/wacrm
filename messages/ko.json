@@ -1316,7 +1316,8 @@
           "journey_open": "Journey 진행 중",
           "journey_stage": "Journey 단계",
           "conversation_unattended": "담당자 없음, AI 이관 없음",
-          "journey_flag": "Journey에서 장바구니 이탈 메시지 발송됨"
+          "journey_flag": "Journey에서 장바구니 이탈 메시지 발송됨",
+          "business_acronym_is": "매장의 사업 약어가 다음과 같음"
         },
         "replyReferenceLabel": "기준 시점",
         "replyReferences": {
@@ -1331,6 +1332,10 @@
         "orderStatusesHint": "주문이 선택한 상태 중 하나로 바뀌면 실행됩니다. 자동화가 없는 상태는 아무것도 보내지 않습니다.",
         "orderVariablesHint": "주문 정보(ID, 상태 코드, 금액)를 텍스트에 넣습니다. 이 트리거와 Purchase용 Journey 이벤트 자동화에서 사용할 수 있습니다.",
         "conversationUnattendedHint": "대화에 배정된 상담원이 없고 AI가 이관하지 않은 동안 참입니다. 단계가 실행될 때(대기 이후 포함) 확인합니다.",
+        "businessAcronymLabel": "사업 약어",
+        "businessAcronymPlaceholder": "예: RPA",
+        "businessAcronymHint": "대화 매장의 사업 약어가 이 텍스트와 같으면 참입니다(대소문자와 앞뒤 공백은 무시). 단계가 실행될 때(대기 이후 포함) 확인합니다. 매장에 약어가 없으면 거짓입니다.",
+        "storeNameHint": "대화 매장의 이름을 삽입합니다. 대화에 매장이 없으면 비어 있으며 로그에 경고가 남습니다.",
         "journeyFlagLabel": "표시",
         "journeyFlags": {
           "abandoned_cart_sent": "장바구니 이탈 메시지"

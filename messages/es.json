@@ -1316,7 +1316,8 @@
           "journey_open": "Journey abierta",
           "journey_stage": "Etapa de la Journey",
           "conversation_unattended": "Sin humano y sin traspaso de la IA",
-          "journey_flag": "Mensaje de carrito abandonado ya enviado en la Journey"
+          "journey_flag": "Mensaje de carrito abandonado ya enviado en la Journey",
+          "business_acronym_is": "La sigla del negocio de la tienda es"
         },
         "replyReferenceLabel": "Instante de referencia",
         "replyReferences": {
@@ -1331,6 +1332,10 @@
         "orderStatusesHint": "Se activa cuando el pedido pasa a cualquiera de los estados marcados. Un estado sin automatización no envía nada.",
         "orderVariablesHint": "insertan los datos del pedido (id, código del estado y valor) en el texto. Disponibles en este disparador y en las automatizaciones de Evento de Journey para Purchase.",
         "conversationUnattendedHint": "Verdadero mientras no haya un agente asignado a la conversación y la IA no la haya traspasado. Se comprueba cuando se ejecuta el paso, también después de una espera.",
+        "businessAcronymLabel": "Sigla del negocio",
+        "businessAcronymPlaceholder": "p. ej. RPA",
+        "businessAcronymHint": "Verdadero cuando la sigla del negocio de la tienda de la conversación es igual a este texto (sin distinguir mayúsculas ni espacios en los extremos). Se comprueba cuando se ejecuta el paso, también después de una espera. Falso si la tienda no tiene sigla.",
+        "storeNameHint": "inserta el nombre de la tienda de la conversación. Queda vacío (con un aviso en el registro) si la conversación no tiene tienda.",
         "journeyFlagLabel": "Marca",
         "journeyFlags": {
           "abandoned_cart_sent": "Mensaje de carrito abandonado"

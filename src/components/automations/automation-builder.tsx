@@ -1478,6 +1478,10 @@ function StepEditor({
             <code className="rounded bg-muted px-1">{"{{order_value}}"}</code>{" "}
             {t("config.orderVariablesHint")}
           </p>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            <code className="rounded bg-muted px-1">{"{{store_name}}"}</code>{" "}
+            {t("config.storeNameHint")}
+          </p>
           <FallbackTemplateFields
             value={
               cfg.fallback_template as
@@ -1671,6 +1675,9 @@ function StepEditor({
                 {t("config.subjects.conversation_unattended")}
               </option>
               <option value="journey_flag">{t("config.subjects.journey_flag")}</option>
+              <option value="business_acronym_is">
+                {t("config.subjects.business_acronym_is")}
+              </option>
             </select>
           </FieldBlock>
           {cfg.subject === "journey_open" && (
@@ -1694,6 +1701,19 @@ function StepEditor({
               </select>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {t("config.journeyFlagHint")}
+              </p>
+            </FieldBlock>
+          )}
+          {cfg.subject === "business_acronym_is" && (
+            <FieldBlock label={t("config.businessAcronymLabel")}>
+              <Input
+                placeholder={t("config.businessAcronymPlaceholder")}
+                value={(cfg.operand as string) ?? ""}
+                onChange={(e) => set({ operand: e.target.value })}
+                className="bg-muted text-foreground"
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {t("config.businessAcronymHint")}
               </p>
             </FieldBlock>
           )}
@@ -1746,6 +1766,7 @@ function StepEditor({
             cfg.subject !== "customer_replied_since" &&
             cfg.subject !== "journey_stage" &&
             cfg.subject !== "journey_flag" &&
+            cfg.subject !== "business_acronym_is" &&
             cfg.subject !== "conversation_unattended" && (
           <FieldBlock label={t("config.operandLabel")}>
             <Input

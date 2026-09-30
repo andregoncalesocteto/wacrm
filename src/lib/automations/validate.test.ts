@@ -368,6 +368,14 @@ describe("validateStepsForActivation — journey conditions", () => {
     expect(cond({ subject: "journey_flag", operand: "nope" })).toHaveLength(1);
   });
 
+  it("business_acronym_is needs a non-blank acronym", () => {
+    expect(cond({ subject: "business_acronym_is", operand: "RPA" })).toEqual([]);
+    expect(cond({ subject: "business_acronym_is" }).map((i) => i.path)).toEqual([
+      "steps[0].operand",
+    ]);
+    expect(cond({ subject: "business_acronym_is", operand: "  " })).toHaveLength(1);
+  });
+
   it("send_message mark_journey_flag must be a known flag", () => {
     const send = (config: Record<string, unknown>) =>
       validateStepsForActivation([{ step_type: "send_message", step_config: config }] as never);

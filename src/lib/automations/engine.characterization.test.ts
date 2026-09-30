@@ -1711,3 +1711,175 @@ describe('Order notifications (order_status_changed and the Purchase thank-you)'
     });
   });
 });
+
+describe('{{store_name}} and business_acronym_is (per-brand automations)', () => {
+  const MIN = 60_000;
+  const T0 = Date.parse('2026-09-29T12:00:00Z');
+  const out = () => messages().map((m) => m.content_text);
+
+  /** Two brands in one account: conn-acct-1 -> store-a, conn-b -> store-b. */
+  function twoStores() {
+    h.db.stores = [
+      { id: 'store-a', account_id: 'acct-1', name: 'Loja A', business_acronym: 'RPA' },
+      { id: 'store-b', account_id: 'acct-1', name: 'Loja B', business_acronym: ' blc ' },
+      { id: 'store-x', account_id: 'acct-2', name: 'Outra conta', business_acronym: 'RPA' },
+    ];
+    h.db.channel_connections[0].store_id = 'store-a';
+    h.db.channel_connections.push({
+      ...whatsappConnectionRow('acct-1', 'pn-2'),
+      id: 'conn-b',
+      store_id: 'store-b',
+    });
+    conv().connection_id = 'conn-acct-1';
+    h.db.conversations.push({
+      id: 'cv-b',
+      account_id: 'acct-1',
+      contact_id: 'ct-1',
+      connection_id: 'conn-b',
+      last_message_text: 'hi',
+      last_message_at: '2019-01-01T00:00:00Z',
+    });
+    h.db.messages.push({
+      conversation_id: 'cv-b',
+      sender_type: 'customer',
+      created_at: new Date().toISOString(),
+    });
+  }
+
+  describe('{{store_name}}', () => {
+    beforeEach(() => {
+      twoStores();
+      steps({
+        step_type: 'send_message',
+        step_config: { text: 'Pedido na {{ store_name }}!' },
+      });
+    });
+
+    it('each store gets its own name from the same automation', async () => {
+      await fire({ conversation_id: 'cv-1' });
+      await fire({ conversation_id: 'cv-b' });
+      expect(out()).toEqual(['Pedido na Loja A!', 'Pedido na Loja B!']);
+    });
+
+    it('works in the journey_event and order_status_changed triggers', async () => {
+      Object.assign(h.db.automations[0], {
+        trigger_type: 'journey_event',
+        trigger_config: { event_names: ['Purchase'] },
+      });
+      await runAutomationsForTrigger({
+        accountId: 'acct-1',
+        triggerType: 'journey_event',
+        contactId: 'ct-1',
+        context: { conversation_id: 'cv-b', journey_event_name: 'Purchase' },
+      });
+      Object.assign(h.db.automations[0], {
+        trigger_type: 'order_status_changed',
+        trigger_config: { statuses: ['placed'] },
+      });
+      await runAutomationsForTrigger({
+        accountId: 'acct-1',
+        triggerType: 'order_status_changed',
+        contactId: 'ct-1',
+        context: { conversation_id: 'cv-1', order: { external_id: 'PED-1', status: 'placed' } },
+      });
+      expect(out()).toEqual(['Pedido na Loja B!', 'Pedido na Loja A!']);
+    });
+
+    it('a conversation without a store sends with the variable empty and warns in the step', async () => {
+      h.db.channel_connections[0].store_id = null;
+      await fire({ conversation_id: 'cv-1' });
+      expect(out()).toEqual(['Pedido na !']);
+      const [step] = log().steps_executed as { status: string; detail: string }[];
+      expect(step.status).toBe('success');
+      expect(step.detail).toContain('warning: {{store_name}} is empty');
+      expect(log().status).toBe('success');
+    });
+
+    it('no conversation id in the context falls back to the latest conversation', async () => {
+      await fire({});
+      expect(out()).toEqual(['Pedido na Loja A!']);
+    });
+
+    it('does not read a store of another account', async () => {
+      h.db.channel_connections[0].store_id = 'store-x';
+      await fire({ conversation_id: 'cv-1' });
+      expect(out()).toEqual(['Pedido na !']);
+    });
+
+    it('a text without the variable reads no store and carries no warning', async () => {
+      steps({ step_type: 'send_message', step_config: { text: 'Oi' } });
+      await fire({ conversation_id: 'cv-1' });
+      const [step] = log().steps_executed as { detail: string }[];
+      expect(step.detail).not.toContain('warning');
+    });
+  });
+
+  describe('business_acronym_is', () => {
+    function branches(operand: string) {
+      h.db.automation_steps = [
+        { id: 'st-1', position: 0, step_type: 'condition', step_config: { subject: 'business_acronym_is', operand } },
+        { id: 'st-y', position: 0, parent_step_id: 'st-1', branch: 'yes', step_type: 'send_message', step_config: { text: 'Yes' } },
+        { id: 'st-n', position: 0, parent_step_id: 'st-1', branch: 'no', step_type: 'send_message', step_config: { text: 'No' } },
+      ].map((st) => ({ automation_id: 'au-1', parent_step_id: null, branch: null, ...st }));
+    }
+
+    beforeEach(twoStores);
+
+    it('hits both sides: case-insensitive and trimmed', async () => {
+      branches(' rpa ');
+      await fire({ conversation_id: 'cv-1' });
+      await fire({ conversation_id: 'cv-b' });
+      expect(out()).toEqual(['Yes', 'No']);
+      h.db.messages = h.db.messages.filter((m) => m.sender_type === 'customer');
+      branches('BLC');
+      await fire({ conversation_id: 'cv-1' });
+      await fire({ conversation_id: 'cv-b' });
+      expect(out()).toEqual(['No', 'Yes']);
+    });
+
+    it('is false without a store, without an acronym, or with an empty operand', async () => {
+      branches('RPA');
+      h.db.channel_connections[0].store_id = null;
+      await fire({ conversation_id: 'cv-1' });
+      h.db.channel_connections[0].store_id = 'store-a';
+      h.db.stores[0].business_acronym = null;
+      await fire({ conversation_id: 'cv-1' });
+      h.db.stores[0].business_acronym = '';
+      branches('');
+      await fire({ conversation_id: 'cv-1' });
+      expect(out()).toEqual(['No', 'No', 'No']);
+    });
+
+    it('never matches a store of another account', async () => {
+      branches('RPA');
+      h.db.channel_connections[0].store_id = 'store-x';
+      await fire({ conversation_id: 'cv-1' });
+      expect(out()).toEqual(['No']);
+    });
+
+    it('is re-read when a wait resumes: the acronym changed during the wait', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(T0);
+      try {
+        h.db.automation_steps = [
+          { id: 'st-w', position: 0, step_type: 'wait', step_config: { amount: 10, unit: 'minutes' } },
+          { id: 'st-1', position: 1, step_type: 'condition', step_config: { subject: 'business_acronym_is', operand: 'RPA' } },
+          { id: 'st-y', position: 0, parent_step_id: 'st-1', branch: 'yes', step_type: 'send_message', step_config: { text: 'Yes' } },
+          { id: 'st-n', position: 0, parent_step_id: 'st-1', branch: 'no', step_type: 'send_message', step_config: { text: 'No' } },
+        ].map((st) => ({ automation_id: 'au-1', parent_step_id: null, branch: null, ...st }));
+
+        await fire({ conversation_id: 'cv-1' });
+        expect(out()).toEqual([]);
+        // The store is relabelled while the run is parked.
+        h.db.stores[0].business_acronym = 'PZA';
+        vi.setSystemTime(T0 + 10 * MIN);
+        for (const p of h.db.automation_pending_executions.filter((x) => x.status === 'pending')) {
+          await resumePendingExecution(p as unknown as Parameters<typeof resumePendingExecution>[0]);
+        }
+        expect(out()).toEqual(['No']);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+});

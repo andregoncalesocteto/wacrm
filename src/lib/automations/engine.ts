@@ -580,7 +580,24 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         // Sending a link fires menu_link_sent: this run would trigger itself.
         throw new Error('{{menu_link}} is not allowed in a menu_link_sent automation')
       }
-      const preText = usesMenuLink ? cfg.text : interpolate(cfg.text, args)
+      // `{{store_name}}`: conversation -> connection -> store, read now. No
+      // store (or no conversation) leaves it empty and warns, never fails.
+      const usesStoreName = STORE_NAME_VARIABLE.test(cfg.text)
+      let storeName = ''
+      let warning = ''
+      if (usesStoreName) {
+        const store = await storeOfConversation(
+          args,
+          await resolveConversationId(args, 'text'),
+        )
+        storeName = store?.name ?? ''
+        if (!storeName.trim()) {
+          storeName = ''
+          warning = '; warning: {{store_name}} is empty (the conversation has no store)'
+        }
+      }
+      const extra = { store_name: storeName }
+      const preText = usesMenuLink ? cfg.text : interpolate(cfg.text, args, extra)
       if (!preText.trim()) throw new Error('send_message has empty text')
       const conversationId = await resolveConversationId(args, 'text')
       let menuLink: ResolvedMenuLink | null = null
@@ -592,7 +609,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           conversationId,
           contactId: args.contactId,
         })
-        text = interpolate(replaceMenuLinkVariable(cfg.text, menuLink.url), args)
+        text = interpolate(replaceMenuLinkVariable(cfg.text, menuLink.url), args, extra)
       }
       // One-shot mark: claim it atomically BEFORE sending, so a second run
       // (or a concurrent one) finds it taken and sends nothing.
@@ -649,7 +666,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           connectionId: menuLink.connectionId,
         })
       }
-      return `sent via Meta (${whatsapp_message_id})`
+      return `sent via Meta (${whatsapp_message_id})${warning}`
     }
 
     case 'send_buttons':
@@ -1155,6 +1172,17 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       if (!isJourneyFlag(cfg.operand)) return false
       return isJourneyFlagSet(await currentJourney(args), cfg.operand)
     }
+    case 'business_acronym_is': {
+      // The store's acronym is read NOW (conversation -> connection -> store),
+      // so it also holds after a wait resumes. No store or no acronym: false.
+      const wanted = (cfg.operand ?? '').trim().toLowerCase()
+      if (!wanted) return false
+      const conv = await conditionConversation(args)
+      if (!conv) return false
+      const store = await storeOfConversation(args, conv.id)
+      const acronym = (store?.business_acronym ?? '').trim().toLowerCase()
+      return acronym !== '' && acronym === wanted
+    }
     case 'customer_replied_since': {
       // Both sides are read from the database NOW (this runs when the step
       // executes, also after a wait resumes), never from a scheduling snapshot.
@@ -1184,6 +1212,40 @@ interface ConditionConversation {
   connection_id: string | null
   assigned_agent_id: string | null
   ai_autoreply_disabled: boolean | null
+}
+
+const STORE_NAME_VARIABLE = /\{\{\s*store_name\s*\}\}/
+
+/** The store of a conversation (conversation -> connection -> store), or null. */
+async function storeOfConversation(
+  args: ExecuteArgs,
+  conversationId: string,
+): Promise<{ name: string | null; business_acronym: string | null } | null> {
+  const db = supabaseAdmin()
+  const accountId = args.automation.account_id
+  const { data: conv } = await db
+    .from('conversations')
+    .select('connection_id')
+    .eq('id', conversationId)
+    .eq('account_id', accountId)
+    .maybeSingle()
+  const connectionId = (conv as { connection_id: string | null } | null)?.connection_id
+  if (!connectionId) return null
+  const { data: conn } = await db
+    .from('channel_connections')
+    .select('store_id')
+    .eq('id', connectionId)
+    .eq('account_id', accountId)
+    .maybeSingle()
+  const storeId = (conn as { store_id: string | null } | null)?.store_id
+  if (!storeId) return null
+  const { data: store } = await db
+    .from('stores')
+    .select('name, business_acronym')
+    .eq('id', storeId)
+    .eq('account_id', accountId)
+    .maybeSingle()
+  return (store as { name: string | null; business_acronym: string | null } | null) ?? null
 }
 
 /** Position of a stage in the funnel, or -1 when it is not one. */
@@ -1293,8 +1355,13 @@ function waitMs(cfg: WaitStepConfig): number {
   return Math.max(1_000, cfg.amount * unitMs)
 }
 
-function interpolate(s: string, args: ExecuteArgs): string {
+function interpolate(
+  s: string,
+  args: ExecuteArgs,
+  extra?: { store_name?: string },
+): string {
   return s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
+    if (key === 'store_name') return extra?.store_name ?? ''
     const [ns, prop] = String(key).split('.')
     if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
     if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
