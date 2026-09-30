@@ -34,6 +34,7 @@ const UNIQUE: Record<string, string[][]> = {
   contact_custom_values: [['contact_id', 'custom_field_id']],
   journey_events: [['account_id', 'event_id']],
   orders: [['account_id', 'external_order_id']],
+  contact_consents: [['account_id', 'contact_id', 'purpose']],
 };
 
 class Query {

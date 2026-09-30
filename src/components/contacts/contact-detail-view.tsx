@@ -61,6 +61,7 @@ import {
 import { useContactDisplay } from '@/hooks/use-contact-display';
 import { MergeContactDialog } from '@/components/contacts/merge-contact-dialog';
 import { useCan } from '@/hooks/use-can';
+import { ContactConsents } from './contact-consents';
 import { ContactConversations } from '@/components/inbox/contact-conversations';
 
 interface ContactDetailViewProps {
@@ -652,6 +653,7 @@ export function ContactDetailView({
                         contactId={contactId}
                       />
                     )}
+                    {contactId && <ContactConsents contactId={contactId} />}
                   </div>
                 </TabsContent>
 

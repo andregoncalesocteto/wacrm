@@ -37,8 +37,8 @@ export interface EventCustomer {
 }
 
 /**
- * `consent` of an event. Only its FORMAT is validated here; ticket #20 stores
- * it. A purpose left out is `undefined` (never a revocation).
+ * `consent` of an event (stored by `applyEventConsent`). A purpose left out is
+ * `undefined` (never a revocation); `givenAt` is required with any purpose.
  */
 export interface EventConsent {
   notifications?: boolean;
@@ -186,6 +186,14 @@ function parseConsent(raw: unknown): EventConsent | null {
       );
     }
     consent.givenAt = at;
+  }
+  if (
+    (consent.notifications !== undefined || consent.marketing !== undefined) &&
+    !consent.givenAt
+  ) {
+    throw badRequest(
+      "'consent.given_at' is required when 'consent' carries a purpose"
+    );
   }
   return consent;
 }

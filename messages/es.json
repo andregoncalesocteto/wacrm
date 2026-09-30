@@ -437,6 +437,20 @@
       "noTagsAvailable": "No hay etiquetas disponibles. Crea etiquetas en Configuración.",
       "phoneRequired": "El número de teléfono es obligatorio"
     },
+    "consents": {
+      "title": "Consentimiento de mensajes",
+      "purpose": {
+        "notifications": "Avisos del pedido",
+        "marketing": "Ofertas y recordatorios"
+      },
+      "active": "Activo desde {date} · origen: {source}",
+      "revoked": "Revocado el {date} · origen: {source}",
+      "notRecorded": "Sin registro",
+      "source": {
+        "menu": "Menú",
+        "chat": "Chat"
+      }
+    },
     "detailView": {
       "tabs": {
         "details": "Detalles",

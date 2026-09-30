@@ -437,6 +437,20 @@
       "noTagsAvailable": "No tags available. Create tags in Settings.",
       "phoneRequired": "Phone number is required"
     },
+    "consents": {
+      "title": "Message consent",
+      "purpose": {
+        "notifications": "Order notices",
+        "marketing": "Offers and reminders"
+      },
+      "active": "Active since {date} · source: {source}",
+      "revoked": "Revoked on {date} · source: {source}",
+      "notRecorded": "Not recorded",
+      "source": {
+        "menu": "Menu",
+        "chat": "Chat"
+      }
+    },
     "detailView": {
       "tabs": {
         "details": "Details",

@@ -5,6 +5,7 @@ import {
   WA_PHONE_KIND,
   type ContactRow,
 } from '@/lib/channels/identity';
+import { hasConsent } from '@/lib/consent/consent';
 
 /**
  * Direct events (no `idtrack`): who the customer is and whether they can be
@@ -100,42 +101,18 @@ export async function findConversationId(
 /** `messaging` of the events response. */
 export type MessagingEligibility = 'eligible' | 'no_consent' | 'no_connection';
 
-/** Whether the customer ever wrote to the CRM (any conversation of the account). */
-async function hasWrittenToUs(
-  db: SupabaseClient,
-  accountId: string,
-  contactId: string
-): Promise<boolean> {
-  const { data: convs, error } = await db
-    .from('conversations')
-    .select('id')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId);
-  if (error) throw new Error(`conversation lookup failed: ${error.message}`);
-  const ids = ((convs ?? []) as { id: string }[]).map((c) => c.id);
-  if (ids.length === 0) return false;
-  const { data, error: msgErr } = await db
-    .from('messages')
-    .select('id')
-    .in('conversation_id', ids)
-    .eq('sender_type', 'customer')
-    .limit(1);
-  if (msgErr) throw new Error(`message lookup failed: ${msgErr.message}`);
-  return Array.isArray(data) && data.length > 0;
-}
-
 /**
- * THE single place that decides `messaging`. Without the stored consent
- * (ticket #20 extends this function): no connection -> `no_connection`;
- * otherwise `eligible` when the customer already wrote to the CRM (implicit
- * consent, as today), else `no_consent`.
+ * THE single place that decides `messaging`: no connection -> `no_connection`;
+ * otherwise `eligible` when `hasConsent(..., 'notifications')` (stored explicit
+ * consent, or implicit because the customer already wrote; an explicit
+ * revocation wins over the implicit one), else `no_consent`.
  */
 export async function resolveMessagingEligibility(
   db: SupabaseClient,
   args: { accountId: string; contactId: string; connectionId: string | null }
 ): Promise<MessagingEligibility> {
   if (!args.connectionId) return 'no_connection';
-  return (await hasWrittenToUs(db, args.accountId, args.contactId))
+  return (await hasConsent(db, args.accountId, args.contactId, 'notifications'))
     ? 'eligible'
     : 'no_consent';
 }

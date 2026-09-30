@@ -437,6 +437,20 @@
       "noTagsAvailable": "사용 가능한 태그가 없습니다. 설정에서 태그를 만드세요.",
       "phoneRequired": "전화번호는 필수입니다"
     },
+    "consents": {
+      "title": "메시지 수신 동의",
+      "purpose": {
+        "notifications": "주문 알림",
+        "marketing": "할인 및 리마인더"
+      },
+      "active": "{date}부터 활성 · 출처: {source}",
+      "revoked": "{date}에 철회됨 · 출처: {source}",
+      "notRecorded": "기록 없음",
+      "source": {
+        "menu": "메뉴",
+        "chat": "채팅"
+      }
+    },
     "detailView": {
       "tabs": {
         "details": "상세 정보",

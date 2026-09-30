@@ -68,3 +68,23 @@ Sem migration. `src/lib/journeys/funnel.ts`: `FunnelCounts` ganhou `total` e `pu
 - Filtro do pipeline ganhou origem (`JourneyFilterValue.origin`); o embed do deal passou a trazer `journeys.store_id`, usado no filtro de loja quando o deal não tem conexão. O filtro de canal exclui deals sem conexão. Card do deal mostra "Direto do cardápio" ou "Link do CRM" quando há Jornada.
 
 **Fora**: não há opção "sem conexão" no filtro de canal.
+
+## #20 Consentimento por finalidade guardado no contato
+
+**Migration `065_contact_consents.sql`** (aplicada do zero com as 065 migrations num Postgres descartável `supabase/postgres:17.6.1.136` + schema `storage` copiado, `verify-schema.sql` passou, reaplicação idempotente; fusão de `merge_contacts` conferida com SQL real). Tabela `contact_consents` (`account_id`, `contact_id`, `purpose` `notifications|marketing`, `granted`, `given_at`, `revoked_at`, `source`, `created_at`, `updated_at`), único `(account_id, contact_id, purpose)`, CHECK de que há `given_at` ou `revoked_at`, RLS: membros leem, escrita só service-role. `merge_contacts` redefinida (cópia da 064): por finalidade sobrevive, no sobrevivente, a decisão mais recente das duas.
+
+**Para reaproveitar** (`src/lib/consent/consent.ts`, sem importar canal)
+- `hasConsent(db, accountId, contactId, purpose)`: LEITURA. Linha explícita existe -> `granted` decide (revogação vale mesmo para quem já escreveu); sem linha -> implícito se já escreveu (`hasWrittenToUs`, mensagem `sender_type='customer'` em qualquer conversa do contato); senão false. Nada é gravado para o implícito. Os motores (#22) e o "PARAR" (#23) devem usar isto.
+- `recordConsent(db, {accountId, contactId, purpose, granted, at, source})`: grava SÓ se `at` é estritamente mais novo que `GREATEST(given_at, revoked_at)` (compare-and-swap em `updated_at`, tenta 3x). Grant limpa `revoked_at`; revogação mantém `given_at`. O "PARAR" do #23 chama `recordConsent(..., granted: false, at: now, source: 'chat')` para as duas finalidades.
+- `applyEventConsent(db, {accountId, contactId, consent, source})`; chamado em `events.ts` antes de `resolveMessagingEligibility`, só se `identity.customerApplies`. `CONSENT_PURPOSES`, `ConsentPurpose`.
+- `resolveMessagingEligibility` (direct.ts) agora usa `hasConsent(..., 'notifications')`; `hasWrittenToUs` saiu de direct.ts para o módulo de consentimento.
+- UI: `src/components/contacts/contact-consents.tsx` (somente leitura, datas por `useFormatter`), no detalhe do contato e no painel lateral da inbox; chaves `Contacts.consents.*` nos 4 idiomas.
+
+**Decisões**
+- Tabela em vez de colunas (uma linha por finalidade, com prova própria; o verify-schema exige tratar `contact_id` no merge, feito).
+- Implícito cobre as DUAS finalidades (como hoje, "avisos e recuperação"); `marketing` só é negado a quem nunca escreveu ou revogou.
+- `given_at` obrigatório com qualquer finalidade: `400` já no parser (`parseConsent`). Um `consent` com `given_at` mas sem finalidade é aceito e não faz nada.
+- Um `false` sem linha prévia grava uma linha revogada (`given_at` nulo), para a revogação valer.
+- Replay de `event_id`: já tratado pelo claim de `journey_events` (teste apaga o consentimento e confirma que o replay não o recria).
+
+**Fora / atenção**: `given_at` no futuro não é rejeitado (um relógio errado do cardápio poderia travar atualizações futuras daquela finalidade); a UI mostra "Sem registro" para quem só tem consentimento implícito (não consulta mensagens); o motor de automações ainda não consulta `hasConsent` por passo (#22).

@@ -323,7 +323,7 @@ instead. These fields are valid on **every** event and optional when an
 | `store_key`             | The whole store key in one field, `CODE/STORE ACRONYM/BUSINESS ACRONYM` (for example `89/RPA/BLC`). Case and edge spaces are ignored. Set on the store in Settings, see `GET /api/v1/stores`. |
 | `customer.phone`        | International E.164 **with the `+`** (`+5511999998888`, matching `^\+[1-9]\d{6,14}$`). Any other format is `400`. |
 | `customer.name`         | Optional. Used only when the contact does not exist yet; an existing name is **never** overwritten.           |
-| `consent.notifications`, `consent.marketing`, `consent.given_at` | Booleans and an ISO 8601 UTC timestamp. Validated (wrong types are `400`); storing and acting on the consent is a later step, and omitting it revokes nothing. |
+| `consent.notifications`, `consent.marketing`, `consent.given_at` | The customer's consent per purpose (booleans) and when it was given (ISO 8601 UTC). **`given_at` is required** when any purpose is sent (`400` otherwise). Stored on the contact, see [Consent](#consent). |
 
 - **Identification.** The event needs an `idtrack`, **or** `store_key` together
   with `customer.phone`; otherwise `400 bad_request`. With both, the `idtrack`
@@ -348,8 +348,36 @@ instead. These fields are valid on **every** event and optional when an
   resumptions that depend on the link do not apply to it.
 - **`messaging`** says whether the customer can be messaged: `no_connection`
   when the store has no eligible WhatsApp connection; otherwise `eligible` if the
-  contact has already written to the CRM, and `no_consent` if not. For now, no
-  automation runs for a direct event unless `messaging` is `eligible`.
+  contact may receive order notices (`consent.notifications` active, or implicit
+  because they already wrote to the CRM, see [Consent](#consent)), and
+  `no_consent` if not. For now, no automation runs for a direct event unless
+  `messaging` is `eligible`.
+
+##### Consent
+
+The CRM keeps the consent on the **contact**, per purpose: `notifications`
+(order notices) and `marketing` (recovery and offers). For each it stores whether
+it is active, when it was given (`given_at`), the source (`menu` for events) and,
+if it was revoked, when. That is the proof of consent. The menu owns collecting
+the consent and sending its current state.
+
+- **Update.** A purpose in `consent` replaces the stored state only when its
+  `given_at` is **strictly newer** than the stored decision (the later of the
+  given and revoked dates). Equal or older changes nothing, so late or repeated
+  events are harmless. A replay of the same `event_id` never applies it again.
+- **Revoke.** An explicit `false` revokes **only that purpose** (the revocation
+  date is the event's `given_at`). A later `true` with a newer `given_at`
+  reactivates it.
+- **Omit.** Leaving out `consent`, or one of its purposes, changes nothing:
+  omitting is **not** a revocation. Send `false` to revoke.
+- **Implicit consent.** A contact who has already written to the CRM is treated
+  as consenting to both purposes, as before. An **explicit revocation wins** over
+  it: someone who asked to stop is not messaged, until a newer explicit consent
+  reactivates the purpose. A contact who never wrote needs the explicit consent.
+- **Conflict.** If `idtrack` and `customer.phone` resolve to different
+  contacts, the event's `consent` is ignored.
+- The operator sees the state, date and source of each purpose in the contact
+  panel (read-only).
 
 #### Examples, one per event
 

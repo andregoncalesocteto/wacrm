@@ -437,6 +437,16 @@ BEGIN
     RAISE EXCEPTION 'uq_journeys_open_contact_store index is missing (migration 064)';
   END IF;
 
+  IF to_regclass('public.contact_consents') IS NULL THEN
+    RAISE EXCEPTION 'contact_consents is missing (migration 065)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'uq_contact_consents_contact_purpose'
+  ) THEN
+    RAISE EXCEPTION 'uq_contact_consents_contact_purpose index is missing (migration 065)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

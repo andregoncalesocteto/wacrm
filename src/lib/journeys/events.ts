@@ -24,6 +24,7 @@ import {
   type OrderStatusProperties,
   type PurchaseProperties,
 } from './event-payload';
+import { applyEventConsent } from '@/lib/consent/consent';
 import { onJourneyEventAccepted, onOrderStatusChanged } from './event-hooks';
 import {
   findContactByPhone,
@@ -80,13 +81,16 @@ interface Target {
   connectionId: string | null;
 }
 
+/** `contact_consents.source` of a consent that came in an event. */
+const MENU_CONSENT_SOURCE = 'menu';
+
 /** How the event named its customer. */
 interface EventIdentity {
   /** `idtrack` wins; a direct event is identified by store key + phone. */
   via: 'idtrack' | 'phone';
   /**
    * False when `idtrack` and the phone resolved DIFFERENT contacts: the event's
-   * `customer` and `consent` must then be ignored (ticket #20 reads this).
+   * `customer` and `consent` must then be ignored (`applyEventConsent` honours this).
    */
   customerApplies: boolean;
   /** Store named by `store_key` (direct events only). */
@@ -642,6 +646,18 @@ export async function processJourneyEvent(
         }),
       };
       identity = { via: 'phone', customerApplies: true, storeId };
+    }
+
+    // The consent of the event is stored BEFORE `messaging` is computed, so the
+    // answer reflects it. Ignored when idtrack and phone named different
+    // contacts (the wrong customer must never be opted in by this event).
+    if (identity.customerApplies) {
+      await applyEventConsent(db, {
+        accountId,
+        contactId: target.contactId,
+        consent: event.consent,
+        source: MENU_CONSENT_SOURCE,
+      });
     }
 
     const messaging = await resolveMessagingEligibility(db, {

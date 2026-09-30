@@ -285,10 +285,10 @@ describe('identification', () => {
     expect(res.status).toBe(200);
   });
 
-  it('validates the format of consent and ignores its content', async () => {
+  it('validates the format of consent', async () => {
     const bad = [
-      { notifications: 'yes' },
-      { marketing: 1 },
+      { notifications: 'yes', given_at: '2026-10-02T21:10:00Z' },
+      { marketing: 1, given_at: '2026-10-02T21:10:00Z' },
       { notifications: true, given_at: '2026-10-02 21:10' },
       { notifications: true, given_at: '2026-10-02T21:10:00-03:00' },
       'true',
@@ -297,17 +297,252 @@ describe('identification', () => {
       const res = await send(direct('ViewContent', { consent }));
       expect(res.status).toBe(400);
     }
-    const ok = await send(
-      direct('ViewContent', {
-        consent: {
-          notifications: true,
-          marketing: false,
-          given_at: '2026-10-02T21:10:00Z',
-        },
+    expect(t('contact_consents')).toHaveLength(0);
+  });
+});
+
+describe('consent stored on the contact', () => {
+  const T1 = '2026-10-02T21:10:00Z';
+  const consentOf = (purpose: string) =>
+    t('contact_consents').find((r) => r.purpose === purpose);
+
+  it('notifications: true with given_at activates it, stores date and source menu, and answers eligible', async () => {
+    const res = await send(
+      purchase('PED-1', {
+        consent: { notifications: true, given_at: T1 },
       })
     );
-    expect(ok.status).toBe(200);
-    expect(JSON.stringify(t('contacts'))).not.toContain('consent');
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.messaging).toBe('eligible');
+    expect(consentOf('notifications')).toMatchObject({
+      account_id: 'acct-1',
+      contact_id: t('contacts')[0].id,
+      granted: true,
+      given_at: '2026-10-02T21:10:00.000Z',
+      revoked_at: null,
+      source: 'menu',
+    });
+    expect(consentOf('marketing')).toBeUndefined();
+  });
+
+  it('a given_at that is not newer changes nothing', async () => {
+    await send(
+      direct('ViewContent', { consent: { notifications: true, given_at: T1 } })
+    );
+    for (const given_at of ['2026-10-02T21:10:00Z', '2026-10-01T00:00:00Z']) {
+      const res = await send(
+        direct('ViewContent', { consent: { notifications: false, given_at } })
+      );
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.messaging).toBe('eligible');
+    }
+    expect(consentOf('notifications')).toMatchObject({
+      granted: true,
+      given_at: '2026-10-02T21:10:00.000Z',
+      revoked_at: null,
+    });
+  });
+
+  it('an explicit false revokes only that purpose (revoked_at = given_at)', async () => {
+    await send(
+      direct('ViewContent', {
+        consent: { notifications: true, marketing: true, given_at: T1 },
+      })
+    );
+    const res = await send(
+      direct('ViewContent', {
+        consent: { marketing: false, given_at: '2026-10-03T08:00:00Z' },
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(consentOf('marketing')).toMatchObject({
+      granted: false,
+      given_at: '2026-10-02T21:10:00.000Z',
+      revoked_at: '2026-10-03T08:00:00.000Z',
+      source: 'menu',
+    });
+    expect(consentOf('notifications')).toMatchObject({ granted: true });
+    expect((await res.json()).data.messaging).toBe('eligible');
+  });
+
+  it('revoking notifications answers no_consent, even for someone who wrote', async () => {
+    seedInbound();
+    const res = await send(
+      direct('ViewContent', {
+        consent: { notifications: false, given_at: T1 },
+      })
+    );
+    expect((await res.json()).data.messaging).toBe('no_consent');
+    // and the revocation holds for the next event, which carries no consent
+    const next = await send(direct('ViewContent'));
+    expect((await next.json()).data.messaging).toBe('no_consent');
+  });
+
+  it('an event without consent, or without a purpose, changes nothing', async () => {
+    await send(
+      direct('ViewContent', {
+        consent: { notifications: true, marketing: true, given_at: T1 },
+      })
+    );
+    const before = JSON.stringify(t('contact_consents'));
+    for (const consent of [
+      undefined,
+      null,
+      {},
+      { given_at: '2026-10-09T00:00:00Z' },
+    ]) {
+      const res = await send(direct('ViewContent', { consent }));
+      expect(res.status).toBe(200);
+    }
+    const res = await send(
+      direct('ViewContent', {
+        consent: { notifications: true, given_at: '2026-10-09T00:00:00Z' },
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(consentOf('marketing')).toMatchObject({ granted: true });
+    expect(JSON.stringify(consentOf('marketing'))).toBe(
+      JSON.stringify(
+        JSON.parse(before).find(
+          (r: { purpose: string }) => r.purpose === 'marketing'
+        )
+      )
+    );
+  });
+
+  it('answers 400 when a purpose comes without given_at, and stores nothing', async () => {
+    for (const consent of [{ notifications: true }, { marketing: false }]) {
+      const res = await send(direct('ViewContent', { consent }));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error.message).toContain('consent.given_at');
+    }
+    expect(t('contact_consents')).toHaveLength(0);
+    expect(t('journey_events')).toHaveLength(0);
+  });
+
+  it('someone who wrote is eligible without explicit consent; someone who never did is not', async () => {
+    const never = await send(direct('ViewContent'));
+    expect((await never.json()).data.messaging).toBe('no_consent');
+    expect(t('contact_consents')).toHaveLength(0);
+
+    resetWorld();
+    // (re-seed the account fixtures cleared by resetWorld)
+    world.tables.accounts = [
+      { id: 'acct-1', owner_user_id: 'owner-1', default_currency: 'BRL' },
+    ];
+    world.tables.stores = [
+      {
+        id: 'store-1',
+        account_id: 'acct-1',
+        name: 'Bella Capri Centro',
+        store_key_normalized: '89/rpa/blc',
+        notification_connection_id: null,
+      },
+    ];
+    seedConnection();
+    seedInbound();
+    const wrote = await send(direct('ViewContent'));
+    expect((await wrote.json()).data.messaging).toBe('eligible');
+    expect(t('contact_consents')).toHaveLength(0);
+  });
+
+  it('ignores the consent when idtrack and phone resolve different contacts', async () => {
+    // contact B owns the phone, contact A owns the token
+    world.tables.contacts = [
+      { id: 'ct-a', account_id: 'acct-1', name: 'A', phone: '5511000000001' },
+      { id: 'ct-b', account_id: 'acct-1', name: 'B', phone: DIGITS },
+    ];
+    world.tables.contact_identities = [
+      {
+        account_id: 'acct-1',
+        contact_id: 'ct-b',
+        kind: 'whatsapp:phone',
+        external_id: DIGITS,
+      },
+    ];
+    world.tables.conversations = [
+      {
+        id: 'cv-a',
+        account_id: 'acct-1',
+        contact_id: 'ct-a',
+        connection_id: 'conn-1',
+      },
+    ];
+    const { issueTrackingToken } = await import('@/lib/journeys/tokens');
+    const { token } = await issueTrackingToken(db, {
+      accountId: 'acct-1',
+      contactId: 'ct-a',
+      conversationId: 'cv-a',
+      connectionId: 'conn-1',
+    });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await send({
+      event_id: 'evt-conflict',
+      name: 'ViewContent',
+      idtrack: token,
+      customer: { phone: PHONE },
+      consent: { notifications: true, marketing: true, given_at: T1 },
+      occurred_at: '2026-10-02T21:14:05Z',
+    });
+    expect(res.status).toBe(200);
+    expect(t('contact_consents')).toHaveLength(0);
+  });
+
+  it('applies the consent of an idtrack event to the contact of the token', async () => {
+    world.tables.contacts = [
+      { id: 'ct-a', account_id: 'acct-1', name: 'A', phone: '5511000000001' },
+    ];
+    world.tables.conversations = [
+      {
+        id: 'cv-a',
+        account_id: 'acct-1',
+        contact_id: 'ct-a',
+        connection_id: 'conn-1',
+      },
+    ];
+    const { issueTrackingToken } = await import('@/lib/journeys/tokens');
+    const { token } = await issueTrackingToken(db, {
+      accountId: 'acct-1',
+      contactId: 'ct-a',
+      conversationId: 'cv-a',
+      connectionId: 'conn-1',
+    });
+    const res = await send({
+      event_id: 'evt-token',
+      name: 'ViewContent',
+      idtrack: token,
+      consent: { marketing: true, given_at: T1 },
+      occurred_at: '2026-10-02T21:14:05Z',
+    });
+    expect(res.status).toBe(200);
+    expect(consentOf('marketing')).toMatchObject({
+      contact_id: 'ct-a',
+      granted: true,
+      source: 'menu',
+    });
+  });
+
+  it('a replay of the same event_id does not apply the consent again', async () => {
+    const body = direct('ViewContent', {
+      consent: { notifications: true, given_at: T1 },
+    });
+    expect((await send(body)).status).toBe(200);
+    expect(t('contact_consents')).toHaveLength(1);
+    // wipe the stored consent: only a re-application could bring it back
+    world.tables.contact_consents = [];
+    const again = await send(body);
+    expect(again.status).toBe(200);
+    expect((await again.json()).data.duplicate).toBe(true);
+    expect(t('contact_consents')).toHaveLength(0);
+  });
+
+  it('isolates consents by account', async () => {
+    await send(
+      direct('ViewContent', { consent: { notifications: true, given_at: T1 } })
+    );
+    expect(t('contact_consents').every((r) => r.account_id === 'acct-1')).toBe(
+      true
+    );
   });
 });
 
@@ -485,7 +720,7 @@ describe('idtrack with direct fields', () => {
     const res = await send(
       direct('ViewContent', {
         idtrack: 'tok-live',
-        consent: { notifications: true },
+        consent: { notifications: true, given_at: '2026-10-02T21:10:00Z' },
         customer: { phone: PHONE, name: 'Hijack' },
       })
     );
@@ -499,6 +734,7 @@ describe('idtrack with direct fields', () => {
     });
     expect(t('contacts').find((c) => c.id === 'ct-2')?.name).toBe('Joao');
     expect(t('contacts')).toHaveLength(2);
+    expect(t('contact_consents')).toHaveLength(0);
 
     const logged = warn.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(logged).toContain('conflict');

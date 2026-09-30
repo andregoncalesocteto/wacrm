@@ -27,6 +27,7 @@ import {
   primaryIdentity,
 } from "@/lib/contacts/display-name";
 import { ContactConversations } from "./contact-conversations";
+import { ContactConsents } from "@/components/contacts/contact-consents";
 import { OrderList } from "@/components/orders/order-list";
 import { useOrders } from "@/hooks/use-orders";
 
@@ -228,6 +229,10 @@ export function ContactSidebar({
             dividerAfter
             onOpen={onOpenConversation}
           />
+
+          {/* Message consent per purpose (read-only) */}
+          <ContactConsents contactId={contact.id} />
+          <div className="my-4 border-t border-border" />
 
           {/* Tags */}
           <div>
