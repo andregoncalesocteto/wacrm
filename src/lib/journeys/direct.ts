@@ -112,7 +112,15 @@ export async function resolveMessagingEligibility(
   args: { accountId: string; contactId: string; connectionId: string | null }
 ): Promise<MessagingEligibility> {
   if (!args.connectionId) return 'no_connection';
-  return (await hasConsent(db, args.accountId, args.contactId, 'notifications'))
+  return (await hasConsent(
+    db,
+    args.accountId,
+    args.contactId,
+    'notifications',
+    {
+      connectionId: args.connectionId,
+    }
+  ))
     ? 'eligible'
     : 'no_consent';
 }

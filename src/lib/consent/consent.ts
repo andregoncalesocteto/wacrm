@@ -15,7 +15,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  *      even if the customer wrote to us ("PARAR" is honoured), and only a
  *      NEWER explicit grant reactivates it (see `recordConsent`);
  *   2. no explicit row         -> implicit consent when the customer ever wrote
- *      to the CRM (as before this feature); nothing is stored for it;
+ *      to the CRM (on the sending connection, when one is given); nothing is
+ *      stored for it;
  *   3. otherwise               -> no consent.
  */
 
@@ -161,17 +162,24 @@ export async function applyEventConsent(
   return changed;
 }
 
-/** Whether the customer ever wrote to the CRM (any conversation of the account). */
+/**
+ * Whether the customer ever wrote to the CRM: in any conversation of the
+ * account, or, with `connectionId`, only in a conversation of THAT connection
+ * (someone who wrote to brand B's number has not opted in to brand A's).
+ */
 export async function hasWrittenToUs(
   db: SupabaseClient,
   accountId: string,
-  contactId: string
+  contactId: string,
+  connectionId?: string | null
 ): Promise<boolean> {
-  const { data: convs, error } = await db
+  let q = db
     .from('conversations')
     .select('id')
     .eq('account_id', accountId)
     .eq('contact_id', contactId);
+  if (connectionId) q = q.eq('connection_id', connectionId);
+  const { data: convs, error } = await q;
   if (error) throw new Error(`conversation lookup failed: ${error.message}`);
   const ids = ((convs ?? []) as { id: string }[]).map((c) => c.id);
   if (ids.length === 0) return false;
@@ -188,15 +196,19 @@ export async function hasWrittenToUs(
 /**
  * May this contact be messaged for `purpose`? READ-ONLY: the implicit consent
  * of someone who wrote to us is computed, never stored. See the precedence in
- * the file header: an explicit revocation beats the implicit one.
+ * the file header: an explicit revocation beats the implicit one. With
+ * `opts.connectionId` the implicit consent only counts when the customer wrote
+ * on that connection; without it, on any conversation (callers with no
+ * connection at hand).
  */
 export async function hasConsent(
   db: SupabaseClient,
   accountId: string,
   contactId: string,
-  purpose: ConsentPurpose
+  purpose: ConsentPurpose,
+  opts?: { connectionId?: string | null }
 ): Promise<boolean> {
   const explicit = await findConsent(db, accountId, contactId, purpose);
   if (explicit) return explicit.granted;
-  return hasWrittenToUs(db, accountId, contactId);
+  return hasWrittenToUs(db, accountId, contactId, opts?.connectionId);
 }

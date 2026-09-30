@@ -39,6 +39,11 @@ function fakeDb(rows: Row[] = [], raceOnce = false) {
           payload = p;
           return q;
         },
+        maybeSingle: () =>
+          Promise.resolve({
+            data: rows[0] ? { connection_id: 'conn-of-cv' } : null,
+            error: null,
+          }),
         limit: () => Promise.resolve({ data: rows.slice(0, 1), error: null }),
         single: () => {
           if (raced) {
@@ -101,7 +106,9 @@ describe('gateSend', () => {
       reason: 'sem consentimento: notifications',
     });
     expect(inserts).toEqual([]);
-    expect(m.hasConsent).toHaveBeenCalledWith(db, 'a', 'c', 'notifications');
+    expect(m.hasConsent).toHaveBeenCalledWith(db, 'a', 'c', 'notifications', {
+      connectionId: 'conn-1',
+    });
   });
 
   it('a run that already has a conversation keeps it', async () => {
@@ -114,6 +121,15 @@ describe('gateSend', () => {
     });
     expect(r).toMatchObject({ ok: true, conversationId: 'cv-1' });
     expect(inserts).toEqual([]);
+  });
+
+  it('scopes the consent to the connection of the step conversation', async () => {
+    m.hasConsent.mockResolvedValue(true);
+    const { db } = fakeDb([{ id: 'cv-1' }]);
+    await gateSend(db, { ...base, conversationId: 'cv-1' });
+    expect(m.hasConsent).toHaveBeenCalledWith(db, 'a', 'c', 'notifications', {
+      connectionId: 'conn-of-cv',
+    });
   });
 
   it('creates the conversation CLOSED on the notification connection', async () => {

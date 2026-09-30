@@ -65,7 +65,28 @@ export async function gateSend(
       return { ok: true, conversationId: null, connectionId: null };
     }
   }
-  if (!(await hasConsent(db, accountId, contactId, purpose))) {
+  // The connection that will send: the step's conversation, or else the
+  // store's notification connection (implicit consent is scoped to it).
+  let sendConnectionId: string | null = null;
+  if (args.conversationId) {
+    const { data, error } = await db
+      .from('conversations')
+      .select('connection_id')
+      .eq('account_id', accountId)
+      .eq('id', args.conversationId)
+      .maybeSingle();
+    if (error) throw new Error(`conversation lookup failed: ${error.message}`);
+    sendConnectionId =
+      (data as { connection_id: string | null } | null)?.connection_id ?? null;
+  } else if (args.storeId) {
+    const c = await resolveNotificationConnection(db, accountId, args.storeId);
+    if (c.ok) sendConnectionId = c.connectionId;
+  }
+  if (
+    !(await hasConsent(db, accountId, contactId, purpose, {
+      connectionId: sendConnectionId,
+    }))
+  ) {
     return { ok: false, reason: `sem consentimento: ${purpose}` };
   }
   if (args.conversationId) {

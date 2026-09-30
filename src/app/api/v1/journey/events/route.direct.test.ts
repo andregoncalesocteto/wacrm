@@ -477,6 +477,15 @@ describe('consent stored on the contact', () => {
     expect(t('contact_consents')).toHaveLength(0);
   });
 
+  it('someone who wrote to ANOTHER connection is not eligible on the store connection', async () => {
+    seedConnection();
+    seedInbound();
+    (world.tables.conversations[0] as Record<string, unknown>).connection_id =
+      'conn-brand-b';
+    const res = await send(direct('ViewContent'));
+    expect((await res.json()).data.messaging).toBe('no_consent');
+  });
+
   it('ignores the consent when idtrack and phone resolve different contacts', async () => {
     // contact B owns the phone, contact A owns the token
     world.tables.contacts = [

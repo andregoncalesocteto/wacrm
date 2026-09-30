@@ -186,3 +186,31 @@ describe('applyEventConsent', () => {
     expect(t('contact_consents')).toHaveLength(0);
   });
 });
+
+describe('hasConsent scoped to a connection', () => {
+  it('implicit consent only counts on the connection the customer wrote to', async () => {
+    seedInbound(); // wrote on connection c1
+    expect(await hasConsent(db, ACCT, CT, 'marketing')).toBe(true);
+    expect(
+      await hasConsent(db, ACCT, CT, 'marketing', { connectionId: 'c1' })
+    ).toBe(true);
+    expect(
+      await hasConsent(db, ACCT, CT, 'marketing', { connectionId: 'c2' })
+    ).toBe(false);
+    expect(
+      await hasConsent(db, ACCT, CT, 'notifications', { connectionId: 'c2' })
+    ).toBe(false);
+  });
+
+  it('an explicit row still decides regardless of the connection', async () => {
+    seedInbound();
+    await explicit('marketing', false);
+    expect(
+      await hasConsent(db, ACCT, CT, 'marketing', { connectionId: 'c1' })
+    ).toBe(false);
+    await explicit('notifications', true, '2026-10-02T10:00:00Z');
+    expect(
+      await hasConsent(db, ACCT, CT, 'notifications', { connectionId: 'c2' })
+    ).toBe(true);
+  });
+});
