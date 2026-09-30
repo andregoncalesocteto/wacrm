@@ -128,6 +128,9 @@ function seedInbound() {
 }
 
 beforeEach(() => {
+  // The consents below are dated up to 2026-10-09; `given_at` may not be in the future.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(Date.parse('2026-10-10T00:00:00Z'));
   resetWorld();
   n = 0;
   hook.mockReset();
@@ -157,7 +160,10 @@ beforeEach(() => {
   seedConnection();
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('identification', () => {
   it('Purchase with store_key + phone creates contact, direct Journey and order', async () => {
@@ -298,6 +304,31 @@ describe('identification', () => {
       expect(res.status).toBe(400);
     }
     expect(t('contact_consents')).toHaveLength(0);
+  });
+
+  it('rejects a given_at more than 5 minutes in the future and accepts a small skew', async () => {
+    const now = Date.now();
+    const future = new Date(now + 6 * 60_000).toISOString();
+    const res = await send(
+      direct('ViewContent', {
+        consent: { notifications: true, given_at: future },
+      })
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('bad_request');
+    expect(body.error.message).toContain('consent.given_at');
+    expect(body.error.message).toContain('future');
+    expect(t('contact_consents')).toHaveLength(0);
+    expect(t('contacts')).toHaveLength(0);
+
+    const skew = new Date(now + 4 * 60_000).toISOString();
+    const ok = await send(
+      direct('ViewContent', {
+        consent: { notifications: true, given_at: skew },
+      })
+    );
+    expect(ok.status).toBe(200);
   });
 });
 

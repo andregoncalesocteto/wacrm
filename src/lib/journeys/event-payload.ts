@@ -61,6 +61,8 @@ const MAX_EVENT_ID_LENGTH = 200;
 const MAX_CART_ITEMS = 200;
 const MAX_STORE_KEY_LENGTH = 200;
 const MAX_CUSTOMER_NAME_LENGTH = 200;
+/** Tolerated distance of `consent.given_at` into the future. */
+const MAX_CONSENT_CLOCK_SKEW_MS = 5 * 60 * 1000;
 /** E.164 with the mandatory `+` (the menu normalises before sending). */
 const E164 = /^\+[1-9]\d{6,14}$/;
 // ISO 8601 with an explicit UTC designator (`Z` or `+00:00`).
@@ -183,6 +185,13 @@ function parseConsent(raw: unknown): EventConsent | null {
     ) {
       throw badRequest(
         "'consent.given_at' must be an ISO 8601 UTC timestamp, e.g. 2026-10-02T21:10:00Z"
+      );
+    }
+    // A wrong clock on the menu would otherwise freeze later updates of the
+    // purpose (an update only lands when its `given_at` is newer).
+    if (at.getTime() > Date.now() + MAX_CONSENT_CLOCK_SKEW_MS) {
+      throw badRequest(
+        "'consent.given_at' is in the future (more than 5 minutes ahead of the server clock); check the clock of the sender"
       );
     }
     consent.givenAt = at;
