@@ -866,6 +866,25 @@ describe('sendOutbound reply window (windowPolicy)', () => {
     expect(sendMock).not.toHaveBeenCalled();
   });
 
+  it('first contact of a conversation with no message at all goes by template and stays closed', async () => {
+    h.db.message_templates = [TPL_ROW];
+    h.db.messages = [];
+    h.db.conversations[0].status = 'closed';
+    await send({ ...auto, windowPolicy: { fallbackTemplate } });
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(sendMock.mock.calls[0][2]).toMatchObject({
+      type: 'template',
+      template: { name: 'order_update' },
+    });
+    expect(h.db.messages).toHaveLength(1);
+    expect(h.db.messages[0]).toMatchObject({
+      content_type: 'template',
+      status: 'sent',
+    });
+    // Sending never reopens it: only the customer writing does.
+    expect(h.db.conversations[0].status).toBe('closed');
+  });
+
   it('a channel without a window (Telegram) always sends the text', async () => {
     resetRegistryForTests();
     registerProvider(

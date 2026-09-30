@@ -58,6 +58,42 @@ describe('onJourneyEventAccepted', () => {
   });
 });
 
+describe('direct events without a conversation', () => {
+  it('journey_event context carries the store and no conversation/connection', async () => {
+    await onJourneyEventAccepted(db, {
+      accountId: 'acct-1',
+      eventId: 'ev-1',
+      name: 'Purchase',
+      occurredAt: new Date(),
+      journeyId: 'jr-1',
+      contactId: 'ct-1',
+      conversationId: null,
+      connectionId: null,
+      storeId: 'st-1',
+      stage: 'won',
+    });
+    const ctx = run.mock.calls[0][0].context;
+    expect(ctx).toMatchObject({ store_id: 'st-1', journey_id: 'jr-1' });
+    expect('conversation_id' in ctx).toBe(false);
+    expect('connection_id' in ctx).toBe(false);
+  });
+
+  it('an event with a conversation and no store is unchanged (no store_id)', async () => {
+    await onJourneyEventAccepted(db, {
+      accountId: 'a',
+      eventId: 'e',
+      name: 'ViewContent',
+      occurredAt: new Date(),
+      journeyId: 'j',
+      contactId: 'c',
+      conversationId: 'v',
+      connectionId: 'n',
+      stage: 'browsing',
+    });
+    expect('store_id' in run.mock.calls[0][0].context).toBe(false);
+  });
+});
+
 describe('onJourneyEventAccepted order context', () => {
   it('a Purchase hands the order to the engine', async () => {
     await onJourneyEventAccepted(db, {

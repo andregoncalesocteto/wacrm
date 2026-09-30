@@ -1374,6 +1374,12 @@
         "journeyFlagHint": "Verdadero una vez que el mensaje de carrito abandonado salió para esta Journey. Se comprueba cuando se ejecuta el paso, también después de una espera.",
         "markJourneyFlagLabel": "Enviar una vez por Journey (carrito abandonado)",
         "markJourneyFlagHint": "La Journey se marca justo antes del envío, así que este mensaje sale como máximo una vez por Journey, aunque varias ejecuciones lleguen a él. Si el envío falla, la marca se deshace.",
+        "consentPurposeLabel": "Consentimiento para quien nunca escribió",
+        "consentPurposeHint": "Para un cliente que nunca escribió al CRM, este paso solo envía si dio el consentimiento de esta finalidad (desde el menú). Quien ya escribió lo sigue recibiendo, salvo que haya revocado esa finalidad.",
+        "consentPurposes": {
+          "notifications": "Avisos del pedido",
+          "marketing": "Marketing"
+        },
         "stageComparisonLabel": "Comparación",
         "stageComparisons": {
           "before": "es anterior a",

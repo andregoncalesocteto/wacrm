@@ -38,7 +38,7 @@ function fakeDb(tables: Record<string, Row[]> = {}) {
   const client = {
     from(table: string) {
       const filters: ((r: Row) => boolean)[] = [];
-      let op: 'select' | 'insert' | 'delete' = 'select';
+      let op: 'select' | 'insert' | 'delete' | 'update' = 'select';
       let payload: Row[] = [];
       let error: { code?: string; message: string } | null = null;
       const q = {
@@ -59,6 +59,11 @@ function fakeDb(tables: Record<string, Row[]> = {}) {
         },
         delete() {
           op = 'delete';
+          return q;
+        },
+        update(patch: Row) {
+          op = 'update';
+          payload = [patch];
           return q;
         },
         single: () => q,
@@ -82,6 +87,10 @@ function fakeDb(tables: Record<string, Row[]> = {}) {
               const row = { id: `${table}-${++seq}`, ...p };
               rows.push(row);
               data.push(row);
+            }
+          } else if (op === 'update') {
+            for (const r of rows.filter((x) => filters.every((f) => f(x)))) {
+              Object.assign(r, payload[0]);
             }
           } else if (op === 'delete') {
             db[table] = rows.filter((r) => !filters.every((f) => f(r)));
@@ -245,6 +254,63 @@ describe('loadJourneyPresetCatalog', () => {
     expect(CATALOGS.pt.texts.thankYou).not.toBe(CATALOGS.en.texts.thankYou);
     expect(CATALOGS.ko.texts.thankYou).not.toBe(CATALOGS.en.texts.thankYou);
     expect(CATALOGS.es.texts.thankYou).not.toBe(CATALOGS.en.texts.thankYou);
+  });
+});
+
+describe('installJourneyPreset consent purposes', () => {
+  const sends = (db: Record<string, Row[]>, key: string) => {
+    const id = db.automations.find((a) => a.preset_key === key)!.id;
+    return db.automation_steps.filter(
+      (s) => s.automation_id === id && s.step_type === 'send_message'
+    );
+  };
+  const purposeOf = (s: Row) =>
+    (s.step_config as { consent_purpose?: string }).consent_purpose;
+
+  it('the thank-you and every status notice use notifications; cart and resumptions declare nothing', async () => {
+    const { db, client } = fakeDb();
+    await installJourneyPreset(client, args());
+    for (const key of [
+      'order_journey.thank_you',
+      ...ORDER_TRIGGER_STATUSES.map((s) => `order_journey.status_${s}`),
+    ]) {
+      expect(sends(db, key).map(purposeOf)).toEqual(['notifications']);
+    }
+    for (const key of ['order_journey.abandoned_cart', 'order_journey.resumption']) {
+      expect(sends(db, key).map(purposeOf).every((p) => p === undefined)).toBe(true);
+    }
+  });
+
+  it('backfills ONLY consent_purpose on automations installed before it, keeping edits', async () => {
+    const { db, client } = fakeDb();
+    await installJourneyPreset(client, args());
+    const thanks = sends(db, 'order_journey.thank_you')[0];
+    // As installed by the previous version, then edited by the operator.
+    thanks.step_config = {
+      text: 'Texto editado',
+      fallback_template: { name: 'meu_template', language: 'pt_BR' },
+    };
+    const again = await installJourneyPreset(client, args());
+
+    expect(again.created).toEqual([]);
+    expect(again.backfilled).toContain('order_journey.thank_you');
+    expect(thanks.step_config).toEqual({
+      text: 'Texto editado',
+      fallback_template: { name: 'meu_template', language: 'pt_BR' },
+      consent_purpose: 'notifications',
+    });
+    // Nothing left to backfill on a third run.
+    expect((await installJourneyPreset(client, args())).backfilled).toEqual([]);
+  });
+
+  it('never overwrites a purpose the operator already chose', async () => {
+    const { db, client } = fakeDb();
+    await installJourneyPreset(client, args());
+    const step = sends(db, 'order_journey.status_preparing')[0];
+    step.step_config = { ...(step.step_config as Row), consent_purpose: 'marketing' };
+    const again = await installJourneyPreset(client, args());
+    expect(again.backfilled).not.toContain('order_journey.status_preparing');
+    expect(purposeOf(step)).toBe('marketing');
   });
 });
 

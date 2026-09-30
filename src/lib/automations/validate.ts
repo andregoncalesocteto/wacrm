@@ -2,6 +2,7 @@ import type { AutomationTriggerType } from '@/types'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { JOURNEY_STAGES } from '@/lib/journeys/constants'
 import { JOURNEY_FLAGS, isJourneyFlag } from '@/lib/journeys/flags'
+import { CONSENT_PURPOSES } from '@/lib/consent/consent'
 import { JOURNEY_TRIGGER_EVENTS, ORDER_TRIGGER_STATUSES } from './trigger-meta'
 
 // ------------------------------------------------------------
@@ -54,8 +55,20 @@ function walk(steps: StepLike[], prefix: string, issues: ValidationIssue[]): voi
   })
 }
 
+const SEND_STEPS = ['send_message', 'send_buttons', 'send_list', 'send_template']
+
 function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): void {
   const c = step.step_config ?? {}
+  if (
+    SEND_STEPS.includes(step.step_type) &&
+    c.consent_purpose !== undefined &&
+    !(CONSENT_PURPOSES as readonly unknown[]).includes(c.consent_purpose)
+  ) {
+    issues.push({
+      path: `${path}.consent_purpose`,
+      message: 'consent purpose must be "notifications" or "marketing"',
+    })
+  }
   switch (step.step_type) {
     case 'send_message':
       if (!nonEmpty(c.text)) {

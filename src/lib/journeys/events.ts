@@ -665,10 +665,10 @@ export async function processJourneyEvent(
       contactId: target.contactId,
       connectionId: target.connectionId,
     });
-    // Direct events only trigger automations for a customer that can be
-    // messaged and already has a conversation (the conversation of a customer
-    // who never wrote is created by the consent flow, ticket #20).
-    const mayFireHooks = !direct || messaging === 'eligible';
+    // Direct events fire the hooks whenever there is a contact: whether and
+    // where to send is the automation step's decision (consent for its purpose,
+    // conversation created closed on the store's notification connection). The
+    // hook context never depends on an existing conversation.
 
     /** Save the response, then fire the hook (never for a duplicate). */
     const answer = async (
@@ -693,7 +693,7 @@ export async function processJourneyEvent(
       };
       await saveResponse(db, accountId, claim.claimId, result, now);
       if (duplicate) return result;
-      if (mayFireHooks && target.conversationId && target.connectionId) {
+      if (direct || (target.conversationId && target.connectionId)) {
         try {
           await onJourneyEventAccepted(db, {
             accountId,
@@ -704,6 +704,7 @@ export async function processJourneyEvent(
             contactId: target.contactId,
             conversationId: target.conversationId,
             connectionId: target.connectionId,
+            ...(direct ? { storeId } : {}),
             stage,
             properties: event.properties as Record<string, unknown>,
           });
@@ -764,9 +765,9 @@ export async function processJourneyEvent(
         messaging,
       };
       await saveResponse(db, accountId, claim.claimId, result, now);
-      if (change && (mayFireHooks || !direct)) {
+      if (change) {
         try {
-          await onOrderStatusChanged(db, change);
+          await onOrderStatusChanged(db, change, direct ? storeId : null);
         } catch (hookErr) {
           console.error('[journeys] onOrderStatusChanged failed:', hookErr);
         }

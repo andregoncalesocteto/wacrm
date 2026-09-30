@@ -104,3 +104,24 @@ Sem migration. Módulo novo `src/lib/consent/opt-out.ts` (sem importar canal; te
 - Precedência/idempotência vêm do #20: `at` = instante da mensagem; grant mais novo do cardápio reativa, mais antigo não. O painel já traduz a origem `chat`.
 
 **Fora**: um fluxo que consuma o "PARAR" (fluxo aguardando resposta) ainda o recebe; não mudamos fluxos.
+
+## #22 Envio condicionado ao consentimento, conversa fechada e avisos para quem nunca escreveu
+
+Sem migration (conversas já aceitam `status='closed'`; `consent_purpose` vive em `step_config`).
+
+**Para reaproveitar**
+- `src/lib/automations/send-gate.ts`: `gateSend(db, {accountId, userId, contactId, purpose, conversationId?, storeId?})` -> `{ok:true, conversationId, connectionId} | {ok:false, reason}`; `stepConsentPurpose(declared)` (ausente/inválido = `marketing`); `DEFAULT_CONSENT_PURPOSE`. O motor chama `gateSendStep` no início de `send_message`, `send_buttons`, `send_list` e `send_template`: sem consentimento da finalidade (`hasConsent`, #20) lança `ExecutionIgnored` -> passo `skipped`, `detail: "ignored: sem consentimento: <finalidade>"` (sem telefone); loja sem conexão de avisos -> `skipped` com `sem conexão de avisos da loja (none|ambiguous)`.
+- `AutomationContext.store_id`: só os eventos diretos o preenchem. Sem `conversation_id` mas com `store_id`, o passo acha-ou-cria a conversa (contato, conexão de `resolveNotificationConnection`) já FECHADA, usando `findOrCreateConversationRow` (agora exportada de `whatsapp/resolve-conversation.ts`, com o 6o parâmetro `createStatus`; retry de leitura no 23505). A conversa criada entra só nos args daquele passo; os seguintes a reencontram pela busca do contato.
+- `event-hooks.ts`: `AcceptedJourneyEvent.conversationId/connectionId` agora podem ser `null` e há `storeId`; `onOrderStatusChanged(db, change, storeId?)`. `events.ts` dispara os dois ganchos para TODO evento direto (não depende mais de `messaging` nem de conversa); eventos com `idtrack` inalterados.
+- Tipos: `StepConsentPurpose`; `consent_purpose?` em `SendMessage/SendButtons/SendList/SendTemplateStepConfig`. `validate.ts` recusa valor fora de `notifications|marketing` em passos de envio.
+- Preset: agradecimento e os 7 avisos de status nascem com `consent_purpose: 'notifications'`; retomadas e carrinho abandonado NÃO declaram nada (padrão estrito `marketing`, o #24 trata o carrinho). `installJourneyPreset` devolve também `backfilled`: nas automações já instaladas (por `preset_key`) só preenche `consent_purpose` nos passos de envio que não o têm, sem mexer em texto/template/finalidade já escolhida.
+- Construtor: seletor "Avisos do pedido"/"Marketing" (`ConsentPurposeField`) nos 4 passos de envio, com dica; chaves `Automations.builder.config.consentPurpose*` nos 4 idiomas. Sem valor salvo o seletor mostra Marketing (o padrão real).
+
+**Decisões**
+- `hasConsent` vale para TODO passo de envio e todo gatilho: quem escreveu segue implícito; revogação explícita da finalidade bloqueia até quem escreveu.
+- Contato sem conversa e sem `store_id` (ex.: tag_added de quem nunca escreveu) mantém a falha antiga "contact has no existing conversation" (nada é enviado de qualquer forma), para não mudar testes/mensagens existentes.
+- Ao ignorar um passo o escopo termina (comportamento de `ExecutionIgnored`), como nos demais "ignorados".
+- Sem template: a conversa já foi criada (fechada) e o envio falha com `window_closed`, gravando a mensagem `failed` nela (falha visível, não `skipped`).
+- Condição `business_acronym_is` usa a loja do `store_id` do contexto quando ainda não há conversa.
+
+**Fora / atenção para o #24**: o passo `wait` exige conversa (colunas NOT NULL) e falha em execução de evento direto sem conversa ("contact has no existing conversation"); o carrinho abandonado (espera de 10 min) precisa resolver isso e declarar sua finalidade (`marketing`). `conversation_unattended` e `customer_replied_since` sem conversa avaliam falso. Edições de teste: `route.direct.test.ts` (o gancho agora dispara para evento direto sem consentimento/conversa) — único teste existente alterado; os de `idtrack` passaram sem alteração.

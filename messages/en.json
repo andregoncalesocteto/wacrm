@@ -1374,6 +1374,12 @@
         "journeyFlagHint": "True once the abandoned-cart message went out for this Journey. Checked when the step runs, including after a wait.",
         "markJourneyFlagLabel": "Send once per Journey (abandoned cart)",
         "markJourneyFlagHint": "The Journey is marked right before the send, so this message goes out at most once per Journey, even if several runs reach it. If the send fails, the mark is undone.",
+        "consentPurposeLabel": "Consent for customers who never wrote",
+        "consentPurposeHint": "For a customer who has never written to the CRM, this step only sends if they gave the consent of this purpose (from the menu). Customers who already wrote keep receiving it, unless they revoked that purpose.",
+        "consentPurposes": {
+          "notifications": "Order notices",
+          "marketing": "Marketing"
+        },
         "stageComparisonLabel": "Comparison",
         "stageComparisons": {
           "before": "is before",

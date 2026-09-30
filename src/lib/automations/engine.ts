@@ -47,6 +47,7 @@ import {
 } from '@/lib/journeys'
 
 import { orderVariable, type AutomationOrderContext } from './order-vars'
+import { gateSend, stepConsentPurpose } from './send-gate'
 
 // ------------------------------------------------------------
 // Public API
@@ -84,6 +85,10 @@ export interface AutomationContext {
   /** The order this run is about: order_status_changed (status change) or a
    *  Purchase journey_event. Feeds `{{order_id}}`/`{{order_status}}`/`{{order_value}}`. */
   order?: AutomationOrderContext
+  /** Store of a direct event (no conversation yet): lets a send step create the
+   *  conversation on the store's notification connection, after the consent
+   *  check. Absent for runs that already have a conversation. */
+  store_id?: string
 }
 
 export interface DispatchInput {
@@ -572,6 +577,8 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'send_message': {
       const cfg = step.step_config as SendMessageStepConfig
       if (!args.contactId) throw new Error('send_message needs a contact')
+      const contactId = args.contactId
+      args = await gateSendStep(args, contactId, cfg.consent_purpose)
       // `{{menu_link}}` resolves conversation -> connection -> store -> menu_url
       // and mints/renews the Tracking token BEFORE the send; a failure there
       // throws, so nothing is sent. The Journey opens only after the send.
@@ -607,7 +614,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           accountId: args.automation.account_id,
           userId: args.automation.user_id,
           conversationId,
-          contactId: args.contactId,
+          contactId,
         })
         text = interpolate(replaceMenuLinkVariable(cfg.text, menuLink.url), args, extra)
       }
@@ -634,7 +641,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           accountId: args.automation.account_id,
           userId: args.automation.user_id,
           conversationId,
-          contactId: args.contactId,
+          contactId,
           text,
           // A template fallback would replace the text and drop the link, so a
           // link message never falls back: outside the window it fails visibly.
@@ -662,7 +669,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           accountId: args.automation.account_id,
           userId: args.automation.user_id,
           conversationId,
-          contactId: args.contactId,
+          contactId,
           connectionId: menuLink.connectionId,
         })
       }
@@ -671,8 +678,12 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
 
     case 'send_buttons':
     case 'send_list': {
-      const payload = step.step_config as SendButtonsStepConfig | SendListStepConfig
+      const { consent_purpose, ...payload } = step.step_config as
+        | SendButtonsStepConfig
+        | SendListStepConfig
       if (!args.contactId) throw new Error(`${step.step_type} needs a contact`)
+      const contactId = args.contactId
+      args = await gateSendStep(args, contactId, consent_purpose)
       // Validate against Meta's limits before the network call so a bad
       // payload surfaces as a clear failed-step detail rather than a raw
       // Meta 400 mid-conversation.
@@ -686,7 +697,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
         conversationId,
-        contactId: args.contactId,
+        contactId,
         payload,
       })
       return `interactive sent via Meta (${whatsapp_message_id})`
@@ -696,13 +707,15 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       const cfg = step.step_config as SendTemplateStepConfig
       if (!args.contactId) throw new Error('send_template needs a contact')
       if (!cfg.template_name) throw new Error('send_template needs template_name')
+      const contactId = args.contactId
+      args = await gateSendStep(args, contactId, cfg.consent_purpose)
       const conversationId = await resolveConversationId(args, 'templates')
       const params = templateParams(cfg.variables)
       const { whatsapp_message_id } = await engineSendTemplate({
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
         conversationId,
-        contactId: args.contactId,
+        contactId,
         templateName: cfg.template_name,
         language: cfg.language,
         params,
@@ -910,6 +923,37 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
 
 /** The run has nowhere valid to send; recorded as ignored, not failed. */
 class ExecutionIgnored extends Error {}
+
+/**
+ * Consent + conversation gate of a send step (see `gateSend`). Ignores the step
+ * with the reason when there is no consent for its purpose (or no notification
+ * connection for a direct event); otherwise returns the args to send with: the
+ * conversation created/found for a store-only run is put in the context.
+ */
+async function gateSendStep(
+  args: ExecuteArgs,
+  contactId: string,
+  declaredPurpose: unknown,
+): Promise<ExecuteArgs> {
+  const gate = await gateSend(supabaseAdmin(), {
+    accountId: args.automation.account_id,
+    userId: args.automation.user_id,
+    contactId,
+    purpose: stepConsentPurpose(declaredPurpose),
+    conversationId: args.context.conversation_id,
+    storeId: args.context.store_id,
+  })
+  if (!gate.ok) throw new ExecutionIgnored(gate.reason)
+  if (!gate.conversationId || args.context.conversation_id) return args
+  return {
+    ...args,
+    context: {
+      ...args.context,
+      conversation_id: gate.conversationId,
+      ...(gate.connectionId ? { connection_id: gate.connectionId } : {}),
+    },
+  }
+}
 
 type SendNeed = 'text' | keyof Pick<Capabilities, 'templates' | 'interactiveButtons' | 'interactiveList'>
 
@@ -1178,8 +1222,12 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       const wanted = (cfg.operand ?? '').trim().toLowerCase()
       if (!wanted) return false
       const conv = await conditionConversation(args)
-      if (!conv) return false
-      const store = await storeOfConversation(args, conv.id)
+      // A direct event with no conversation yet still knows its store.
+      const store = conv
+        ? await storeOfConversation(args, conv.id)
+        : args.context.store_id
+          ? await storeById(args, args.context.store_id)
+          : null
       const acronym = (store?.business_acronym ?? '').trim().toLowerCase()
       return acronym !== '' && acronym === wanted
     }
@@ -1215,6 +1263,20 @@ interface ConditionConversation {
 }
 
 const STORE_NAME_VARIABLE = /\{\{\s*store_name\s*\}\}/
+
+/** A store of the automation's account, or null. */
+async function storeById(
+  args: ExecuteArgs,
+  storeId: string,
+): Promise<{ name: string | null; business_acronym: string | null } | null> {
+  const { data } = await supabaseAdmin()
+    .from('stores')
+    .select('name, business_acronym')
+    .eq('id', storeId)
+    .eq('account_id', args.automation.account_id)
+    .maybeSingle()
+  return (data as { name: string | null; business_acronym: string | null } | null) ?? null
+}
 
 /** The store of a conversation (conversation -> connection -> store), or null. */
 async function storeOfConversation(

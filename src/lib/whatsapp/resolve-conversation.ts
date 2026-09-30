@@ -225,12 +225,14 @@ export async function resolveConversationByAddress(
  * the inbound webhook does: on a 23505 from a concurrent create,
  * re-resolve the winning row rather than failing the send.
  */
-async function findOrCreateConversationRow(
+export async function findOrCreateConversationRow(
   db: SupabaseClient,
   accountId: string,
   contactId: string,
   ownerUserId: string,
-  connectionId: string
+  connectionId: string,
+  /** Status of a NEWLY created row (default: the column default, open). */
+  createStatus?: 'closed'
 ): Promise<string> {
   const { data: existing, error: findErr } = await db
     .from('conversations')
@@ -261,6 +263,7 @@ async function findOrCreateConversationRow(
       user_id: ownerUserId,
       contact_id: contactId,
       connection_id: connectionId,
+      ...(createStatus ? { status: createStatus } : {}),
     })
     .select('id')
     .single();

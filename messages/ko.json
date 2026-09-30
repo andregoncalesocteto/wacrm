@@ -1374,6 +1374,12 @@
         "journeyFlagHint": "이 Journey에 장바구니 이탈 메시지가 발송된 뒤에는 참입니다. 단계가 실행될 때(대기 이후 포함) 확인합니다.",
         "markJourneyFlagLabel": "Journey당 한 번 발송(장바구니 이탈)",
         "markJourneyFlagHint": "발송 직전에 Journey에 표시하므로, 여러 실행이 도달해도 이 메시지는 Journey당 최대 한 번만 나갑니다. 발송이 실패하면 표시가 취소됩니다.",
+        "consentPurposeLabel": "한 번도 메시지를 보내지 않은 고객의 동의",
+        "consentPurposeHint": "CRM에 한 번도 메시지를 보내지 않은 고객에게는 (메뉴에서) 이 목적의 동의를 받은 경우에만 이 단계가 발송됩니다. 이미 메시지를 보낸 고객은 해당 목적을 철회하지 않는 한 계속 받습니다.",
+        "consentPurposes": {
+          "notifications": "주문 알림",
+          "marketing": "마케팅"
+        },
         "stageComparisonLabel": "비교",
         "stageComparisons": {
           "before": "이전 단계",

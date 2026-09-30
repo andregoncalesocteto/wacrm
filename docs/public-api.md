@@ -350,8 +350,11 @@ instead. These fields are valid on **every** event and optional when an
   when the store has no eligible WhatsApp connection; otherwise `eligible` if the
   contact may receive order notices (`consent.notifications` active, or implicit
   because they already wrote to the CRM, see [Consent](#consent)), and
-  `no_consent` if not. For now, no automation runs for a direct event unless
-  `messaging` is `eligible`.
+  `no_consent` if not. The automations run for every direct event; each send
+  step then decides: a customer who never wrote is messaged only with the consent
+  of the step's purpose (order notices use `notifications`). The first message
+  goes by approved template on a conversation created closed, which reopens when
+  the customer answers. `messaging` only reports the `notifications` case.
 
 ##### Consent
 

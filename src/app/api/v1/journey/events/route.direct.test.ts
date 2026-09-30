@@ -637,9 +637,14 @@ describe('the direct Journey', () => {
 });
 
 describe('messaging and automations', () => {
-  it('no hook for a customer without consent; eligible customers with a conversation fire it', async () => {
+  it('the hook fires for every direct event with a contact (even with no conversation or consent); the step decides', async () => {
     await send(direct('ViewContent'));
-    expect(hook).not.toHaveBeenCalled();
+    expect(hook).toHaveBeenCalledTimes(1);
+    expect(hook.mock.calls[0][1]).toMatchObject({
+      conversationId: null,
+      storeId: 'store-1',
+    });
+    hook.mockReset();
 
     resetWorld();
     world.tables.accounts = [
@@ -661,6 +666,7 @@ describe('messaging and automations', () => {
       contactId: 'ct-1',
       conversationId: 'cv-1',
       connectionId: 'conn-1',
+      storeId: 'store-1',
     });
   });
 

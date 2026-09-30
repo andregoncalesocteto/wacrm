@@ -1883,3 +1883,212 @@ describe('{{store_name}} and business_acronym_is (per-brand automations)', () =>
     });
   });
 });
+
+describe('consent gate and conversation creation for customers who never wrote (#22)', () => {
+  const NEW_PHONE = '+5511999990000';
+  const consent = (purpose: string, granted = true, contact = 'ct-new') => ({
+    account_id: 'acct-1',
+    contact_id: contact,
+    purpose,
+    granted,
+    given_at: granted ? '2026-01-01T00:00:00Z' : null,
+    revoked_at: granted ? null : '2026-01-02T00:00:00Z',
+  });
+  const template = () => ({
+    id: 'tpl-1',
+    account_id: 'acct-1',
+    user_id: 'u-1',
+    name: 'order_thanks',
+    category: 'Utility',
+    language: 'pt_BR',
+    body_text: 'Obrigado',
+    created_at: '2026-01-01T00:00:00Z',
+  });
+  const send = (extra: Row = {}) => ({
+    step_type: 'send_message',
+    step_config: {
+      text: 'Obrigado pelo pedido',
+      consent_purpose: 'notifications',
+      fallback_template: { name: 'order_thanks', language: 'pt_BR' },
+      ...extra,
+    },
+  });
+  const fireDirect = (context: Row = { store_id: 'st-1' }) =>
+    runAutomationsForTrigger({
+      accountId: 'acct-1',
+      triggerType: 'new_contact_created',
+      contactId: 'ct-new',
+      context,
+    });
+  const convsOfNew = () => h.db.conversations.filter((c) => c.contact_id === 'ct-new');
+
+  beforeEach(() => {
+    h.db.contacts.push({ id: 'ct-new', account_id: 'acct-1', phone: NEW_PHONE });
+    h.db.stores = [
+      { id: 'st-1', account_id: 'acct-1', name: 'Loja Centro', notification_connection_id: null },
+    ];
+    h.db.channel_connections[0].store_id = 'st-1';
+    h.db.contact_consents = [];
+    h.db.message_templates = [template()];
+  });
+
+  it('without a received message and without consent the step is skipped, with the reason and no phone', async () => {
+    steps(send());
+    await fireDirect();
+
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(convsOfNew()).toHaveLength(0);
+    expect(log().status).toBe('success');
+    expect(log().steps_executed).toEqual([
+      expect.objectContaining({
+        step_type: 'send_message',
+        status: 'skipped',
+        detail: 'ignored: sem consentimento: notifications',
+      }),
+    ]);
+    expect(JSON.stringify(log())).not.toContain('99999');
+  });
+
+  it('with notifications consent it sends the template on a conversation created CLOSED', async () => {
+    h.db.contact_consents = [consent('notifications')];
+    steps(send());
+    await fireDirect();
+
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
+    expect(convsOfNew()).toHaveLength(1);
+    expect(convsOfNew()[0]).toMatchObject({
+      status: 'closed',
+      connection_id: 'conn-acct-1',
+      account_id: 'acct-1',
+    });
+    expect(messages()).toHaveLength(1);
+    expect(messages()[0]).toMatchObject({
+      conversation_id: convsOfNew()[0].id,
+      template_name: 'order_thanks',
+    });
+    expect(log().status).toBe('success');
+  });
+
+  it('a second send of the run reuses the created conversation', async () => {
+    h.db.contact_consents = [consent('notifications')];
+    steps(send(), send());
+    await fireDirect();
+
+    expect(h.sendTemplateMessage).toHaveBeenCalledTimes(2);
+    expect(convsOfNew()).toHaveLength(1);
+  });
+
+  it('a step with no declared purpose counts as marketing', async () => {
+    h.db.contact_consents = [consent('notifications')];
+    steps(send({ consent_purpose: undefined }));
+    await fireDirect();
+
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    expect((log().steps_executed as Row[])[0]).toMatchObject({
+      status: 'skipped',
+      detail: 'ignored: sem consentimento: marketing',
+    });
+
+    h.db.automation_logs = [];
+    h.db.contact_consents = [consent('marketing')];
+    await fireDirect();
+    expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('without a configured template the send FAILS visibly (not skipped)', async () => {
+    h.db.contact_consents = [consent('notifications')];
+    steps(send({ fallback_template: undefined }));
+    await fireDirect();
+
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(log().status).toBe('failed');
+    expect((log().steps_executed as Row[])[0]).toMatchObject({ status: 'failed' });
+    expect(convsOfNew()[0].status).toBe('closed');
+    expect(messages()[0]).toMatchObject({ status: 'failed' });
+  });
+
+  it('a store with no notification connection skips the step with the reason', async () => {
+    h.db.contact_consents = [consent('notifications')];
+    h.db.channel_connections[0].store_id = 'st-other';
+    steps(send());
+    await fireDirect();
+
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    expect(convsOfNew()).toHaveLength(0);
+    expect((log().steps_executed as Row[])[0]).toMatchObject({
+      status: 'skipped',
+      detail: 'ignored: sem conexão de avisos da loja (none)',
+    });
+  });
+
+  it('interactive and template steps are gated by the same consent', async () => {
+    steps(
+      {
+        step_type: 'send_buttons',
+        step_config: {
+          kind: 'buttons',
+          body: 'Pedido ok?',
+          buttons: [{ id: 'a', title: 'Sim' }],
+          consent_purpose: 'notifications',
+        },
+      },
+      {
+        step_type: 'send_template',
+        step_config: { template_name: 'order_thanks', language: 'pt_BR', consent_purpose: 'notifications' },
+      }
+    );
+    await fireDirect();
+
+    expect(h.sendInteractiveButtons).not.toHaveBeenCalled();
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    expect(convsOfNew()).toHaveLength(0);
+    // Skipping ends the scope (same as any ignored step).
+    expect(log().steps_executed).toEqual([
+      expect.objectContaining({ step_type: 'send_buttons', status: 'skipped' }),
+    ]);
+
+    h.db.automation_logs = [];
+    h.db.contact_consents = [consent('notifications')];
+    await fireDirect();
+    expect((log().steps_executed as Row[]).map((s) => s.status)).toEqual(['success', 'success']);
+    expect(convsOfNew()).toHaveLength(1);
+  });
+
+  it('a customer who already wrote keeps receiving, with no new consent', async () => {
+    steps(send({ consent_purpose: undefined }));
+    await fire({ conversation_id: 'cv-1' });
+    expect(h.sendTextMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('an explicit revocation blocks even a customer who already wrote', async () => {
+    h.db.contact_consents = [consent('notifications', false, 'ct-1')];
+    steps(send());
+    await fire({ conversation_id: 'cv-1' });
+
+    expect(h.sendTextMessage).not.toHaveBeenCalled();
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
+    expect((log().steps_executed as Row[])[0]).toMatchObject({
+      status: 'skipped',
+      detail: 'ignored: sem consentimento: notifications',
+    });
+    // The revoked purpose only: the other one is still implicit.
+    h.db.automation_logs = [];
+    steps(send({ consent_purpose: 'marketing' }));
+    await fire({ conversation_id: 'cv-1' });
+    expect(h.sendTextMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('business_acronym_is reads the store of a run that has no conversation yet', async () => {
+    h.db.stores[0].business_acronym = 'RPA';
+    h.db.contact_consents = [consent('notifications')];
+    h.db.automation_steps = [
+      { id: 'st-1', position: 0, step_type: 'condition', step_config: { subject: 'business_acronym_is', operand: 'rpa' } },
+      { id: 'st-y', position: 0, parent_step_id: 'st-1', branch: 'yes', ...send() },
+    ].map((st) => ({ automation_id: 'au-1', parent_step_id: null, branch: null, ...st }));
+    await fireDirect();
+    // The condition held (store known by id): the yes-branch sent.
+    expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
+  });
+});

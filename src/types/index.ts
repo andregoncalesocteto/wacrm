@@ -602,8 +602,16 @@ export type AutomationTriggerConfig =
   | OrderStatusChangedTriggerConfig
   | Record<string, unknown>;
 
+/**
+ * Purpose of the consent a send step needs from a customer who never wrote to
+ * the CRM (`notifications` = order notices, `marketing` = offers/recovery).
+ * Absent = `marketing`, the strictest.
+ */
+export type StepConsentPurpose = 'notifications' | 'marketing';
+
 export interface SendMessageStepConfig {
   text: string;
+  consent_purpose?: StepConsentPurpose;
   /**
    * Template sent instead of `text` when the channel's reply window (WhatsApp
    * 24 h) is closed. Without it, a send outside the window fails visibly.
@@ -625,10 +633,15 @@ export interface SendMessageStepConfig {
  * payload (same shape stored on messages + quick replies). `kind` is
  * implied by the step_type but kept on the payload for a uniform shape.
  */
-export type SendButtonsStepConfig = InteractiveMessagePayload;
-export type SendListStepConfig = InteractiveMessagePayload;
+export type SendButtonsStepConfig = InteractiveMessagePayload & {
+  consent_purpose?: StepConsentPurpose;
+};
+export type SendListStepConfig = InteractiveMessagePayload & {
+  consent_purpose?: StepConsentPurpose;
+};
 
 export interface SendTemplateStepConfig {
+  consent_purpose?: StepConsentPurpose;
   template_name: string;
   language?: string;
   variables?: Record<string, string>;

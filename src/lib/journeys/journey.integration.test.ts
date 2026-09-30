@@ -26,6 +26,7 @@ import { __resetRateLimitForTests } from '@/lib/rate-limit';
 const h = vi.hoisted(() => ({
   key: null as unknown,
   waSends: [] as { to: string; text: string }[],
+  waTemplates: [] as { to: string; name: string }[],
   tgSends: [] as { chat_id: number; text: string }[],
 }));
 
@@ -46,6 +47,10 @@ vi.mock('@/lib/whatsapp/meta-api', async (importOriginal) => ({
   sendTextMessage: async (a: { to: string; text: string }) => {
     h.waSends.push({ to: a.to, text: a.text });
     return { messageId: `wamid.${h.waSends.length}` };
+  },
+  sendTemplateMessage: async (a: { to: string; template: { name: string } }) => {
+    h.waTemplates.push({ to: a.to, name: a.template.name });
+    return { messageId: `wamid.tpl.${h.waTemplates.length}` };
   },
 }));
 const fakeAdmin = vi.hoisted(() => async () => {
@@ -255,6 +260,7 @@ beforeEach(async () => {
   n = 0;
   h.key = key;
   h.waSends = [];
+  h.waTemplates = [];
   h.tgSends = [];
   __resetRateLimitForTests();
   process.env.AUTOMATION_CRON_SECRET = 'cron-secret';
@@ -590,5 +596,169 @@ describe.each(CHANNELS)('order journey on $label', (channel) => {
     at(30);
     await runCron();
     expect(channel.sent()).toHaveLength(after);
+  });
+});
+
+describe('direct events to a customer who never wrote (consent, closed conversation, template)', () => {
+  const PHONE = '+5511999998888';
+  const DIGITS = '5511999998888';
+  const direct = (name: string, extra: Row = {}) =>
+    POST(
+      new Request('https://crm.example.com/api/v1/journey/events', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${KEY}` },
+        body: JSON.stringify({
+          event_id: `evt-${++n}`,
+          name,
+          store_key: '89/RPA/BLC',
+          customer: { phone: PHONE, name: 'Ana' },
+          occurred_at: iso(Date.now()),
+          ...extra,
+        }),
+      })
+    );
+  const consent = { notifications: true, given_at: '2026-10-02T20:00:00Z' };
+
+  beforeEach(async () => {
+    resetWorld();
+    world.tables = {
+      accounts: [{ id: ACCOUNT, owner_user_id: 'owner-1', default_currency: 'BRL' }],
+      stores: [
+        {
+          id: 'store-1',
+          account_id: ACCOUNT,
+          name: 'Centro',
+          store_key_normalized: '89/rpa/blc',
+        },
+      ],
+      channel_connections: [
+        {
+          id: 'conn-1',
+          account_id: ACCOUNT,
+          store_id: 'store-1',
+          channel_type: 'whatsapp_cloud',
+          external_id: 'pn-1',
+          status: 'connected',
+          disabled_at: null,
+          config: {},
+        },
+      ],
+      message_templates: [
+        {
+          id: 'tpl-1',
+          account_id: ACCOUNT,
+          user_id: 'owner-1',
+          name: 'order_update',
+          category: 'Utility',
+          language: 'en',
+          body_text: 'Your order is moving',
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    await installAndActivatePreset();
+    // The operator configured the first-contact template on the notices.
+    for (const step of t('automation_steps')) {
+      if (
+        step.step_type === 'send_message' &&
+        (step.step_config as Row).consent_purpose === 'notifications'
+      ) {
+        step.step_config = {
+          ...(step.step_config as Row),
+          fallback_template: { name: 'order_update', language: 'en' },
+        };
+      }
+    }
+  });
+
+  const conversations = () => t('conversations');
+  const logs = () => t('automation_logs');
+
+  it('consent -> contact created -> thank-you and status by template -> closed conversation -> customer reply reopens it', async () => {
+    const res = await direct('Purchase', {
+      consent,
+      ...purchase('PED-1'),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.messaging).toBe('eligible');
+
+    // Contact created from the menu; no text message ever left: the first
+    // contact is a template, on a conversation born closed.
+    expect(t('contacts')).toHaveLength(1);
+    expect(t('contacts')[0]).toMatchObject({ source: 'menu', name: 'Ana' });
+    expect(conversations()).toHaveLength(1);
+    expect(conversations()[0]).toMatchObject({
+      status: 'closed',
+      connection_id: 'conn-1',
+    });
+    expect(h.waSends).toEqual([]);
+    expect(h.waTemplates).toEqual([{ to: DIGITS, name: 'order_update' }]);
+
+    // A status notice goes out on the same conversation, still by template.
+    const sr = await direct('OrderStatusChanged', status('PED-1', 'preparing'));
+    expect(sr.status).toBe(200);
+    expect(h.waTemplates).toHaveLength(2);
+    expect(conversations()).toHaveLength(1);
+    expect(conversations()[0].status).toBe('closed');
+
+    // The customer answers: the existing mechanism reopens the conversation.
+    const { ingestInbound } = await import('@/lib/channels/ingest');
+    const [r] = await ingestInbound(
+      db as never,
+      { id: 'conn-1', account_id: ACCOUNT, channel_type: 'whatsapp_cloud' } as never,
+      [
+        {
+          kind: 'message',
+          externalId: 'wamid.in.1',
+          sender: [{ kind: 'whatsapp:phone', externalId: DIGITS }],
+          at: new Date(),
+          content: { type: 'text', text: 'Thanks!' },
+          senderName: 'Ana',
+        },
+      ],
+      { auditUserId: 'owner-1' }
+    );
+    expect(r.status).toBe('stored');
+    expect(conversations()).toHaveLength(1);
+    expect(conversations()[0].status).toBe('open');
+  });
+
+  it('without consent the order is recorded, the step is skipped with the reason and nothing is created or sent', async () => {
+    const res = await direct('Purchase', purchase('PED-2'));
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.messaging).toBe('no_consent');
+
+    expect(t('orders')).toHaveLength(1);
+    expect(conversations()).toHaveLength(0);
+    expect(h.waTemplates).toEqual([]);
+    expect(h.waSends).toEqual([]);
+    const skipped = logs().flatMap((l) => l.steps_executed as Row[]);
+    expect(skipped).toEqual([
+      expect.objectContaining({
+        status: 'skipped',
+        detail: 'ignored: sem consentimento: notifications',
+      }),
+    ]);
+    expect(JSON.stringify(logs())).not.toContain('99999');
+  });
+
+  it('consent given only for marketing does not release the order notices', async () => {
+    await direct('Purchase', {
+      consent: { marketing: true, given_at: '2026-10-02T20:00:00Z' },
+      ...purchase('PED-3'),
+    });
+    expect(h.waTemplates).toEqual([]);
+    expect(conversations()).toHaveLength(0);
+  });
+
+  it('without a configured template the first contact fails visibly', async () => {
+    for (const step of t('automation_steps')) {
+      const cfg = step.step_config as Row;
+      if (cfg.consent_purpose === 'notifications') delete cfg.fallback_template;
+    }
+    await direct('Purchase', { consent, ...purchase('PED-4') });
+    expect(h.waTemplates).toEqual([]);
+    expect(h.waSends).toEqual([]);
+    expect(logs().some((l) => l.status === 'failed')).toBe(true);
   });
 });

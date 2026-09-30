@@ -121,6 +121,10 @@ export function buildJourneyPreset(
     };
   };
 
+  // The order notices declare `notifications`; the abandoned cart and the
+  // resumptions declare nothing on purpose (strict `marketing` default; the
+  // abandoned cart is settled in its own ticket).
+  const notice = (text: string) => send(text, { consent_purpose: 'notifications' });
   return [
     make(
       'resumption',
@@ -135,11 +139,11 @@ export function buildJourneyPreset(
       abandonedCartSteps(catalog.texts.abandonedCart)
     ),
     make('thank_you', 'journey_event', { event_names: ['Purchase'] }, [
-      send(catalog.texts.thankYou),
+      notice(catalog.texts.thankYou),
     ]),
     ...ORDER_TRIGGER_STATUSES.map((status) =>
       make(`status_${status}`, 'order_status_changed', { statuses: [status] }, [
-        send(catalog.texts[`status_${status}`]),
+        notice(catalog.texts[`status_${status}`]),
       ])
     ),
   ];
@@ -166,10 +170,47 @@ export async function loadJourneyPresetCatalog(
 export interface InstallResult {
   created: string[];
   existing: string[];
+  /** Existing automations that only got the missing `consent_purpose` filled. */
+  backfilled: string[];
 }
 
 function isUniqueViolation(error: { code?: string } | null): boolean {
   return error?.code === '23505';
+}
+
+/**
+ * An automation installed before `consent_purpose` existed: fill ONLY that
+ * property on its send steps that lack it (with the purpose the preset
+ * declares), keeping every other key, so edited texts and templates survive.
+ * Returns whether any step changed.
+ */
+async function backfillConsentPurpose(
+  db: SupabaseClient,
+  automationId: string,
+  preset: PresetAutomation
+): Promise<boolean> {
+  const purpose = preset.steps
+    .map((s) => (s.step_config as { consent_purpose?: string }).consent_purpose)
+    .find((p) => !!p);
+  if (!purpose) return false;
+  const { data: steps, error: stepsErr } = await db
+    .from('automation_steps')
+    .select('id, step_config')
+    .eq('automation_id', automationId)
+    .eq('step_type', 'send_message');
+  if (stepsErr) throw new Error(stepsErr.message);
+  let changed = false;
+  for (const step of (steps ?? []) as { id: string; step_config: Record<string, unknown> | null }[]) {
+    const cfg = step.step_config ?? {};
+    if (cfg.consent_purpose) continue;
+    const { error: upErr } = await db
+      .from('automation_steps')
+      .update({ step_config: { ...cfg, consent_purpose: purpose } })
+      .eq('id', step.id);
+    if (upErr) throw new Error(upErr.message);
+    changed = true;
+  }
+  return changed;
 }
 
 /**
@@ -190,18 +231,24 @@ export async function installJourneyPreset(
 
   const { data: present, error: readErr } = await db
     .from('automations')
-    .select('preset_key')
+    .select('id, preset_key')
     .eq('account_id', args.accountId)
     .like('preset_key', `${JOURNEY_PRESET_PREFIX}%`);
   if (readErr) throw new Error(readErr.message);
-  const have = new Set(
-    ((present ?? []) as { preset_key: string }[]).map((r) => r.preset_key)
+  const have = new Map(
+    ((present ?? []) as { id: string; preset_key: string }[]).map((r) => [
+      r.preset_key,
+      r.id,
+    ])
   );
 
-  const result: InstallResult = { created: [], existing: [] };
+  const result: InstallResult = { created: [], existing: [], backfilled: [] };
   for (const preset of wanted) {
     if (have.has(preset.preset_key)) {
       result.existing.push(preset.preset_key);
+      if (await backfillConsentPurpose(db, have.get(preset.preset_key)!, preset)) {
+        result.backfilled.push(preset.preset_key);
+      }
       continue;
     }
     const { data: automation, error } = await db

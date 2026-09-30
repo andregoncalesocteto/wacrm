@@ -386,6 +386,19 @@ describe("validateStepsForActivation — journey conditions", () => {
     ]);
   });
 
+  it("send steps accept consent_purpose notifications|marketing only", () => {
+    const send = (type: string, config: Record<string, unknown>) =>
+      validateStepsForActivation([{ step_type: type, step_config: config }] as never);
+    expect(send("send_message", { text: "hi", consent_purpose: "notifications" })).toEqual([]);
+    expect(send("send_template", { template_name: "t", consent_purpose: "marketing" })).toEqual([]);
+    expect(
+      send("send_message", { text: "hi", consent_purpose: "spam" }).map((i) => i.path),
+    ).toEqual(["steps[0].consent_purpose"]);
+    expect(
+      send("send_template", { template_name: "t", consent_purpose: 1 }).map((i) => i.path),
+    ).toEqual(["steps[0].consent_purpose"]);
+  });
+
   it("other subjects still require an operand", () => {
     expect(cond({ subject: "tag_presence" })).toHaveLength(1);
   });
