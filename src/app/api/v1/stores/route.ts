@@ -6,10 +6,11 @@
 // ============================================================
 
 import { requireApiKey } from '@/lib/auth/api-context';
+import { buildStoreKey } from '@/lib/stores/store-key';
 import { okList, fail, toApiErrorResponse } from '@/lib/api/v1/respond';
 
 const STORE_COLUMNS =
-  'id, name, address, phone, manager_name, menu_url, created_at';
+  'id, name, address, phone, manager_name, menu_url, store_code, store_acronym, business_acronym, created_at';
 
 export async function GET(request: Request) {
   try {
@@ -26,7 +27,11 @@ export async function GET(request: Request) {
       return fail('internal', 'Failed to list stores', 500);
     }
 
-    return okList(data ?? [], null);
+    const stores = (data ?? []).map((s) => ({
+      ...s,
+      store_key: buildStoreKey(s),
+    }));
+    return okList(stores, null);
   } catch (err) {
     return toApiErrorResponse(err);
   }

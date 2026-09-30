@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { parseStoreInput } from '@/lib/stores/validation';
+import {
+  INVALID_NOTIFICATION_CONNECTION,
+  STORE_KEY_TAKEN,
+} from '@/lib/stores/store-key';
+import { isValidNotificationConnection } from '@/lib/stores/notification-connection';
 
 /**
  * PATCH  /api/stores/[id] — update a store (admin+).
@@ -41,6 +46,21 @@ export async function PATCH(
       );
     }
 
+    const connectionId = parsed.value.notification_connection_id;
+    if (
+      connectionId &&
+      !(await isValidNotificationConnection(
+        supabase,
+        accountId,
+        id,
+        connectionId
+      ))
+    ) {
+      return NextResponse.json(INVALID_NOTIFICATION_CONNECTION, {
+        status: 400,
+      });
+    }
+
     const { data, error } = await supabase
       .from('stores')
       .update(parsed.value)
@@ -48,7 +68,12 @@ export async function PATCH(
       .eq('account_id', accountId)
       .select('*')
       .maybeSingle();
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505') {
+        return NextResponse.json(STORE_KEY_TAKEN, { status: 409 });
+      }
+      throw error;
+    }
     if (!data)
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
 

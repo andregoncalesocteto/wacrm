@@ -3,11 +3,20 @@ import { describe, expect, it } from 'vitest';
 import {
   connectionChipState,
   hoursToText,
+  notificationCandidates,
   textToHours,
   validateDraft,
 } from './ui';
 
-const base = { name: 'A', address: '', phone: '', hours: '',
+const base = {
+  name: 'A',
+  address: '',
+  phone: '',
+  hours: '',
+  store_code: '',
+  store_acronym: '',
+  business_acronym: '',
+  notification_connection_id: '',
   manager_name: '',
   menu_url: '',
 };
@@ -61,5 +70,31 @@ describe('validateDraft', () => {
   });
   it('accepts a valid draft', () => {
     expect(validateDraft(base)).toBeNull();
+  });
+  it('validates the store key parts', () => {
+    expect(
+      validateDraft({ ...base, store_code: '89', store_acronym: 'RPA' })
+    ).toBeNull();
+    expect(validateDraft({ ...base, store_code: '8/9' })).toBe('keyPartInvalid');
+    expect(validateDraft({ ...base, business_acronym: 'x'.repeat(41) })).toBe(
+      'fieldTooLong'
+    );
+  });
+});
+
+describe('notificationCandidates', () => {
+  it('offers only enabled WhatsApp connections', () => {
+    const c = (id: string, channel_type: string, disabled_at: string | null) => ({
+      id,
+      channel_type,
+      disabled_at,
+    });
+    expect(
+      notificationCandidates([
+        c('a', 'whatsapp_cloud', null),
+        c('b', 'whatsapp_cloud', '2026-01-01'),
+        c('c', 'telegram', null),
+      ]).map((x) => x.id)
+    ).toEqual(['a']);
   });
 });

@@ -270,7 +270,7 @@ Read-only discovery of the ids you pass to `POST /api/v1/messages`
 `config` are never returned. Both return the whole list (`next_cursor` is
 always `null`).
 
-- `stores[]`: `id`, `name`, `address`, `phone`, `manager_name`, `menu_url`, `created_at`. `menu_url` is the store's Digital menu address (an `https://` URL, or `null` when the store has no menu).
+- `stores[]`: `id`, `name`, `address`, `phone`, `manager_name`, `menu_url`, `store_code`, `store_acronym`, `business_acronym`, `store_key`, `created_at`. `menu_url` is the store's Digital menu address (an `https://` URL, or `null` when the store has no menu). `store_code`, `store_acronym` and `business_acronym` are the three parts of the store key, each optional (`null` when unset, at most 40 characters, no `/`). `store_key` is computed: `CODE/STORE ACRONYM/BUSINESS ACRONYM` (for example `89/RPA/BLC`), or `null` unless all three parts are set. It is unique per account, ignoring case and edge spaces; two stores of the same site and code but different business acronyms (`89/RPA/BLC`, `89/RPA/PZA`) are different stores. **Migration required:** `063`.
 - `connections[]`: `id`, `store_id`, `channel` (e.g. `whatsapp_cloud`, `telegram`), `display_name`, `external_id`, `status`, `enabled` (`false` when the connection was disabled), `last_inbound_at`, `last_outbound_at`, `connected_at`, `created_at`. Optional filter: `?store_id=`.
 
 ### `POST /api/v1/journey/events`

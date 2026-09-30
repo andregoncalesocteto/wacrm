@@ -384,6 +384,28 @@ BEGIN
     RAISE EXCEPTION 'orders.origin_event_id is missing (migration 062)';
   END IF;
 
+  -- 063: store key fields (generated normalized key, unique index), notice connection.
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'stores'
+      AND column_name = 'store_key_normalized'
+  ) THEN
+    RAISE EXCEPTION 'stores.store_key_normalized is missing (migration 063)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'stores'
+      AND column_name = 'notification_connection_id'
+  ) THEN
+    RAISE EXCEPTION 'stores.notification_connection_id is missing (migration 063)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'stores_account_store_key_uniq'
+  ) THEN
+    RAISE EXCEPTION 'stores_account_store_key_uniq index is missing (migration 063)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

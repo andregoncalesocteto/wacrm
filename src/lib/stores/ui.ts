@@ -38,9 +38,22 @@ export interface StoreDraft {
   hours: string;
   manager_name: string;
   menu_url: string;
+  store_code: string;
+  store_acronym: string;
+  business_acronym: string;
+  /** Connection id, or '' for none. */
+  notification_connection_id: string;
 }
 
-export type DraftError = 'nameRequired' | 'nameTooLong' | 'fieldTooLong' | 'menuUrlInvalid' | null;
+export type DraftError =
+  | 'nameRequired'
+  | 'nameTooLong'
+  | 'fieldTooLong'
+  | 'menuUrlInvalid'
+  | 'keyPartInvalid'
+  | null;
+
+const KEY_PARTS = ['store_code', 'store_acronym', 'business_acronym'] as const;
 
 export function validateDraft(d: StoreDraft): DraftError {
   if (!d.name.trim()) return 'nameRequired';
@@ -52,7 +65,25 @@ export function validateDraft(d: StoreDraft): DraftError {
   ) {
     return 'fieldTooLong';
   }
+  for (const k of KEY_PARTS) {
+    const v = d[k].trim();
+    if (v.length > STORE_LIMITS[k]) return 'fieldTooLong';
+    if (v.includes('/')) return 'keyPartInvalid';
+  }
   const menu = d.menu_url.trim();
   if (menu && !isValidMenuUrl(menu)) return 'menuUrlInvalid';
   return null;
+}
+
+/**
+ * The channel type the settings screen treats as reachable by phone (the
+ * candidates for the "notices" default). The server re-validates through the
+ * providers' declared capabilities; this only decides what to offer.
+ */
+export function notificationCandidates<
+  C extends { channel_type: string; disabled_at: string | null },
+>(connections: C[]): C[] {
+  return connections.filter(
+    (c) => c.channel_type === 'whatsapp_cloud' && !c.disabled_at
+  );
 }
