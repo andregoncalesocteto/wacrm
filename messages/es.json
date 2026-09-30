@@ -624,7 +624,8 @@
       "noContact": "Sin contacto",
       "won": "Ganado",
       "lost": "Perdido",
-      "cartItems": "{count, plural, =1 {# artículo} other {# artículos}}"
+      "cartItems": "{count, plural, =1 {# artículo} other {# artículos}}",
+      "originDirect": "Directo del menú"
     },
     "form": {
       "editDeal": "Editar negocio",

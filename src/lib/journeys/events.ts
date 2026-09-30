@@ -6,7 +6,12 @@ import {
   idtrackExpired,
   idtrackNotFound,
   orderNotFound,
+  storeNotFound,
 } from '@/lib/api/v1/respond';
+import {
+  findStoreByKey,
+  resolveNotificationConnection,
+} from '@/lib/stores/notification-connection';
 import type { JourneyStage } from './constants';
 import {
   JOURNEY_EVENT_NAMES,
@@ -21,10 +26,20 @@ import {
 } from './event-payload';
 import { onJourneyEventAccepted, onOrderStatusChanged } from './event-hooks';
 import {
+  findContactByPhone,
+  findConversationId,
+  maskPhone,
+  resolveDirectContact,
+  resolveMessagingEligibility,
+  type MessagingEligibility,
+} from './direct';
+import {
   advanceJourneyStage,
   findOpenJourney,
+  openDirectJourney,
   openOrRenewJourney,
   type JourneyRow,
+  type OpenDirectJourneyArgs,
 } from './journeys';
 import {
   cancelPendingForJourney,
@@ -53,12 +68,29 @@ export interface JourneyEventResult {
   journey_id: string | null;
   stage: JourneyStage;
   duplicate: boolean;
+  /** Whether the customer can be messaged (see `resolveMessagingEligibility`). */
+  messaging: MessagingEligibility;
 }
 
 interface Target {
   contactId: string;
-  conversationId: string;
-  connectionId: string;
+  /** Null on a direct event whose contact has no conversation yet. */
+  conversationId: string | null;
+  /** Null on a direct event of a store with no eligible WhatsApp connection. */
+  connectionId: string | null;
+}
+
+/** How the event named its customer. */
+interface EventIdentity {
+  /** `idtrack` wins; a direct event is identified by store key + phone. */
+  via: 'idtrack' | 'phone';
+  /**
+   * False when `idtrack` and the phone resolved DIFFERENT contacts: the event's
+   * `customer` and `consent` must then be ignored (ticket #20 reads this).
+   */
+  customerApplies: boolean;
+  /** Store named by `store_key` (direct events only). */
+  storeId: string | null;
 }
 
 interface HandlerContext {
@@ -68,11 +100,18 @@ interface HandlerContext {
   userId: string;
   event: CommonEventFields & { properties: unknown };
   journey: JourneyRow;
+  identity: EventIdentity;
   now: Date;
 }
 
 interface EventHandler {
   parseProperties(body: unknown): unknown;
+  /**
+   * Stage a DIRECT Journey is born at: the first stage this event reaches
+   * (Purchase is born at checkout and reaches `won` through its own flow).
+   * Absent for events that never open a Journey.
+   */
+  directStage?: OpenDirectJourneyArgs['stage'];
   /**
    * Runs before any Journey is looked up or opened. Returns the Journey the
    * event was already applied to when it is a duplicate under another
@@ -157,6 +196,7 @@ const VIEW_COUNT_TRIES = 5;
 
 const viewContent: EventHandler = {
   parseProperties: () => null,
+  directStage: 'browsing',
   async handle(ctx) {
     let row: Record<string, unknown> = ctx.journey;
     for (let attempt = 0; attempt < VIEW_COUNT_TRIES; attempt++) {
@@ -213,6 +253,7 @@ function cartHandler(
 ): EventHandler {
   return {
     parseProperties: parseCartProperties,
+    directStage: stage,
     async handle(ctx) {
       const props = ctx.event.properties as CartProperties;
       const at = ctx.event.occurredAt.getTime();
@@ -261,6 +302,7 @@ function cartHandler(
  */
 const purchase: EventHandler = {
   parseProperties: parsePurchaseProperties,
+  directStage: 'checkout',
   findDuplicate: (db, accountId, properties) =>
     findCompletedPurchase(
       db,
@@ -447,6 +489,68 @@ async function saveResponse(
   if (error) throw new Error(`journey event save failed: ${error.message}`);
 }
 
+/**
+ * Resolve WHO the event is about, before the event_id is claimed (every 4xx of
+ * identification must leave no claim behind).
+ *
+ *   - `idtrack` present: the token decides. If the event also carries a phone
+ *     that resolves to ANOTHER contact, the token still wins, the event's
+ *     `customer` / `consent` are ignored and the conflict is logged (phone
+ *     masked).
+ *   - otherwise `store_key` names the store (`store_not_found` if unknown); the
+ *     contact is resolved from the phone after the claim.
+ */
+type Identified =
+  | {
+      via: 'idtrack';
+      token: Extract<
+        Awaited<ReturnType<typeof resolveTrackingToken>>,
+        { ok: true }
+      >;
+      customerApplies: boolean;
+    }
+  | { via: 'phone'; store: { id: string; name: string }; phone: string };
+
+async function identify(
+  db: SupabaseClient,
+  accountId: string,
+  event: CommonEventFields,
+  now: Date
+): Promise<Identified> {
+  if (event.idtrack) {
+    const token = await resolveTrackingToken(
+      db,
+      { accountId, token: event.idtrack },
+      now
+    );
+    if (!token.ok) {
+      throw token.reason === 'expired' ? idtrackExpired() : idtrackNotFound();
+    }
+    let customerApplies = true;
+    const phone = event.customer?.phone;
+    if (phone) {
+      const byPhone = await findContactByPhone(db, accountId, phone);
+      if (byPhone && byPhone.id !== token.contactId) {
+        customerApplies = false;
+        console.warn(
+          `[journeys] idtrack/phone conflict on event ${event.eventId}: ` +
+            `idtrack wins, customer and consent ignored (phone ${maskPhone(phone)})`
+        );
+      }
+    }
+    return { via: 'idtrack', token, customerApplies };
+  }
+
+  // parseCommonFields guarantees both are present without an idtrack.
+  const store = await findStoreByKey(db, accountId, event.storeKey as string);
+  if (!store) throw storeNotFound();
+  return {
+    via: 'phone',
+    store,
+    phone: (event.customer as { phone: string }).phone,
+  };
+}
+
 /** Accept one behaviour event. Throws `ApiError` for every 4xx. */
 export async function processJourneyEvent(
   db: SupabaseClient,
@@ -472,14 +576,7 @@ export async function processJourneyEvent(
   if (existing?.response) return replay(existing);
 
   const now = args.now ?? new Date();
-  const token = await resolveTrackingToken(
-    db,
-    { accountId, token: event.idtrack },
-    now
-  );
-  if (!token.ok) {
-    throw token.reason === 'expired' ? idtrackExpired() : idtrackNotFound();
-  }
+  const identified = await identify(db, accountId, event, now);
 
   const claim = await claimEvent(db, accountId, event);
   if ('replay' in claim) return claim.replay;
@@ -490,12 +587,72 @@ export async function processJourneyEvent(
   // resumed, without running the handler again, once it goes stale.
   let appliedJourneyId: string | null = null;
 
+  let userIdOnce: Promise<string> | undefined;
+  const getUserId = () => (userIdOnce ??= args.resolveUserId());
+
   try {
-    const target: Target = {
-      contactId: token.contactId,
-      conversationId: token.conversationId,
-      connectionId: token.connectionId,
-    };
+    const direct = identified.via === 'phone';
+    let target: Target;
+    let identity: EventIdentity;
+    let storeId: string | null = null;
+    if (identified.via === 'idtrack') {
+      target = {
+        contactId: identified.token.contactId,
+        conversationId: identified.token.conversationId,
+        connectionId: identified.token.connectionId,
+      };
+      identity = {
+        via: 'idtrack',
+        customerApplies: identified.customerApplies,
+        storeId: null,
+      };
+    } else {
+      storeId = identified.store.id;
+      const conn = await resolveNotificationConnection(db, accountId, storeId);
+      const connectionId = conn.ok ? conn.connectionId : null;
+      let contactId: string;
+      if (handler.handleStandalone) {
+        // An order status only concerns an order that already exists: never
+        // create a contact for it (an unknown phone owns no order).
+        const found = await findContactByPhone(db, accountId, identified.phone);
+        if (!found) {
+          throw orderNotFound(
+            (event.properties as { orderId?: string }).orderId ?? ''
+          );
+        }
+        contactId = found.id;
+      } else {
+        const userId = await getUserId();
+        contactId = (
+          await resolveDirectContact(db, {
+            accountId,
+            auditUserId: userId,
+            phone: identified.phone,
+            name: event.customer?.name ?? null,
+          })
+        ).id;
+      }
+      target = {
+        contactId,
+        connectionId,
+        conversationId: await findConversationId(db, {
+          accountId,
+          contactId,
+          connectionId,
+        }),
+      };
+      identity = { via: 'phone', customerApplies: true, storeId };
+    }
+
+    const messaging = await resolveMessagingEligibility(db, {
+      accountId,
+      contactId: target.contactId,
+      connectionId: target.connectionId,
+    });
+    // Direct events only trigger automations for a customer that can be
+    // messaged and already has a conversation (the conversation of a customer
+    // who never wrote is created by the consent flow, ticket #20).
+    const mayFireHooks = !direct || messaging === 'eligible';
 
     /** Save the response, then fire the hook (never for a duplicate). */
     const answer = async (
@@ -516,22 +673,27 @@ export async function processJourneyEvent(
         journey_id: reportedId,
         stage,
         duplicate,
+        messaging,
       };
       await saveResponse(db, accountId, claim.claimId, result, now);
       if (duplicate) return result;
-      try {
-        await onJourneyEventAccepted(db, {
-          accountId,
-          eventId: event.eventId,
-          name: event.name,
-          occurredAt: event.occurredAt,
-          journeyId: journeyId as string,
-          ...target,
-          stage,
-          properties: event.properties as Record<string, unknown>,
-        });
-      } catch (hookErr) {
-        console.error('[journeys] onJourneyEventAccepted failed:', hookErr);
+      if (mayFireHooks && target.conversationId && target.connectionId) {
+        try {
+          await onJourneyEventAccepted(db, {
+            accountId,
+            eventId: event.eventId,
+            name: event.name,
+            occurredAt: event.occurredAt,
+            journeyId: journeyId as string,
+            contactId: target.contactId,
+            conversationId: target.conversationId,
+            connectionId: target.connectionId,
+            stage,
+            properties: event.properties as Record<string, unknown>,
+          });
+        } catch (hookErr) {
+          console.error('[journeys] onJourneyEventAccepted failed:', hookErr);
+        }
       }
       return result;
     };
@@ -553,6 +715,7 @@ export async function processJourneyEvent(
         journey_id: duplicateOf.journeyId,
         stage: 'won',
         duplicate: true,
+        messaging,
       };
       await saveResponse(db, accountId, claim.claimId, result, now);
       return result;
@@ -582,9 +745,10 @@ export async function processJourneyEvent(
         journey_id: journeyId,
         stage,
         duplicate: false,
+        messaging,
       };
       await saveResponse(db, accountId, claim.claimId, result, now);
-      if (change) {
+      if (change && (mayFireHooks || !direct)) {
         try {
           await onOrderStatusChanged(db, change);
         } catch (hookErr) {
@@ -594,20 +758,38 @@ export async function processJourneyEvent(
       return result;
     }
 
-    const userId = await args.resolveUserId();
+    const userId = await getUserId();
     // Reuse the open Journey; with none (closed, or never opened) start a new
     // one. openOrRenewJourney is NOT used on an open one: it would count a
     // link that was never sent.
-    const journey =
-      (await findOpenJourney(db, { accountId, ...target })) ??
-      (await openOrRenewJourney(db, {
+    let journey: JourneyRow;
+    if (direct) {
+      journey = await openDirectJourney(db, {
         accountId,
         userId,
         contactId: target.contactId,
-        conversationId: target.conversationId,
         connectionId: target.connectionId,
-        linkSentAt: now,
-      }));
+        storeId: storeId as string,
+        conversationId: target.conversationId,
+        stage: handler.directStage ?? 'browsing',
+      });
+    } else {
+      const connectionId = target.connectionId as string;
+      journey =
+        (await findOpenJourney(db, {
+          accountId,
+          contactId: target.contactId,
+          connectionId,
+        })) ??
+        (await openOrRenewJourney(db, {
+          accountId,
+          userId,
+          contactId: target.contactId,
+          conversationId: target.conversationId as string,
+          connectionId,
+          linkSentAt: now,
+        }));
+    }
 
     const handled = await handler.handle?.({
       db,
@@ -615,6 +797,7 @@ export async function processJourneyEvent(
       userId,
       event,
       journey,
+      identity,
       now,
     });
 

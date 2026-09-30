@@ -420,6 +420,8 @@ export interface Deal {
     cart_items_count: number;
     cart_value: number;
     cart_currency: string | null;
+    /** `crm_link` (link sent by the CRM) or `menu_direct` (event without link). */
+    origin?: 'crm_link' | 'menu_direct';
   } | null;
   assigned_to?: string;
   title: string;

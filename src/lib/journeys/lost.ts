@@ -32,7 +32,9 @@ export interface LostSweepResult {
  * 1. 24 h passed since its latest engagement: the most recent of
  *    `last_event_at`, `link_sent_at` and the customer's last inbound message
  *    on the conversation. A Journey opened by an event without a link has
- *    `link_sent_at` = the event's time, so that event is the anchor.
+ *    `link_sent_at` = the event's time, so that event is the anchor. A DIRECT
+ *    Journey (no link at all, `link_sent_at` null) is anchored on its
+ *    creation instead, then on `last_event_at`.
  * 2. No automation run tied to this Journey is still waiting (`pending`) or
  *    executing (`running`): Resumptions (30 min) and the abandoned-cart
  *    message (10 min) end long before 24 h, so in practice this is "24 h of
@@ -72,7 +74,9 @@ export async function closeAbandonedJourneys(
       .from('journeys')
       .select('*')
       .eq('state', 'open')
-      .lt('link_sent_at', cutoff)
+      .or(
+        `link_sent_at.lt.${cutoff},and(link_sent_at.is.null,created_at.lt.${cutoff})`
+      )
       .or(`last_event_at.is.null,last_event_at.lt.${cutoff}`)
       .order('link_sent_at', { ascending: true })
       .order('id', { ascending: true })
@@ -136,7 +140,7 @@ async function isAbandoned(
 ): Promise<boolean> {
   const lastCustomerMessage = await lastInboundAt(db, journey);
   const engagement = Math.max(
-    Date.parse(journey.link_sent_at),
+    Date.parse(journey.link_sent_at ?? (journey.created_at as string) ?? ''),
     Date.parse((journey.last_event_at as string | null) ?? '') || 0,
     lastCustomerMessage
   );
@@ -153,12 +157,17 @@ async function lastInboundAt(
     ? [journey.conversation_id]
     : [];
   if (conversationIds.length === 0) {
-    const { data, error } = await db
+    // A direct Journey of a store with no connection has none to narrow by:
+    // any message the customer wrote to the account counts.
+    let query = db
       .from('conversations')
       .select('id')
       .eq('account_id', journey.account_id)
-      .eq('contact_id', journey.contact_id)
-      .eq('connection_id', journey.connection_id);
+      .eq('contact_id', journey.contact_id);
+    if (journey.connection_id) {
+      query = query.eq('connection_id', journey.connection_id);
+    }
+    const { data, error } = await query;
     if (error) throw new Error(`conversation lookup failed: ${error.message}`);
     conversationIds = ((data ?? []) as { id: string }[]).map((c) => c.id);
   }

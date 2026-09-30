@@ -406,6 +406,37 @@ BEGIN
     RAISE EXCEPTION 'stores_account_store_key_uniq index is missing (migration 063)';
   END IF;
 
+  -- 064: direct journeys (origin, store anchor, nullable link/connection).
+  IF (
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND is_nullable = 'YES' AND (
+      (table_name = 'journeys' AND column_name IN ('link_sent_at', 'connection_id', 'store_id'))
+      OR (table_name = 'orders' AND column_name = 'idtrack')
+    )
+  ) <> 4 THEN
+    RAISE EXCEPTION 'journeys.link_sent_at/connection_id/store_id and orders.idtrack must be nullable (migration 064)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'journeys'
+      AND column_name = 'origin'
+  ) THEN
+    RAISE EXCEPTION 'journeys.origin is missing (migration 064)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'contacts'
+      AND column_name = 'source'
+  ) THEN
+    RAISE EXCEPTION 'contacts.source is missing (migration 064)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'uq_journeys_open_contact_store'
+  ) THEN
+    RAISE EXCEPTION 'uq_journeys_open_contact_store index is missing (migration 064)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

@@ -110,6 +110,15 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         </div>
       )}
 
+      {deal.journey?.origin === 'menu_direct' && (
+        <div
+          className="text-muted-foreground mt-2 text-[11px]"
+          data-testid="deal-origin-direct"
+        >
+          {t('originDirect')}
+        </div>
+      )}
+
       {assigneeLabel && (
         <div className="mt-2 flex items-center justify-end">
           <span

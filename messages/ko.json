@@ -624,7 +624,8 @@
       "noContact": "연락처 없음",
       "won": "성사",
       "lost": "실패",
-      "cartItems": "{count, plural, other {#개 상품}}"
+      "cartItems": "{count, plural, other {#개 상품}}",
+      "originDirect": "메뉴 직접 주문"
     },
     "form": {
       "editDeal": "딜 수정",

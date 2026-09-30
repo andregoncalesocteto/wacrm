@@ -624,7 +624,8 @@
       "noContact": "No contact",
       "won": "Won",
       "lost": "Lost",
-      "cartItems": "{count, plural, =1 {# item} other {# items}}"
+      "cartItems": "{count, plural, =1 {# item} other {# items}}",
+      "originDirect": "Direct from menu"
     },
     "form": {
       "editDeal": "Edit Deal",

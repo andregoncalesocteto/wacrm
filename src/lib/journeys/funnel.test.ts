@@ -201,3 +201,29 @@ describe('journeyFunnel', () => {
     expect(f.total.reached.link_sent).toBe(2100);
   });
 });
+
+describe('journeyFunnel with a direct Journey that has no connection', () => {
+  it('counts it in the total and in its store, without breaking the channel groups', async () => {
+    const db = fakeDb({
+      journeys: [
+        journey('a', 'c1', times('won')),
+        journey('a', null as never, {
+          ...times('cart'),
+          store_id: 's1',
+          link_sent_at: null,
+        }),
+      ],
+      channel_connections: [
+        { id: 'c1', account_id: 'a', channel_type: 'whatsapp_cloud', store_id: 's1' },
+      ],
+      stores: [{ id: 's1', account_id: 'a', name: 'Centro' }],
+    });
+    const funnel = await journeyFunnel(db, { accountId: 'a' });
+    expect(funnel.total.reached.cart).toBe(2);
+    expect(funnel.byChannel).toHaveLength(1);
+    expect(funnel.byChannel[0].reached.cart).toBe(1);
+    expect(funnel.byStore).toHaveLength(1);
+    expect(funnel.byStore[0]).toMatchObject({ key: 's1', label: 'Centro' });
+    expect(funnel.byStore[0].reached.cart).toBe(2);
+  });
+});

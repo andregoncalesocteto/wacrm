@@ -35,7 +35,10 @@ export interface JourneyFunnel {
 const PAGE = 1000;
 
 interface JourneyMilestones {
-  connection_id: string;
+  /** Null on a direct Journey of a store with no WhatsApp connection. */
+  connection_id: string | null;
+  /** Set on direct Journeys; used to group them by store without a connection. */
+  store_id?: string | null;
   stage: JourneyStage;
   first_view_content_at: string | null;
   last_add_to_cart_at: string | null;
@@ -116,7 +119,7 @@ export async function journeyFunnel(
         db
           .from('journeys')
           .select(
-            'connection_id, stage, first_view_content_at, last_add_to_cart_at, checkout_started_at, purchased_at'
+            'connection_id, store_id, stage, first_view_content_at, last_add_to_cart_at, checkout_started_at, purchased_at'
           )
           .eq('account_id', args.accountId)
           .order('id')
@@ -162,9 +165,19 @@ export async function journeyFunnel(
   };
 
   for (const j of journeys) {
-    const conn = connById.get(j.connection_id);
+    const conn = j.connection_id ? connById.get(j.connection_id) : undefined;
     add(total, j);
-    if (!conn) continue;
+    if (!conn) {
+      // No connection (direct, store without WhatsApp): still counts for its
+      // store, but has no channel.
+      if (j.store_id) {
+        add(
+          group(byStore, j.store_id, storeName.get(j.store_id) ?? j.store_id),
+          j
+        );
+      }
+      continue;
+    }
     add(group(byChannel, conn.channel_type, conn.channel_type), j);
     add(
       group(

@@ -81,7 +81,7 @@ function newContactName(
 }
 
 /** Contact lookups by identity, then by the fuzzy phone match. */
-async function findContact(
+export async function findContact(
   db: SupabaseClient,
   accountId: string,
   candidates: IdentityCandidate[]

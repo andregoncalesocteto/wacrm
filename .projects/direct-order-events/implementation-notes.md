@@ -35,3 +35,24 @@ Sem migration (usa `stores.business_acronym` do #17). Tudo em `src/lib/automatio
 - Validação: operando em branco é inválido; sem limite de tamanho.
 
 **Fora**: preset inalterado; convenção de templates com mesmo nome por WABA documentada em `docs/order-journey.md`, não testada com duas WABAs reais.
+
+## #18 Eventos diretos: identificação por chave da loja e telefone
+
+**Migration `064_direct_journeys.sql`** (aplicada do zero com as 064 migrations num Postgres descartável, `verify-schema.sql` passou, reaplicação idempotente; unicidade, CHECK e `merge_contacts` conferidos com SQL real). `journeys.origin` (`crm_link` default | `menu_direct`), `journeys.store_id` (FK `stores` CASCADE, nulo nas existentes), `journeys.link_sent_at` e `journeys.connection_id` agora NULOS, CHECK `journeys_connection_or_store` (conexão OU loja), índice único parcial `uq_journeys_open_contact_store (account, contact, store) WHERE state='open' AND connection_id IS NULL` (o `uq_journeys_open_contact_connection` continua como está: NULLs são distintos). `orders.idtrack` nulo. `contacts.source` (texto, nulo = legado; `'menu'` nos criados por evento direto). `merge_contacts` redefinida (cópia da 058) para colidir também Jornadas abertas sem conexão da mesma loja.
+
+**Para reaproveitar**
+- `src/lib/journeys/direct.ts`: `resolveDirectContact` (usa `resolveOrCreateContact` SEM nome, para nunca sobrescrever; nome e `source` só no contato recém-criado), `findContactByPhone` (só leitura, usa `findContact`, agora exportada de `channels/identity.ts`), `findConversationId`, `maskPhone` (últimos 4 dígitos), `MENU_CONTACT_SOURCE`, e **`resolveMessagingEligibility`** (`eligible | no_consent | no_connection`): o ponto único que o #20 estende com o consentimento guardado.
+- `journeys.ts`: `openDirectJourney` / `findOpenDirectJourney` (por conexão; sem conexão, por loja). A Jornada direta nasce já na etapa do evento (`directStage` de cada handler em `events.ts`: ViewContent browsing, AddToCart cart, InitiateCheckout checkout, Purchase nasce em checkout e vai a `won` pelo fluxo normal); o deal nasce no estágio da Jornada (`ensureJourneyDeal` usa `journey.stage`, não mais `link_sent` fixo).
+- `event-payload.ts`: `CommonEventFields` ganhou `storeKey`, `customer {phone, name}`, `consent {notifications?, marketing?, givenAt?}` (só formato validado; `undefined` = omitido, nunca revogação). `events.ts`: `identify()` (idtrack primeiro; conflito com telefone registrado com `console.warn` mascarado) e `EventIdentity.customerApplies` (false no conflito): **o #20 deve ignorar `customer`/`consent` quando for false** (já vai em `HandlerContext.identity`).
+- `respond.ts`: `storeNotFound()` / código `store_not_found` (404).
+
+**Decisões**
+- Com `idtrack` presente, `store_key` não é resolvida (nem gera 404) e `customer.phone` só serve para detectar conflito; telefone desconhecido não é anexado ao contato do token.
+- `OrderStatusChanged` direto nunca cria contato (telefone desconhecido = `order_not_found`).
+- Evento direto só dispara `onJourneyEventAccepted`/`onOrderStatusChanged` se `messaging === 'eligible'` e já houver conversa (conversa para quem nunca escreveu é do #20). Eventos com `idtrack` disparam como antes.
+- `messaging` de eventos com `idtrack` usa a conexão do token (não checa se está ativa).
+- `lost.ts`: âncora de Jornada direta = `created_at` (depois `last_event_at`); a pré-consulta SQL usa `or(link_sent_at < corte, link_sent_at nulo e created_at < corte)`; sem conexão, a última mensagem do cliente vale em qualquer conversa do contato. `handoff-state.ts` ordena por `link_sent_at` (nulos por último) e depois `created_at`. O funil agrupa por loja as Jornadas sem conexão (`store_id`), sem canal.
+- UI mínima: o card do negócio mostra "Direto do cardápio" (chave `Pipelines.card.originDirect`) quando `journey.origin = 'menu_direct'`.
+- Fake compartilhado `crm-world.fake.ts`: unicidade `(account_id, phone)` em `contacts` (modela a 022).
+
+**Fora / atenção**: o funil ainda conta Jornadas diretas em `link_sent` (todas alcançam o passo 0), o que infla a conversão; a separação por origem é o #21. Respostas de eventos gravadas antes desta versão não têm `messaging` num replay. Sem consentimento guardado (#20) nem criação de conversa fechada.

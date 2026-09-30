@@ -25,6 +25,8 @@ export function resetWorld(): void {
 }
 
 const UNIQUE: Record<string, string[][]> = {
+  // contacts_account_phone_normalized_idx (022): tests use digits-only phones.
+  contacts: [['account_id', 'phone']],
   contact_identities: [['account_id', 'kind', 'external_id']],
   conversations: [['contact_id', 'connection_id']],
   messages: [['conversation_id', 'message_id']],

@@ -33,7 +33,7 @@ export async function onMenuLinkSent(
         connection_id: args.connectionId,
         journey_id: args.journey.id,
         journey_stage: args.journey.stage,
-        menu_link_sent_at: args.journey.link_sent_at,
+        menu_link_sent_at: args.journey.link_sent_at ?? undefined,
       },
     });
   } catch (err) {

@@ -26,6 +26,7 @@ export type ApiErrorCode =
   | 'idtrack_not_found' // events API: no tracking token matches the idtrack
   | 'idtrack_expired' // events API: the tracking token is past its validity
   | 'order_not_found' // events API: no order of this contact has that order_id
+  | 'store_not_found' // events API: no store of the account has that store_key
   | 'internal';
 
 /**
@@ -88,6 +89,18 @@ export function orderNotFound(orderId: string): ApiError {
     'order_not_found',
     `No order '${orderId}' was found for this idtrack; send its Purchase first`,
     400
+  );
+}
+
+/**
+ * 404 — `store_key` matches no store of the account. The integrator must fix
+ * the configuration; repeating the same event can never succeed.
+ */
+export function storeNotFound(): ApiError {
+  return new ApiError(
+    'store_not_found',
+    "'store_key' does not match any store of this account; do not retry",
+    404
   );
 }
 

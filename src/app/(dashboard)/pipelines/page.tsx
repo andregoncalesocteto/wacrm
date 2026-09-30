@@ -124,7 +124,7 @@ export default function PipelinesPage() {
       const { data } = await supabase
         .from('deals')
         .select(
-          `*, contact:contacts(*, ${CONTACT_IDENTITIES_EMBED}), assignee:profiles!deals_assigned_to_fkey(*), journey:journeys!deals_journey_id_fkey(cart_items_count, cart_value, cart_currency)`
+          `*, contact:contacts(*, ${CONTACT_IDENTITIES_EMBED}), assignee:profiles!deals_assigned_to_fkey(*), journey:journeys!deals_journey_id_fkey(cart_items_count, cart_value, cart_currency, origin)`
         )
         .eq('pipeline_id', pipelineId)
         .order('created_at', { ascending: false });

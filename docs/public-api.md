@@ -87,6 +87,7 @@ may be reworded.
 | 400    | `order_not_found`   | Events API: the `order_id` of an `OrderStatusChanged` is unknown (or not this contact's) |
 | 404    | `not_found`         | No such resource                                              |
 | 404    | `idtrack_not_found` | Events API: the `idtrack` matches no link sent by the account |
+| 404    | `store_not_found`   | Events API: the `store_key` matches no store of the account (do not retry) |
 | 410    | `idtrack_expired`   | Events API: the `idtrack` is past its 30-day validity         |
 | 500    | `internal`          | Server error                                                  |
 
@@ -284,7 +285,7 @@ recover abandoned carts and notify the customer. The operator-side setup is in
 
 > **Pre-stable until the first client.** This contract is frozen when the
 > first client integrates; after that a breaking change needs `v2`.
-> **Migrations required:** `055` to `062` (see [order-journey.md](./order-journey.md#what-to-apply-and-configure)).
+> **Migrations required:** `055` to `062`, and `064` for events without `idtrack` (see [order-journey.md](./order-journey.md#what-to-apply-and-configure)).
 
 **One event per call**, JSON body, no batching. Common fields:
 
@@ -292,7 +293,7 @@ recover abandoned carts and notify the customer. The operator-side setup is in
 | ------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
 | `event_id`    | yes      | Unique per account, up to 200 characters. Generate it on your side (a UUID) and reuse it when re-sending.          |
 | `name`        | yes      | `ViewContent`, `AddToCart`, `InitiateCheckout`, `Purchase` or `OrderStatusChanged`. Anything else is `400`.        |
-| `idtrack`     | yes      | The opaque value that came back on the menu URL (`?idtrack=…`). Never build, decode or reuse it as a customer id.  |
+| `idtrack`     | see below | The opaque value that came back on the menu URL (`?idtrack=…`). Never build, decode or reuse it as a customer id. Optional when `store_key` and `customer.phone` are sent. |
 | `occurred_at` | yes      | ISO 8601 with an explicit UTC designator (`Z` or `+00:00`): when it happened on the menu, not when you send it.    |
 | `properties`  | per name | Event data, see below. Required by every name except `ViewContent`.                                                |
 
@@ -305,9 +306,50 @@ bookmark, a direct URL) cannot be attributed, so **do not send events for
 that session**. Keep the `idtrack` in the order you store at `Purchase`:
 `OrderStatusChanged` arrives hours later, when the browser session is gone.
 
-Every call answers `200` with `{ "data": { "event_id", "journey_id", "stage", "duplicate" } }`.
+Every call answers `200` with `{ "data": { "event_id", "journey_id", "stage", "duplicate", "messaging" } }`.
 `stage` is the Journey stage after the event: `link_sent`, `browsing`,
-`cart`, `checkout` or `won` (`lost` never comes from an event).
+`cart`, `checkout` or `won` (`lost` never comes from an event). `messaging` is
+described under [Events without `idtrack`](#events-without-idtrack-direct-events).
+
+#### Events without `idtrack` (direct events)
+
+For a customer who reached the menu without a CRM link (Instagram, an old
+link, the address typed in), identify them by the store and their phone
+instead. These fields are valid on **every** event and optional when an
+`idtrack` is present:
+
+| Field                   | Description                                                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `store_key`             | The whole store key in one field, `CODE/STORE ACRONYM/BUSINESS ACRONYM` (for example `89/RPA/BLC`). Case and edge spaces are ignored. Set on the store in Settings, see `GET /api/v1/stores`. |
+| `customer.phone`        | International E.164 **with the `+`** (`+5511999998888`, matching `^\+[1-9]\d{6,14}$`). Any other format is `400`. |
+| `customer.name`         | Optional. Used only when the contact does not exist yet; an existing name is **never** overwritten.           |
+| `consent.notifications`, `consent.marketing`, `consent.given_at` | Booleans and an ISO 8601 UTC timestamp. Validated (wrong types are `400`); storing and acting on the consent is a later step, and omitting it revokes nothing. |
+
+- **Identification.** The event needs an `idtrack`, **or** `store_key` together
+  with `customer.phone`; otherwise `400 bad_request`. With both, the `idtrack`
+  decides; if the phone resolves to a *different* contact, the event is
+  attributed by the `idtrack` and its `customer` and `consent` are ignored (the
+  CRM logs the conflict, with the phone masked). With an `idtrack`, `store_key`
+  is not needed and is not checked.
+- **Unknown key.** `404 store_not_found`: fix the configuration; **do not
+  retry**. A store that exists but has no usable WhatsApp connection (none, or
+  several without a default) still accepts the event; nothing is sent.
+- **Contact.** Found by phone with the same matching the WhatsApp inbox uses; if
+  it does not exist it is created (origin "menu", with `customer.name` if sent).
+  Two simultaneous events for the same new phone end on one contact.
+  `OrderStatusChanged` never creates a contact: an unknown phone is
+  `400 order_not_found`.
+- **Journey.** A direct Journey has origin `menu_direct` (the others are
+  `crm_link`), no link sent, and starts at the first stage the event reaches:
+  `ViewContent` browsing, `AddToCart` cart, `InitiateCheckout` checkout,
+  `Purchase` won (through the normal Purchase flow, with its order). Its
+  connection is the store's notice connection, or none when the store has no
+  WhatsApp connection (one open Journey per contact and store then). The
+  resumptions that depend on the link do not apply to it.
+- **`messaging`** says whether the customer can be messaged: `no_connection`
+  when the store has no eligible WhatsApp connection; otherwise `eligible` if the
+  contact has already written to the CRM, and `no_consent` if not. For now, no
+  automation runs for a direct event unless `messaging` is `eligible`.
 
 #### Examples, one per event
 
@@ -443,7 +485,7 @@ for the customer (such as a "ready to produce" step) is simply not sent.
   automations, see [order-journey.md](./order-journey.md).
 - **Errors** (also in the table above): `400 bad_request` (invalid body, unknown
   `name`, `status` outside the set), `400 order_not_found`, `401 unauthorized`,
-  `403 forbidden` (no `events:write`), `404 idtrack_not_found`, `410 idtrack_expired`
+  `403 forbidden` (no `events:write`), `404 idtrack_not_found`, `404 store_not_found`, `410 idtrack_expired`
   (the customer needs a new link), `429 rate_limited` (120/min per key, honour
   `Retry-After`).
 - **`order_not_found`** is returned for `OrderStatusChanged` when the `order_id` is
