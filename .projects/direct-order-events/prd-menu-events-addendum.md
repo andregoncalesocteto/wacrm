@@ -89,8 +89,10 @@ As regras de idempotência, ordem, reenvio e fila de saída do contrato original
 7. Um evento com `idtrack` e com `store_key`/`customer` de um telefone diferente é atribuído pelo `idtrack`.
 8. A idempotência, o reenvio e a fila de saída continuam funcionando com os campos novos.
 
-## 8. Perguntas para o time do cardápio
+## 8. Respostas do time do cardápio
 
-1. O cardápio consegue coletar o consentimento no pedido, separando avisos e ofertas, e guardar a data?
-2. A chave `CÓDIGO/SIGLA/NEGÓCIO` está disponível em cada pedido (no momento de enviar o evento)?
-3. O telefone do cliente é sempre guardado em formato internacional, ou precisa ser normalizado antes do envio?
+1. O cardápio consegue coletar o consentimento no pedido, separando avisos e ofertas, e guardar a data? **Sim.**
+2. A chave `CÓDIGO/SIGLA/NEGÓCIO` está disponível em cada pedido, no momento de enviar o evento? **Sim.**
+3. O telefone do cliente é sempre guardado em formato internacional, ou precisa ser normalizado antes do envio? **Será normalizado antes do envio** (formato E.164, com `+`, DDI e DDD, como o contrato exige).
+
+**Sem pendências abertas neste adendo.**
