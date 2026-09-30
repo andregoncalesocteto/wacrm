@@ -1882,6 +1882,76 @@ describe('{{store_name}} and business_acronym_is (per-brand automations)', () =>
       }
     });
   });
+
+  // A DIRECT run (store_id, no conversation_id) must not borrow the latest
+  // conversation of the contact from ANOTHER store.
+  describe('direct run of store A, contact with a conversation only in store B', () => {
+    beforeEach(() => {
+      twoStores();
+      // Only the store B conversation exists, and it is attended by a human,
+      // with a fresh customer message.
+      h.db.conversations = h.db.conversations.filter((c) => c.id === 'cv-b');
+      h.db.conversations[0].assigned_agent_id = 'agent-1';
+    });
+    const branch = (cfg: Row) => {
+      h.db.automation_steps = [
+        { id: 'st-1', position: 0, step_type: 'condition', step_config: cfg },
+        { id: 'st-y', position: 0, parent_step_id: 'st-1', branch: 'yes', step_type: 'send_message', step_config: { text: 'Yes' } },
+        { id: 'st-n', position: 0, parent_step_id: 'st-1', branch: 'no', step_type: 'send_message', step_config: { text: 'No' } },
+      ].map((x) => ({ automation_id: 'au-1', parent_step_id: null, branch: null, ...x }));
+    };
+    // The send step of the chosen branch needs a conversation: give the
+    // contact consent and let the gate create one on store A's connection.
+    const direct = async () => {
+      h.db.contact_consents = ['notifications', 'marketing'].map((purpose) => ({
+        account_id: 'acct-1', contact_id: 'ct-1', purpose, granted: true,
+        given_at: '2026-01-01T00:00:00Z', revoked_at: null,
+      }));
+      for (const x of h.db.automation_steps) {
+        if (x.step_type === 'send_message') Object.assign(x.step_config as Row, { consent_purpose: 'notifications' });
+      }
+      await fire({ store_id: 'store-a' });
+    };
+
+    it('business_acronym_is follows the store of the event, not the other store conversation', async () => {
+      branch({ subject: 'business_acronym_is', operand: 'RPA' }); // store A
+      await direct();
+      expect(out()).toEqual(['Yes']);
+    });
+
+    it('business_acronym_is for the other brand is false', async () => {
+      branch({ subject: 'business_acronym_is', operand: 'BLC' }); // store B
+      await direct();
+      expect(out()).toEqual(['No']);
+    });
+
+    it('conversation_unattended: the attended conversation of store B does not count (no conversation in store A)', async () => {
+      branch({ subject: 'conversation_unattended' });
+      await direct();
+      expect(out()).toEqual(['Yes']);
+    });
+
+    it('customer_replied_since: a reply in store B is not a reply in store A', async () => {
+      branch({ subject: 'customer_replied_since', operand: 'run_start' });
+      h.db.messages.push({
+        conversation_id: 'cv-b',
+        sender_type: 'customer',
+        created_at: new Date(Date.now() + 60_000).toISOString(),
+      });
+      await direct();
+      expect(out()).toEqual(['No']);
+    });
+
+    it('a conversation IN the event store is still found', async () => {
+      h.db.conversations.push({
+        id: 'cv-a', account_id: 'acct-1', contact_id: 'ct-1', connection_id: 'conn-acct-1',
+        last_message_at: '2019-01-01T00:00:00Z', assigned_agent_id: 'agent-2',
+      });
+      branch({ subject: 'conversation_unattended' });
+      await direct();
+      expect(out()).toEqual(['No']);
+    });
+  });
 });
 
 describe('consent gate and conversation creation for customers who never wrote (#22)', () => {

@@ -1232,12 +1232,12 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       // so it also holds after a wait resumes. No store or no acronym: false.
       const wanted = (cfg.operand ?? '').trim().toLowerCase()
       if (!wanted) return false
-      const conv = await conditionConversation(args)
-      // A direct event with no conversation yet still knows its store.
-      const store = conv
-        ? await storeOfConversation(args, conv.id)
-        : args.context.store_id
-          ? await storeById(args, args.context.store_id)
+      // The store of the event (direct runs) wins over the conversation's.
+      const conv = args.context.store_id ? null : await conditionConversation(args)
+      const store = args.context.store_id
+        ? await storeById(args, args.context.store_id)
+        : conv
+          ? await storeOfConversation(args, conv.id)
           : null
       const acronym = (store?.business_acronym ?? '').trim().toLowerCase()
       return acronym !== '' && acronym === wanted
@@ -1344,11 +1344,26 @@ async function conditionConversation(
     return (data as ConditionConversation | null) ?? null
   }
   if (!args.contactId) return null
-  const { data } = await db
+  let query = db
     .from('conversations')
     .select('id, connection_id, assigned_agent_id, ai_autoreply_disabled')
     .eq('account_id', accountId)
     .eq('contact_id', args.contactId)
+  // A direct run carries its store: the fallback conversation must belong to
+  // a connection of THAT store. A conversation of another store is not this
+  // event's conversation (no conversation there means "no conversation").
+  const storeId = args.context.store_id
+  if (storeId) {
+    const { data: conns } = await db
+      .from('channel_connections')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('store_id', storeId)
+    const ids = ((conns ?? []) as { id: string }[]).map((c) => c.id)
+    if (ids.length === 0) return null
+    query = query.in('connection_id', ids)
+  }
+  const { data } = await query
     .order('last_message_at', { ascending: false })
     .limit(1)
     .maybeSingle()
