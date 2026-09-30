@@ -38,7 +38,7 @@ Depois do primeiro evento de um cliente:
 
 1. Abra **Contatos**, o contato (criado com origem "cardápio") e procure o bloco **Consentimento de mensagens**. O mesmo bloco aparece no painel lateral da conversa no **Inbox**.
 2. Cada finalidade mostra **Avisos do pedido** e **Ofertas e lembretes**, com "Ativo desde <data> · origem: Cardápio", "Revogado em <data> · origem: Cardápio/Chat" ou "Sem registro".
-3. "Sem registro" também aparece para quem **já escreveu** para a loja: esse cliente tem consentimento implícito para as duas finalidades (como antes), mesmo sem registro. Uma revogação explícita vale acima do implícito.
+3. "Sem registro" também aparece para quem **já escreveu** para a loja: esse cliente tem consentimento implícito para as duas finalidades, mesmo sem registro, mas só na conexão em que escreveu (quem escreveu para o número de outra marca não conta). Uma revogação explícita vale acima do implícito.
 4. O cliente que responde **PARAR** (ou `stop`, `parar mensagens`, `cancelar envio`, entre outras) tem as duas finalidades revogadas (origem "Chat") e recebe uma confirmação. A mensagem tem de ser só a palavra; "cancelar" e "sair" sozinhos não valem: "cancelar" é como se cancela um pedido e "sair" é a saída habitual de menus e fluxos. Um novo consentimento do cardápio, com data mais nova, reativa.
 
 ## Passo 5. Escolher a finalidade nos passos de envio

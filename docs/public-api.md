@@ -285,7 +285,7 @@ recover abandoned carts and notify the customer. The operator-side setup is in
 
 > **Pre-stable until the first client.** This contract is frozen when the
 > first client integrates; after that a breaking change needs `v2`.
-> **Migrations required:** `055` to `066` (`055` to `062` for the order Journey, `063` to `066` for events without `idtrack`; see [order-journey.md](./order-journey.md#what-to-apply-and-configure)).
+> **Migrations required:** `055` to `068` (`055` to `062` for the order Journey, `063` to `068` for events without `idtrack`; see [order-journey.md](./order-journey.md#what-to-apply-and-configure)).
 
 **One event per call**, JSON body, no batching. Common fields:
 
@@ -378,8 +378,9 @@ the consent and sending its current state.
   reactivates it.
 - **Omit.** Leaving out `consent`, or one of its purposes, changes nothing:
   omitting is **not** a revocation. Send `false` to revoke.
-- **Implicit consent.** A contact who has already written to the CRM is treated
-  as consenting to both purposes, as before. An **explicit revocation wins** over
+- **Implicit consent.** A contact who has already written to the CRM **on the
+  connection that sends** is treated as consenting to both purposes (someone who
+  wrote to another brand's number has not opted in here). An **explicit revocation wins** over
   it: someone who asked to stop is not messaged, until a newer explicit consent
   reactivates the purpose. A contact who never wrote needs the explicit consent.
 - **A `given_at` in the future is rejected.** More than 5 minutes ahead of the

@@ -50,9 +50,11 @@ Docker stack's `migrate` service applies them for you, see
 | `064`     | Direct Journeys: origin and store on the Journey, Journey without connection or link, order without `idtrack`, contact origin, `merge_contacts` |
 | `065`     | Consent per purpose on the contact (`contact_consents`) and its merge                                                                           |
 | `066`     | Parked automation runs without a conversation (abandoned cart of a direct order)                                                                |
+| `067`     | One open direct Journey per contact and store (cleans up duplicates first)                                                                      |
+| `068`     | `merge_contacts` keeps the proof of consent (`given_at`) of both contacts                                                                       |
 
-The original Journey needs `055` to `062`; the direct events add `063` to `066`.
-**Both together require `055` to `066`.** `063` to `066` are needed for events
+The original Journey needs `055` to `062`; the direct events add `063` to `068`.
+**Both together require `055` to `068`.** `063` to `068` are needed for events
 without `idtrack` (they are additive: existing Journeys, stores and automations
 keep working).
 
@@ -152,8 +154,9 @@ source ("Cardápio" or "Chat") and, if revoked, when. See it on the contact deta
 and in the conversation's side panel, under **Consentimento de mensagens** (it
 reads "Sem registro" for someone who only has implicit consent). Rules:
 
-- someone who **already wrote** to you is treated as consenting to both, as
-  before; an explicit revocation wins over that;
+- someone who **already wrote** to you **on the connection that sends** is
+  treated as consenting to both; an explicit revocation wins over that (writing
+  to another brand's number does not count);
 - someone who never wrote needs the explicit consent of the purpose;
 - an update needs a newer `given_at` than the stored decision; `false` revokes;
   omitting changes nothing.
