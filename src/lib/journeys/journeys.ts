@@ -304,8 +304,12 @@ export async function advanceJourneyStage(
 }
 
 /**
- * The contact's open Journey on this connection, or (connection-less) on this
- * store. Mirrors the two partial unique indexes of migration 064.
+ * The contact's open Journey for a direct event: on the event's connection when
+ * there is one (a CRM-link Journey lives there), otherwise, and as the
+ * fallback, by (account, contact, STORE) whatever connection it has now. The
+ * notice connection of a store can appear, change or be disabled between
+ * events; looking up by the current connection alone missed the open Journey
+ * and opened a second one (migration 067 makes that impossible in the DB).
  */
 export async function findOpenDirectJourney(
   db: SupabaseClient,
@@ -315,11 +319,12 @@ export async function findOpenDirectJourney(
   >
 ): Promise<JourneyRow | null> {
   if (args.connectionId) {
-    return findOpenJourney(db, {
+    const onConnection = await findOpenJourney(db, {
       accountId: args.accountId,
       contactId: args.contactId,
       connectionId: args.connectionId,
     });
+    if (onConnection) return onConnection;
   }
   const { data, error } = await db
     .from('journeys')
@@ -327,8 +332,9 @@ export async function findOpenDirectJourney(
     .eq('account_id', args.accountId)
     .eq('contact_id', args.contactId)
     .eq('store_id', args.storeId)
-    .is('connection_id', null)
     .eq('state', 'open')
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (error) throw new Error(`journey lookup failed: ${error.message}`);
   return (data as JourneyRow | null) ?? null;
@@ -337,8 +343,10 @@ export async function findOpenDirectJourney(
 /**
  * Open the Journey of a direct event (no menu link): origin `menu_direct`,
  * `link_sent_at` null, born at `args.stage` with its deal there. Reuses the
- * open one when it exists (the DB forbids two per contact + connection, or per
- * contact + store without a connection); a concurrent loser re-reads.
+ * open one when it exists (the DB forbids two per contact + connection, and
+ * two direct ones per contact + store); a concurrent loser re-reads. A Journey
+ * found with no connection gets the store's notice connection as soon as it
+ * has one (it is never moved from one connection to another).
  */
 export async function openDirectJourney(
   db: SupabaseClient,
@@ -368,6 +376,26 @@ export async function openDirectJourney(
     journey =
       (data as JourneyRow | null) ?? (await findOpenDirectJourney(db, args));
     if (!journey) throw new Error('journey could not be opened');
+  }
+  if (!journey.connection_id && args.connectionId) {
+    const { error } = await db
+      .from('journeys')
+      .update({
+        connection_id: args.connectionId,
+        ...(journey.conversation_id || !args.conversationId
+          ? {}
+          : { conversation_id: args.conversationId }),
+      })
+      .eq('id', journey.id)
+      .eq('account_id', args.accountId);
+    // A unique violation means another open Journey already sits on that
+    // connection: keep this one as it is.
+    if (error && !isUniqueViolation(error)) {
+      throw new Error(`journey connection update failed: ${error.message}`);
+    }
+    if (!error) {
+      journey = { ...journey, connection_id: args.connectionId };
+    }
   }
   if (!journey.deal_id) {
     const dealId = await ensureJourneyDeal(db, args, journey);

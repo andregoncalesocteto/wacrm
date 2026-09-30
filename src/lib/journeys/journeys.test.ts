@@ -150,3 +150,55 @@ describe('a CRM link sent to a contact with an open DIRECT Journey', () => {
     });
   });
 });
+
+describe('openDirectJourney when the store notice connection appears or changes', () => {
+  const base = {
+    accountId: 'acct-1',
+    userId: 'user-1',
+    contactId: 'ct-1',
+    storeId: 'store-1',
+    conversationId: null,
+    stage: 'browsing' as const,
+  };
+
+  it('event 1 without a connection, event 2 with one: the SAME Journey, now anchored to the connection', async () => {
+    const first = await openDirectJourney(db(), { ...base, connectionId: null });
+    expect(first.connection_id).toBeNull();
+
+    const second = await openDirectJourney(db(), {
+      ...base,
+      connectionId: 'conn-1',
+      conversationId: 'cv-1',
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(h.db.journeys).toHaveLength(1);
+    expect(h.db.journeys[0]).toMatchObject({
+      connection_id: 'conn-1',
+      conversation_id: 'cv-1',
+      store_id: 'store-1',
+    });
+    expect(h.db.deals).toHaveLength(1);
+  });
+
+  it('the notice connection of the store changes: still the same open Journey (kept on its connection)', async () => {
+    const first = await openDirectJourney(db(), { ...base, connectionId: 'conn-1' });
+    const second = await openDirectJourney(db(), { ...base, connectionId: 'conn-2' });
+    expect(second.id).toBe(first.id);
+    expect(h.db.journeys).toHaveLength(1);
+    expect(h.db.journeys[0].connection_id).toBe('conn-1');
+  });
+
+  it('the connection is disabled/removed (none now): still the same Journey', async () => {
+    const first = await openDirectJourney(db(), { ...base, connectionId: 'conn-1' });
+    const second = await openDirectJourney(db(), { ...base, connectionId: null });
+    expect(second.id).toBe(first.id);
+    expect(h.db.journeys).toHaveLength(1);
+  });
+
+  it('another store or another contact gets its own Journey', async () => {
+    await openDirectJourney(db(), { ...base, connectionId: null });
+    await openDirectJourney(db(), { ...base, storeId: 'store-2', connectionId: null });
+    expect(h.db.journeys).toHaveLength(2);
+  });
+});
