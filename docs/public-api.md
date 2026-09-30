@@ -641,11 +641,14 @@ required. Non-template channels (e.g. Telegram) and free-message
 broadcasts are supported by the dashboard's broadcast wizard, but not
 yet exposed here.
 
-**Consent.** A broadcast is marketing: at send time (and again on every
-resume/retry) recipients without `marketing` consent on the broadcast's
-connection are not sent. An explicit revocation (the customer wrote "PARAR")
-always wins; without an explicit record, the customer must have written to
-that connection. Skipped recipients are stamped `failed` with
+**Consent.** A broadcast is marketing, but it existed before consent, so only
+two groups are held back (at send time, and again on every resume/retry):
+contacts with an explicit revocation of `marketing` (for example the customer
+wrote "PARAR", which wins even if they also wrote to you), and contacts the
+digital menu created (`source = menu`) who have no explicit `marketing` grant
+and never wrote to the broadcast's connection. Every other contact, imported
+by CSV or created through the API included, is sent as before. Skipped
+recipients are stamped `failed` with
 `error_message` "Skipped: no marketing consent" (visible in the broadcast
 detail) and never fail the rest of the batch. The same rule applies to the
 dashboard wizard. Manual sends by an agent and `POST /api/v1/messages` are

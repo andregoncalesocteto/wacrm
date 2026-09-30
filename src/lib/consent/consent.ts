@@ -221,10 +221,18 @@ export const NO_MARKETING_CONSENT_ERROR = 'Skipped: no marketing consent';
 const CONSENT_CHUNK = 100;
 
 /**
- * BATCH form of `hasConsent` (same precedence), for audiences of thousands:
- * returns the ids, out of `contactIds`, that MAY be messaged for `purpose`.
- * Two queries per chunk of contacts, never one per contact. Always filtered
- * by `accountId`; `connectionId` scopes the implicit consent as in `hasConsent`.
+ * BATCH form of `hasConsent`, for audiences of thousands: returns the ids, out
+ * of `contactIds`, that MAY be messaged for `purpose`. Two to three queries per
+ * chunk of contacts, never one per contact. Always filtered by `accountId`;
+ * `connectionId` scopes the implicit consent as in `hasConsent`.
+ *
+ * NARROWED on purpose (broadcasts existed before consent): only two groups are
+ * held back, everyone else keeps being messaged as before (imported and API
+ * contacts included):
+ *   - a contact with an EXPLICIT revocation of the purpose (for example one who
+ *     sent PARAR), even if they also wrote to us;
+ *   - a contact the digital menu created (`contacts.source = 'menu'`) who has no
+ *     explicit grant and never wrote on this connection.
  */
 export async function contactsWithConsent(
   db: SupabaseClient,
@@ -257,13 +265,34 @@ export async function contactsWithConsent(
     }
     if (undecided.length === 0) continue;
 
+    // Contacts the menu created need the implicit-consent check; every other
+    // undecided contact keeps the behavior broadcasts always had.
+    const { data: sourceRows, error: sourceErr } = await db
+      .from('contacts')
+      .select('id, source')
+      .eq('account_id', accountId)
+      .in('id', undecided);
+    if (sourceErr) {
+      throw new Error(`contact lookup failed: ${sourceErr.message}`);
+    }
+    const rows = (sourceRows ?? []) as { id: string; source: string | null }[];
+    const known = new Set(rows.map((r) => r.id));
+    const fromMenu = new Set(
+      rows.filter((r) => r.source === 'menu').map((r) => r.id)
+    );
+    // A contact this account does not have is never allowed (fail closed).
+    for (const id of undecided) {
+      if (known.has(id) && !fromMenu.has(id)) allowed.add(id);
+    }
+    if (fromMenu.size === 0) continue;
+
     // Implicit: the customer wrote (on this connection, when given). One row
     // per conversation that has at least one customer message.
     let q = db
       .from('conversations')
       .select('contact_id, messages!inner(id)')
       .eq('account_id', accountId)
-      .in('contact_id', undecided)
+      .in('contact_id', [...fromMenu])
       .eq('messages.sender_type', 'customer')
       .limit(1, { referencedTable: 'messages' });
     if (opts?.connectionId) q = q.eq('connection_id', opts.connectionId);
