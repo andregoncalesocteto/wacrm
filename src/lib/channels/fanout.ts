@@ -4,6 +4,8 @@ import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import { buildWebhookOrigin } from '@/lib/webhooks/origin';
+import { isOptOutText, loadOptOutConfirmation } from '@/lib/consent/opt-out';
+import { sendOutbound } from './send';
 import { supabaseAdmin } from './admin-client';
 import type { IngestContext, IngestedMessage } from './ingest';
 
@@ -17,7 +19,8 @@ import type { IngestContext, IngestedMessage } from './ingest';
  *                   first_inbound_message, new_contact_created (when they
  *                   apply), then new_message_received, keyword_match and
  *                   interactive_reply (only when NO flow consumed the message)
- *   3. AI reply     dispatchInboundToAiReply (plain text only, not consumed)
+ *   3. AI reply     dispatchInboundToAiReply (plain text only, not consumed,
+ *                   and never for an opt-out "PARAR")
  *
  * Everything is awaited, never fire-and-forget: the caller runs inside
  * `after()`, which only keeps the function alive for promises it can see.
@@ -65,6 +68,19 @@ export async function fanOutInbound(
   await isolated('broadcast reply flag', () =>
     flagBroadcastReplyIfAny(accountId, contactId)
   );
+
+  // 0b. "PARAR": the consent was revoked at ingestion; confirm it as free text
+  // (the inbound message just opened the reply window). Best-effort.
+  if (stored.optOut) {
+    await isolated('opt-out confirmation', async () => {
+      await sendOutbound({
+        accountId,
+        conversationId,
+        message: { type: 'text', text: await loadOptOutConfirmation() },
+        actor: { type: 'bot' },
+      });
+    });
+  }
 
   // 1. Flows. A failure counts as "not consumed" so automations still run.
   const flowResult = await isolated('flows', () =>
@@ -121,8 +137,14 @@ export async function fanOutInbound(
     );
   }
 
-  // 3. AI auto-reply: plain text a flow did not consume.
-  if (!flowConsumed && !interactiveReplyId && inboundText.trim()) {
+  // 3. AI auto-reply: plain text a flow did not consume. Never to an opt-out
+  // ("PARAR"): answering a request to stop would be absurd.
+  if (
+    !flowConsumed &&
+    !interactiveReplyId &&
+    inboundText.trim() &&
+    !isOptOutText(inboundText)
+  ) {
     await isolated('ai reply', () =>
       dispatchInboundToAiReply({
         accountId,

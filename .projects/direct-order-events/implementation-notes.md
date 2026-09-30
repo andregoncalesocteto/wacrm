@@ -88,3 +88,19 @@ Sem migration. `src/lib/journeys/funnel.ts`: `FunnelCounts` ganhou `total` e `pu
 - Replay de `event_id`: já tratado pelo claim de `journey_events` (teste apaga o consentimento e confirma que o replay não o recria).
 
 **Fora / atenção**: `given_at` no futuro não é rejeitado (um relógio errado do cardápio poderia travar atualizações futuras daquela finalidade); a UI mostra "Sem registro" para quem só tem consentimento implícito (não consulta mensagens); o motor de automações ainda não consulta `hasConsent` por passo (#22).
+
+## #23 "PARAR" no chat revoga o consentimento
+
+Sem migration. Módulo novo `src/lib/consent/opt-out.ts` (sem importar canal; teste `consent/no-channel-imports.test.ts` cobre a pasta e `channels/ingest.ts`).
+
+**Para reaproveitar**
+- `isOptOutText(text)` (pura), `OPT_OUT_WORDS`, `revokeConsentFromChat(db, {accountId, contactId, at})` (`recordConsent` granted=false nas duas finalidades, `source: 'chat'`), `loadOptOutConfirmation(locale?)` (catálogo `Contacts.consents.optOutConfirmation`, fallback `en`).
+- `ingest.ts` (`ingestMessage`): após gravar a mensagem NOVA (nunca em duplicata/redelivery) e antes do hook `onMessageStored`, se o conteúdo é `text` e `isOptOutText`, revoga; `IngestedMessage.optOut` indica sucesso. Falha é logada e não derruba a ingestão (`optOut: false`).
+- `fanout.ts`: se `stored.optOut`, envia a confirmação por `sendOutbound` como texto livre (ator `bot`, isolado/best-effort); a resposta da IA é pulada quando `isOptOutText(texto)` (sem mudar `lib/ai`). Automações de palavra-chave e fluxos seguem como antes.
+
+**Decisões**
+- Regra: mensagem INTEIRA igual a uma palavra, sem caixa/acentos/pontuação-emoji nas pontas. Lista: parar, pare, parar mensagens, stop, sair, cancelar envio, cancelar mensagens, nao quero receber, nao quero mais receber, descadastrar, unsubscribe, 수신거부. `cancelar` SOZINHO fica de fora (é como se cancela pedido).
+- Confirmação só sai por `fanoutHook` (WhatsApp e rota genérica já o usam); quem chamar `ingestInbound` sem esse hook revoga mas não confirma.
+- Precedência/idempotência vêm do #20: `at` = instante da mensagem; grant mais novo do cardápio reativa, mais antigo não. O painel já traduz a origem `chat`.
+
+**Fora**: um fluxo que consuma o "PARAR" (fluxo aguardando resposta) ainda o recebe; não mudamos fluxos.

@@ -439,6 +439,7 @@
     },
     "consents": {
       "title": "Consentimento de mensagens",
+      "optOutConfirmation": "Pronto. Você não receberá mais mensagens nossas. Se mudar de ideia, é só fazer um novo pedido.",
       "purpose": {
         "notifications": "Avisos do pedido",
         "marketing": "Ofertas e lembretes"

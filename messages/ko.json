@@ -439,6 +439,7 @@
     },
     "consents": {
       "title": "메시지 수신 동의",
+      "optOutConfirmation": "처리되었습니다. 앞으로 저희가 보내는 메시지를 받지 않으실 거예요. 마음이 바뀌시면 새로 주문해 주세요.",
       "purpose": {
         "notifications": "주문 알림",
         "marketing": "할인 및 리마인더"

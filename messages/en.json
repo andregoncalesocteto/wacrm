@@ -439,6 +439,7 @@
     },
     "consents": {
       "title": "Message consent",
+      "optOutConfirmation": "Done. You will no longer receive messages from us. If you change your mind, just place a new order.",
       "purpose": {
         "notifications": "Order notices",
         "marketing": "Offers and reminders"

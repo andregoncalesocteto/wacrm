@@ -11,6 +11,7 @@ import {
 } from './connection-state';
 import { resolveOrCreateContact, type ContactRow } from './identity';
 import { isValidStatusTransition } from './status-ladder';
+import { isOptOutText, revokeConsentFromChat } from '@/lib/consent/opt-out';
 import type { Connection, InboundContent, InboundEvent } from './types';
 
 /**
@@ -93,6 +94,11 @@ export interface IngestedMessage extends IngestContext {
   interactiveReplyId: string | null;
   /** True when no customer message existed in the conversation before this one. */
   isFirstInbound: boolean;
+  /**
+   * True when this TEXT message was an opt-out ("PARAR") and the consent was
+   * revoked here. The fan-out confirms it and keeps the AI reply quiet.
+   */
+  optOut: boolean;
 }
 
 export type IngestOutcome =
@@ -490,6 +496,27 @@ async function ingestMessage(
   // A customer writing again re-opens the thread (issue #409).
   await reopenClosedConversation(db, conversation);
 
+  // "PARAR": revoke both consent purposes BEFORE the fan-out runs. Only plain
+  // text from the customer; a failure is logged and never undoes the message.
+  let optOut = false;
+  if (event.content.type === 'text' && isOptOutText(shape.contentText)) {
+    try {
+      await revokeConsentFromChat(db, {
+        accountId: connection.account_id,
+        contactId: contact.id,
+        at: event.at,
+      });
+      optOut = true;
+    } catch (err) {
+      channelLog(
+        'error',
+        connCtx(connection, event.externalId),
+        'opt-out consent revocation failed',
+        { error: err }
+      );
+    }
+  }
+
   const stored: IngestedMessage = {
     ...ctx,
     event,
@@ -499,6 +526,7 @@ async function ingestMessage(
     mediaUrl,
     interactiveReplyId: shape.interactiveReplyId,
     isFirstInbound,
+    optOut,
   };
   await runHook('onMessageStored', opts.hooks?.onMessageStored, stored);
   return { status: 'stored', ...stored };
