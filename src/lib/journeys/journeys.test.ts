@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fakeAdmin } from '@/lib/automations/engine.characterization.fake';
-import { advanceJourneyStage, openOrRenewJourney } from './journeys';
+import {
+  advanceJourneyStage,
+  openDirectJourney,
+  openOrRenewJourney,
+} from './journeys';
 
 type Row = Record<string, unknown>;
 const h = { db: {} as Record<string, Row[]>, seq: 0, rpcCalls: [] as never[] };
@@ -114,5 +118,35 @@ describe('advanceJourneyStage', () => {
     });
     expect(h.db.journeys[0].stage).toBe('cart');
     expect(h.db.deals[0].stage_id).toBe(stageId('checkout'));
+  });
+});
+
+describe('a CRM link sent to a contact with an open DIRECT Journey', () => {
+  const direct = {
+    accountId: 'acct-1',
+    userId: 'user-1',
+    contactId: 'ct-1',
+    connectionId: 'conn-1',
+    storeId: 'store-1',
+    conversationId: 'cv-1',
+    stage: 'cart' as const,
+  };
+
+  it('turns it into a link Journey (origin crm_link) so resumptions and the funnel treat it as one; the stage never regresses', async () => {
+    const before = await openDirectJourney(db(), direct);
+    expect(before).toMatchObject({ origin: 'menu_direct', link_sent_at: null });
+
+    const after = await openOrRenewJourney(db(), args);
+
+    expect(after.id).toBe(before.id);
+    expect(after.origin).toBe('crm_link');
+    expect(after.link_sent_at).toBeTruthy();
+    expect(h.db.journeys).toHaveLength(1);
+    expect(h.db.journeys[0]).toMatchObject({
+      origin: 'crm_link',
+      link_count: 1,
+      stage: 'cart',
+      store_id: 'store-1',
+    });
   });
 });

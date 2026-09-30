@@ -77,6 +77,10 @@ export async function openOrRenewJourney(
         link_sent_at: at,
         link_count: (journey.link_count ?? 1) + 1,
         conversation_id: args.conversationId,
+        // A direct Journey that gets a CRM link is now a Journey WITH a link:
+        // resumptions (onMenuLinkSent) and the funnel must treat it as one.
+        // Its stage is untouched (never regresses).
+        origin: 'crm_link',
       })
       .eq('id', journey.id)
       .eq('account_id', args.accountId);
@@ -86,6 +90,7 @@ export async function openOrRenewJourney(
       link_sent_at: at,
       link_count: (journey.link_count ?? 1) + 1,
       conversation_id: args.conversationId,
+      origin: 'crm_link',
     };
   } else {
     const { data, error } = await db
