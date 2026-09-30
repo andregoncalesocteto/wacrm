@@ -99,7 +99,7 @@ Sem migration. Módulo novo `src/lib/consent/opt-out.ts` (sem importar canal; te
 - `fanout.ts`: se `stored.optOut`, envia a confirmação por `sendOutbound` como texto livre (ator `bot`, isolado/best-effort); a resposta da IA é pulada quando `isOptOutText(texto)` (sem mudar `lib/ai`). Automações de palavra-chave e fluxos seguem como antes.
 
 **Decisões**
-- Regra: mensagem INTEIRA igual a uma palavra, sem caixa/acentos/pontuação-emoji nas pontas. Lista: parar, pare, parar mensagens, stop, sair, cancelar envio, cancelar mensagens, nao quero receber, nao quero mais receber, descadastrar, unsubscribe, 수신거부. `cancelar` SOZINHO fica de fora (é como se cancela pedido).
+- Regra: mensagem INTEIRA igual a uma palavra, sem caixa/acentos/pontuação-emoji nas pontas. Lista: parar, pare, parar mensagens, stop, cancelar envio, cancelar mensagens, nao quero receber, nao quero mais receber, descadastrar, unsubscribe, 수신거부. `cancelar` SOZINHO fica de fora (é como se cancela pedido).
 - Confirmação só sai por `fanoutHook` (WhatsApp e rota genérica já o usam); quem chamar `ingestInbound` sem esse hook revoga mas não confirma.
 - Precedência/idempotência vêm do #20: `at` = instante da mensagem; grant mais novo do cardápio reativa, mais antigo não. O painel já traduz a origem `chat`.
 

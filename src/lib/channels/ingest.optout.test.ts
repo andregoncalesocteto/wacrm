@@ -97,7 +97,7 @@ describe('ingestInbound: "PARAR" revokes consent', () => {
 
   it.each([
     'stop',
-    'Sair',
+    'Stop!',
     'cancelar envio',
     'não quero receber',
     'unsubscribe',

@@ -159,7 +159,7 @@ reads "Sem registro" for someone who only has implicit consent). Rules:
   omitting changes nothing.
 
 **PARAR.** If the customer replies just "PARAR" (also `pare`, `parar mensagens`,
-`stop`, `sair`, `cancelar envio`, `cancelar mensagens`, `nao quero receber`,
+`stop`, `cancelar envio`, `cancelar mensagens`, `nao quero receber`,
 `nao quero mais receber`, `descadastrar`, `unsubscribe`, `수신거부`; case, accents
 and punctuation at the ends are ignored; the whole message must match, and
 `cancelar` alone does not, because it is how an order is cancelled), both purposes

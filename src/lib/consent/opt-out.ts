@@ -12,6 +12,7 @@ import { CONSENT_PURPOSES, recordConsent } from './consent';
  * trigger, because revoking consent by mistake silences order notices.
  *
  * `cancelar` alone is NOT in the list: it is how customers cancel an ORDER.
+ * `sair` is NOT either: it is the usual exit word of menus and flows.
  * Only the explicit `cancelar envio` / `cancelar mensagens` forms are.
  */
 export const OPT_OUT_WORDS = [
@@ -19,7 +20,6 @@ export const OPT_OUT_WORDS = [
   'pare',
   'parar mensagens',
   'stop',
-  'sair',
   'cancelar envio',
   'cancelar mensagens',
   'nao quero receber',

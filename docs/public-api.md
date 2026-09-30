@@ -392,7 +392,7 @@ the consent and sending its current state.
 - **Conflict.** If `idtrack` and `customer.phone` resolve to different
   contacts, the event's `consent` is ignored and nothing is updated.
 - **"PARAR".** If the customer answers the CRM on WhatsApp with a message that is
-  just "PARAR" (or `stop`, `sair`, and the other opt-out words), both purposes
+  just "PARAR" (or `stop`, and the other opt-out words), both purposes
   are revoked with source `chat`, and the customer gets a confirmation. A newer
   `given_at` from the menu reactivates them; an older one does not.
 - The operator sees the state, date and source of each purpose in the contact
