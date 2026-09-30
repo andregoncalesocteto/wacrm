@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { CONSENT_PURPOSES, recordConsent } from './consent';
+import { CONSENT_PURPOSES, findConsent, recordConsent } from './consent';
 
 /**
  * "PARAR" in the chat: the customer asks to stop receiving messages. Channel
@@ -67,6 +67,22 @@ export async function revokeConsentFromChat(
     changed = changed || applied;
   }
   return changed;
+}
+
+/**
+ * Re-reads the stored EXPLICIT state: true only when every purpose is
+ * currently revoked. Used to confirm a "PARAR" to the customer only after the
+ * stop actually holds (a newer grant, or a write that lost, leaves it false).
+ */
+export async function isRevokedNow(
+  db: SupabaseClient,
+  args: { accountId: string; contactId: string }
+): Promise<boolean> {
+  for (const purpose of CONSENT_PURPOSES) {
+    const row = await findConsent(db, args.accountId, args.contactId, purpose);
+    if (!row || row.granted) return false;
+  }
+  return true;
 }
 
 /** Confirmation text for the deployment locale (`NEXT_PUBLIC_APP_LOCALE`), English fallback. */

@@ -44,7 +44,7 @@ const time = (v: string | null): number =>
 const decidedAt = (row: ConsentRow): number =>
   Math.max(time(row.given_at), time(row.revoked_at));
 
-async function findConsent(
+export async function findConsent(
   db: SupabaseClient,
   accountId: string,
   contactId: string,

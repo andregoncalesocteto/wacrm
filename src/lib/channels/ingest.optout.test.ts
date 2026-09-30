@@ -160,18 +160,47 @@ describe('ingestInbound: "PARAR" revokes consent', () => {
     expect(consents().every((c) => c.granted === false)).toBe(true);
   });
 
-  it('a revocation failure is logged and never drops the message', async () => {
-    const broken = {
+  it('a revocation failure is NOT lost: the message is not stored, so a redelivery revokes', async () => {
+    let broken = true;
+    const flaky = {
       ...db,
-      from: (table: string) =>
-        table === 'contact_consents'
-          ? (() => {
-              throw new Error('boom');
-            })()
-          : db.from(table),
+      from: (table: string) => {
+        if (broken && table === 'contact_consents') throw new Error('boom');
+        return db.from(table);
+      },
     } as unknown as typeof db;
-    const [r] = await ingestInbound(broken, CONN, [text('PARAR')], OPTS);
+    const [first] = await ingestInbound(flaky, CONN, [text('PARAR')], OPTS);
+    expect(first).toMatchObject({ status: 'skipped' });
+    expect(t('messages')).toHaveLength(0);
+    expect(consents()).toHaveLength(0);
+
+    broken = false; // the provider redelivers the same message
+    const [again] = await ingestInbound(flaky, CONN, [text('PARAR')], OPTS);
+    expect(again).toMatchObject({ status: 'stored', optOut: true });
+    expect(consents()).toHaveLength(2);
+    expect(consents().every((c) => c.granted === false)).toBe(true);
+  });
+
+  it('does not confirm when a NEWER consent from the menu holds (optOut false)', async () => {
+    await ingestInbound(db, CONN, [text('oi', 'wamid.0')], OPTS);
+    for (const purpose of ['notifications', 'marketing'] as const) {
+      await recordConsent(db, {
+        accountId: 'acct-1',
+        contactId: contactId(),
+        purpose,
+        granted: true,
+        at: new Date('2026-10-11T00:00:00Z'), // newer than the PARAR below
+        source: 'menu',
+      });
+    }
+    const [r] = await ingestInbound(
+      db,
+      CONN,
+      [text('PARAR', 'wamid.2', '2026-10-10T12:00:00Z')],
+      OPTS
+    );
     expect(r).toMatchObject({ status: 'stored', optOut: false });
-    expect(t('messages')).toHaveLength(1);
+    expect(consents().every((c) => c.granted === true)).toBe(true);
+    expect(await hasConsent(db, 'acct-1', contactId(), 'marketing')).toBe(true);
   });
 });
