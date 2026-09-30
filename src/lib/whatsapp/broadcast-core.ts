@@ -39,6 +39,10 @@ import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import { resolveTemplateRow, renderTemplateBody } from '@/lib/whatsapp/template-body';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
+import {
+  contactsWithConsent,
+  NO_MARKETING_CONSENT_ERROR,
+} from '@/lib/consent/consent';
 
 /** Thrown by createBroadcast on a caller-visible failure; route maps it. */
 export class BroadcastError extends Error {
@@ -375,11 +379,18 @@ export async function loadRecipientIdentities(
  * webhooks keep advancing them. We therefore never write those columns
  * here — only the terminal `status` — otherwise a manual value would
  * race and clobber the trigger-maintained counts.
+ *
+ * CONSENT: a broadcast is marketing. Recipients without `marketing` consent on
+ * the broadcast's connection (an explicit revocation such as "PARAR", or
+ * someone who never wrote to that number) are NOT sent: their row is stamped
+ * `failed` with {@link NO_MARKETING_CONSENT_ERROR} and they are counted in the
+ * returned `skippedNoConsent`. The check runs here, at send time, so resume/
+ * retry and a broadcast saved before a "PARAR" honour it too.
  */
 export async function deliverBroadcast(
   db: SupabaseClient,
   plan: BroadcastPlan
-): Promise<void> {
+): Promise<{ skippedNoConsent: number }> {
   // Resolve the provider ONCE, before touching any recipient.
   // US-078: a disabled connection sends nothing (the broadcast is bound to it).
   if (plan.connection.disabled_at) {
@@ -404,9 +415,27 @@ export async function deliverBroadcast(
   const credentials =
     (await getConnectionCredentials(plan.connection.id)) ?? {};
 
+  const consented = await contactsWithConsent(
+    db,
+    plan.connection.account_id,
+    plan.planned.map((r) => r.contactId),
+    'marketing',
+    { connectionId: plan.connection.id }
+  );
+  let skippedNoConsent = 0;
+
   for (const recipient of plan.planned) {
     let sentMessageId: string | null = null;
     let lastError: string | null = null;
+
+    if (!consented.has(recipient.contactId)) {
+      skippedNoConsent++;
+      await db
+        .from('broadcast_recipients')
+        .update({ status: 'failed', error_message: NO_MARKETING_CONSENT_ERROR })
+        .eq('id', recipient.recipientRowId);
+      continue;
+    }
 
     const message: OutboundMessage = isTemplatePath
       ? {
@@ -490,7 +519,13 @@ export async function deliverBroadcast(
     }
   }
 
+  if (skippedNoConsent > 0) {
+    console.info(
+      `[broadcast-core] ${plan.broadcastId}: ${skippedNoConsent} recipient(s) skipped, no marketing consent`
+    );
+  }
   await finalizeBroadcastStatus(db, plan.broadcastId);
+  return { skippedNoConsent };
 }
 
 /**

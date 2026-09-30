@@ -212,3 +212,68 @@ export async function hasConsent(
   if (explicit) return explicit.granted;
   return hasWrittenToUs(db, accountId, contactId, opts?.connectionId);
 }
+
+/** Recipient status text of a broadcast row skipped for lack of consent. */
+export const NO_MARKETING_CONSENT_ERROR = 'Skipped: no marketing consent';
+
+// Contacts per query: keeps the `.in(...)` list under PostgREST's URL limits
+// and the conversations page under its row cap.
+const CONSENT_CHUNK = 100;
+
+/**
+ * BATCH form of `hasConsent` (same precedence), for audiences of thousands:
+ * returns the ids, out of `contactIds`, that MAY be messaged for `purpose`.
+ * Two queries per chunk of contacts, never one per contact. Always filtered
+ * by `accountId`; `connectionId` scopes the implicit consent as in `hasConsent`.
+ */
+export async function contactsWithConsent(
+  db: SupabaseClient,
+  accountId: string,
+  contactIds: string[],
+  purpose: ConsentPurpose,
+  opts?: { connectionId?: string | null }
+): Promise<Set<string>> {
+  const allowed = new Set<string>();
+  const unique = [...new Set(contactIds)];
+  for (let i = 0; i < unique.length; i += CONSENT_CHUNK) {
+    const chunk = unique.slice(i, i + CONSENT_CHUNK);
+    const { data: explicitRows, error } = await db
+      .from('contact_consents')
+      .select('contact_id, granted')
+      .eq('account_id', accountId)
+      .eq('purpose', purpose)
+      .in('contact_id', chunk);
+    if (error) throw new Error(`consent lookup failed: ${error.message}`);
+    const explicit = new Map(
+      ((explicitRows ?? []) as { contact_id: string; granted: boolean }[]).map(
+        (r) => [r.contact_id, r.granted]
+      )
+    );
+    const undecided: string[] = [];
+    for (const id of chunk) {
+      const granted = explicit.get(id);
+      if (granted === undefined) undecided.push(id);
+      else if (granted) allowed.add(id);
+    }
+    if (undecided.length === 0) continue;
+
+    // Implicit: the customer wrote (on this connection, when given). One row
+    // per conversation that has at least one customer message.
+    let q = db
+      .from('conversations')
+      .select('contact_id, messages!inner(id)')
+      .eq('account_id', accountId)
+      .in('contact_id', undecided)
+      .eq('messages.sender_type', 'customer')
+      .limit(1, { referencedTable: 'messages' });
+    if (opts?.connectionId) q = q.eq('connection_id', opts.connectionId);
+    const { data: wrote, error: wroteErr } = await q;
+    if (wroteErr) {
+      throw new Error(`conversation lookup failed: ${wroteErr.message}`);
+    }
+    for (const r of (wrote ?? []) as { contact_id: string }[]) {
+      allowed.add(r.contact_id);
+    }
+  }
+  return allowed;
+}

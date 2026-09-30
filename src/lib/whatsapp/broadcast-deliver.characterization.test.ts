@@ -26,6 +26,16 @@ const h = vi.hoisted(() => ({
   sendTemplateMessage: vi.fn(),
 }));
 
+// Consent is covered in broadcast-core.consent.test.ts; here everyone is allowed.
+vi.mock('@/lib/consent/consent', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  contactsWithConsent: async (
+    _db: unknown,
+    _account: string,
+    ids: string[]
+  ) => new Set(ids),
+}));
+
 vi.mock('@/lib/whatsapp/meta-api', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   sendTemplateMessage: h.sendTemplateMessage,

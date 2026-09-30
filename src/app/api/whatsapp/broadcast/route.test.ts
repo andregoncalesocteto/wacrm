@@ -15,6 +15,12 @@ const h = vi.hoisted(() => ({
   getConnectionById: vi.fn(),
   getConnectionCredentials: vi.fn(),
   resolveTemplateRow: vi.fn(),
+  contactsWithConsent: vi.fn(),
+}));
+
+vi.mock('@/lib/consent/consent', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  contactsWithConsent: h.contactsWithConsent,
 }));
 
 vi.mock('@/lib/whatsapp/meta-api', async (importOriginal) => ({
@@ -47,6 +53,11 @@ const IDENTITIES: Record<string, { kind: string; external_id: string }[]> = {
   c1: [{ kind: 'telegram:chat_id', external_id: '555' }],
   c2: [{ kind: 'telegram:chat_id', external_id: '556' }],
 };
+// contacts of the account found by normalized phone (legacy phone-only shape).
+const LEGACY_CONTACTS = [
+  { id: 'L1', phone_normalized: '5511999990000' },
+  { id: 'L2', phone_normalized: '5511888880000' },
+];
 function fakeSupabase() {
   return {
     from: (table: string) => {
@@ -58,8 +69,14 @@ function fakeSupabase() {
         }
         return chain;
       };
+      chain.in = () => chain;
       chain.then = (resolve: (v: unknown) => void) =>
-        resolve({ data: IDENTITIES[contactId ?? ''] ?? [] });
+        resolve({
+          data:
+            table === 'contacts'
+              ? LEGACY_CONTACTS
+              : (IDENTITIES[contactId ?? ''] ?? []),
+        });
       return chain;
     },
   };
@@ -97,6 +114,10 @@ beforeEach(() => {
   });
   h.sendTemplateMessage.mockResolvedValue({ messageId: 'wamid.1' });
   h.callBotApi.mockResolvedValue({ message_id: 999, chat: { id: 555 } });
+  // Everyone has consent unless a test says otherwise.
+  h.contactsWithConsent.mockImplementation(
+    async (_db: unknown, _acct: string, ids: string[]) => new Set(ids)
+  );
 });
 
 describe('POST /api/whatsapp/broadcast', () => {
@@ -220,6 +241,7 @@ describe('POST /api/whatsapp/broadcast', () => {
       total: 2,
       sent: 2,
       failed: 0,
+      skipped_no_consent: 0,
       results: [
         {
           contact_id: 'c1',
@@ -266,6 +288,55 @@ describe('POST /api/whatsapp/broadcast', () => {
     for (const c of h.sendTemplateMessage.mock.calls) {
       expect(c[0].params).toEqual(['X']);
     }
+  });
+
+  it('skips recipients without marketing consent on the connection, in one batch, and reports the count', async () => {
+    h.contactsWithConsent.mockResolvedValue(new Set(['c1']));
+    h.sendTemplateMessage.mockResolvedValue({ messageId: 'wamid.A' });
+    const res = await POST(
+      req({
+        connection_id: 'conn-1',
+        recipients: [
+          { phone: '+5511999990000', contact_id: 'c1' },
+          { phone: '+5511888880000', contact_id: 'c2' },
+        ],
+        template_name: 'promo',
+      })
+    );
+    const json = await res.json();
+    expect(json).toMatchObject({
+      total: 2,
+      sent: 1,
+      failed: 1,
+      skipped_no_consent: 1,
+    });
+    expect(json.results[1]).toEqual({
+      contact_id: 'c2',
+      phone: '+5511888880000',
+      status: 'failed',
+      error: 'Skipped: no marketing consent',
+    });
+    expect(h.sendTemplateMessage).toHaveBeenCalledTimes(1);
+    expect(h.contactsWithConsent).toHaveBeenCalledTimes(1);
+    expect(h.contactsWithConsent.mock.calls[0].slice(1)).toEqual([
+      'acct-1',
+      ['c1', 'c2'],
+      'marketing',
+      { connectionId: 'conn-1' },
+    ]);
+  });
+
+  it('a legacy phone-only recipient with no contact has no consent to show', async () => {
+    const res = await POST(
+      req({
+        connection_id: 'conn-1',
+        phone_numbers: ['+5599000000000'],
+        template_name: 'promo',
+      })
+    );
+    const json = await res.json();
+    expect(json).toMatchObject({ sent: 0, skipped_no_consent: 1 });
+    expect(h.sendTemplateMessage).not.toHaveBeenCalled();
   });
 
   it('marks an invalid phone as failed without calling Meta', async () => {

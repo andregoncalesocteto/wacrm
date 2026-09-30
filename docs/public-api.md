@@ -640,6 +640,16 @@ required. Non-template channels (e.g. Telegram) and free-message
 broadcasts are supported by the dashboard's broadcast wizard, but not
 yet exposed here.
 
+**Consent.** A broadcast is marketing: at send time (and again on every
+resume/retry) recipients without `marketing` consent on the broadcast's
+connection are not sent. An explicit revocation (the customer wrote "PARAR")
+always wins; without an explicit record, the customer must have written to
+that connection. Skipped recipients are stamped `failed` with
+`error_message` "Skipped: no marketing consent" (visible in the broadcast
+detail) and never fail the rest of the batch. The same rule applies to the
+dashboard wizard. Manual sends by an agent and `POST /api/v1/messages` are
+deliberate operator/API-key actions and are not gated.
+
 Domain error codes beyond the table above: `connection_required` (400
 — more than one active connection, `connection_id` needed),
 `whatsapp_not_configured` (400 — no connection at all), `not_found`

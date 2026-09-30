@@ -20,6 +20,11 @@ import { inferMediaKind, loadRecipientIdentities } from '@/lib/whatsapp/broadcas
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils'
 import type { MessageTemplate } from '@/types'
 import {
+  contactsWithConsent,
+  NO_MARKETING_CONSENT_ERROR,
+} from '@/lib/consent/consent'
+import { normalizeKey } from '@/lib/contacts/dedupe'
+import {
   checkRateLimit,
   rateLimitResponse,
   RATE_LIMITS,
@@ -225,14 +230,63 @@ export async function POST(request: Request) {
       resolvedLanguage = resolvedTemplate.language
     }
 
+    // CONSENT: a broadcast is marketing. Only contacts with `marketing`
+    // consent on THIS connection are sent (an explicit revocation such as
+    // "PARAR" wins; otherwise they must have written to this connection).
+    // A legacy phone-only recipient is matched to its contact by the
+    // normalized phone; with no contact there is no consent to show. Batched:
+    // never one query per recipient.
+    const phoneKeys = [
+      ...new Set(
+        recipients
+          .filter((r) => !r.contact_id && r.phone)
+          .map((r) => normalizeKey(r.phone!))
+          .filter(Boolean)
+      ),
+    ]
+    const contactByPhone = new Map<string, string>()
+    for (let i = 0; i < phoneKeys.length; i += 100) {
+      const { data } = await supabase
+        .from('contacts')
+        .select('id, phone_normalized')
+        .eq('account_id', accountId)
+        .in('phone_normalized', phoneKeys.slice(i, i + 100))
+      for (const row of (data ?? []) as { id: string; phone_normalized: string }[]) {
+        contactByPhone.set(row.phone_normalized, row.id)
+      }
+    }
+    const contactOf = (r: NewRecipient): string | undefined =>
+      r.contact_id ?? contactByPhone.get(normalizeKey(r.phone ?? ''))
+    const consented = await contactsWithConsent(
+      supabase,
+      accountId,
+      recipients.map(contactOf).filter((id): id is string => !!id),
+      'marketing',
+      { connectionId: conn.id }
+    )
+
     const results: BroadcastResult[] = []
     let sentCount = 0
     let failedCount = 0
+    let skippedNoConsent = 0
 
     for (const recipient of recipients) {
       let sentMessageId: string | null = null
       let lastError: string | null = null
       let target: Target | null = null
+
+      const contactId = contactOf(recipient)
+      if (!contactId || !consented.has(contactId)) {
+        results.push({
+          contact_id: recipient.contact_id,
+          phone: recipient.phone ?? '',
+          status: 'failed',
+          error: NO_MARKETING_CONSENT_ERROR,
+        })
+        failedCount++
+        skippedNoConsent++
+        continue
+      }
 
       if (isTemplatePath) {
         // Template path (WhatsApp): resolve the target by phone exactly
@@ -337,6 +391,7 @@ export async function POST(request: Request) {
       total: recipients.length,
       sent: sentCount,
       failed: failedCount,
+      skipped_no_consent: skippedNoConsent,
       results,
     })
   } catch (error) {
