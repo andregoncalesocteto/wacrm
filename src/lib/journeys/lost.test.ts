@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fakeAdmin } from '@/lib/automations/engine.characterization.fake';
-import { advanceJourneyStage, openOrRenewJourney } from './journeys';
+import {
+  advanceJourneyStage,
+  openDirectJourney,
+  openOrRenewJourney,
+} from './journeys';
 import { closeAbandonedJourneys } from './lost';
 
 type Row = Record<string, unknown>;
@@ -249,5 +253,56 @@ describe('closeAbandonedJourneys', () => {
       });
       expect(res).toEqual({ checked: 60, lost: 0 });
     });
+  });
+});
+
+describe('direct Journeys (no link: link_sent_at is null)', () => {
+  async function openDirect(createdHoursAgo: number, over: Row = {}) {
+    const journey = await openDirectJourney(db(), {
+      accountId: 'acct-1',
+      userId: 'user-1',
+      contactId: 'ct-1',
+      connectionId: null,
+      storeId: 'store-1',
+      conversationId: null,
+      stage: 'cart',
+    });
+    Object.assign(h.db.journeys.find((j) => j.id === journey.id)!, {
+      created_at: ago(createdHoursAgo),
+      ...over,
+    });
+    return journey;
+  }
+
+  it('is anchored on its creation: closed 24 h after it, even with no connection', async () => {
+    const journey = await openDirect(25);
+    expect(journey.link_sent_at).toBeNull();
+    expect(await sweep()).toEqual({ checked: 1, lost: 1 });
+    expect(h.db.journeys[0]).toMatchObject({ state: 'lost', stage: 'lost' });
+  });
+
+  it('stays open before 24 h, and a recent event keeps it open', async () => {
+    await openDirect(23);
+    expect((await sweep()).lost).toBe(0);
+
+    h.db.journeys[0].created_at = ago(40);
+    h.db.journeys[0].last_event_at = ago(2);
+    expect((await sweep()).lost).toBe(0);
+
+    h.db.journeys[0].last_event_at = ago(25);
+    expect((await sweep()).lost).toBe(1);
+  });
+
+  it('a customer message on any conversation of the contact keeps it open', async () => {
+    await openDirect(30);
+    h.db.conversations = [
+      { id: 'cv-9', account_id: 'acct-1', contact_id: 'ct-1', connection_id: 'c' },
+    ];
+    h.db.messages.push({
+      conversation_id: 'cv-9',
+      sender_type: 'customer',
+      created_at: ago(3),
+    });
+    expect((await sweep()).lost).toBe(0);
   });
 });

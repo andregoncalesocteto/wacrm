@@ -437,6 +437,21 @@
       "noTagsAvailable": "Nenhuma tag disponível. Crie tags em Configurações.",
       "phoneRequired": "O número de telefone é obrigatório"
     },
+    "consents": {
+      "title": "Consentimento de mensagens",
+      "optOutConfirmation": "Pronto. Você não receberá mais mensagens nossas. Se mudar de ideia, é só fazer um novo pedido.",
+      "purpose": {
+        "notifications": "Avisos do pedido",
+        "marketing": "Ofertas e lembretes"
+      },
+      "active": "Ativo desde {date} · origem: {source}",
+      "revoked": "Revogado em {date} · origem: {source}",
+      "notRecorded": "Sem registro",
+      "source": {
+        "menu": "Cardápio",
+        "chat": "Chat"
+      }
+    },
     "detailView": {
       "tabs": {
         "details": "Detalhes",
@@ -624,7 +639,9 @@
       "noContact": "Sem contato",
       "won": "Ganho",
       "lost": "Perdido",
-      "cartItems": "{count, plural, =1 {# item} other {# itens}}"
+      "cartItems": "{count, plural, =1 {# item} other {# itens}}",
+      "originDirect": "Direto do cardápio",
+      "originLink": "Link do CRM"
     },
     "form": {
       "editDeal": "Editar negócio",
@@ -713,7 +730,13 @@
         "channel": "Canal",
         "store": "Loja",
         "allChannels": "Todos os canais",
-        "allStores": "Todas as lojas"
+        "allStores": "Todas as lojas",
+        "origin": "Origem",
+        "allOrigins": "Todas as origens",
+        "originOption": {
+          "crm_link": "Link do CRM",
+          "menu_direct": "Direto do cardápio"
+        }
       },
       "stages": {
         "link_sent": "Link enviado",
@@ -732,6 +755,14 @@
         "group": "Grupo",
         "allJourneys": "Todas as Jornadas",
         "conversion": "Link até compra",
+        "purchaseRate": "Compradas / Jornadas",
+        "journeys": "Jornadas",
+        "noConnection": "Sem conexão",
+        "noStore": "Sem loja",
+        "origin": {
+          "crm_link": "Link do CRM",
+          "menu_direct": "Direto do cardápio"
+        },
         "noData": "-",
         "empty": "Ainda não há Jornadas.",
         "error": "Não foi possível carregar o funil da Jornada."
@@ -1316,7 +1347,8 @@
           "journey_open": "Journey aberta",
           "journey_stage": "Etapa da Journey",
           "conversation_unattended": "Sem humano e sem transbordo da IA",
-          "journey_flag": "Mensagem de carrinho abandonado já enviada na Journey"
+          "journey_flag": "Mensagem de carrinho abandonado já enviada na Journey",
+          "business_acronym_is": "Sigla do negócio da loja é"
         },
         "replyReferenceLabel": "Instante de referência",
         "replyReferences": {
@@ -1331,6 +1363,10 @@
         "orderStatusesHint": "Dispara quando o pedido passa para qualquer um dos status marcados. Um status sem automação não envia nada.",
         "orderVariablesHint": "inserem os dados do pedido (id, código do status e valor) no texto. Disponíveis neste gatilho e nas automações de Evento de Journey para Purchase.",
         "conversationUnattendedHint": "Verdadeiro enquanto nenhum agente está atribuído à conversa e a IA não fez o transbordo. Verificado quando o passo executa, inclusive depois de uma espera.",
+        "businessAcronymLabel": "Sigla do negócio",
+        "businessAcronymPlaceholder": "ex.: RPA",
+        "businessAcronymHint": "Verdadeiro quando a sigla do negócio da loja da conversa é igual a este texto (sem diferenciar maiúsculas de minúsculas nem espaços nas pontas). Verificado quando o passo executa, inclusive depois de uma espera. Falso se a loja não tem sigla.",
+        "storeNameHint": "insere o nome da loja da conversa. Fica vazio (com um aviso no log) se a conversa não tem loja.",
         "journeyFlagLabel": "Marca",
         "journeyFlags": {
           "abandoned_cart_sent": "Mensagem de carrinho abandonado"
@@ -1338,6 +1374,12 @@
         "journeyFlagHint": "Verdadeiro depois que a mensagem de carrinho abandonado saiu nesta Journey. Verificado quando o passo executa, inclusive depois de uma espera.",
         "markJourneyFlagLabel": "Enviar uma vez por Journey (carrinho abandonado)",
         "markJourneyFlagHint": "A Journey é marcada logo antes do envio, então esta mensagem sai no máximo uma vez por Journey, mesmo que várias execuções cheguem até ela. Se o envio falhar, a marca é desfeita.",
+        "consentPurposeLabel": "Consentimento para quem nunca escreveu",
+        "consentPurposeHint": "Para um cliente que nunca escreveu ao CRM, este passo só envia se ele deu o consentimento desta finalidade (no cardápio). Quem já escreveu continua recebendo, a menos que tenha revogado a finalidade.",
+        "consentPurposes": {
+          "notifications": "Avisos do pedido",
+          "marketing": "Marketing"
+        },
         "stageComparisonLabel": "Comparação",
         "stageComparisons": {
           "before": "é anterior a",
@@ -2082,6 +2124,21 @@
       "menuUrlLabel": "Endereço do cardápio digital",
       "menuUrlPlaceholder": "https://cardapio.exemplo.com",
       "menuUrlHint": "Opcional. Deve começar com https://. Deixe em branco se a loja não tiver cardápio digital.",
+      "storeKeyLabel": "Chave da loja",
+      "storeCodeLabel": "Código",
+      "storeCodePlaceholder": "Código (89)",
+      "storeAcronymLabel": "Sigla da loja",
+      "storeAcronymPlaceholder": "Loja (RPA)",
+      "businessAcronymLabel": "Sigla do negócio",
+      "businessAcronymPlaceholder": "Negócio (BLC)",
+      "storeKeyHint": "Opcional. Preencha as três partes para formar a chave que o cardápio digital envia, como 89/RPA/BLC. Não use \"/\".",
+      "storeKeyPreview": "Chave da loja: {key}",
+      "notificationConnectionLabel": "Conexão do WhatsApp para avisos",
+      "notificationConnectionNone": "Nenhuma (escolha uma)",
+      "notificationConnectionHint": "Usada para avisar os clientes sobre os pedidos quando a loja tem mais de uma conexão de WhatsApp ativa.",
+      "toastKeyPartInvalid": "O código e as siglas da loja não podem conter \"/\".",
+      "toastKeyTaken": "Outra loja já usa esta chave.",
+      "toastNotificationInvalid": "Escolha uma conexão de WhatsApp que pertença a esta loja.",
       "cancel": "Cancelar",
       "save": "Salvar",
       "noConnections": "Nenhuma conexão ainda",

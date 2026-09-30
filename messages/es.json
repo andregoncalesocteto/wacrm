@@ -437,6 +437,21 @@
       "noTagsAvailable": "No hay etiquetas disponibles. Crea etiquetas en Configuración.",
       "phoneRequired": "El número de teléfono es obligatorio"
     },
+    "consents": {
+      "title": "Consentimiento de mensajes",
+      "optOutConfirmation": "Listo. Ya no recibirás mensajes nuestros. Si cambias de opinión, basta con hacer un nuevo pedido.",
+      "purpose": {
+        "notifications": "Avisos del pedido",
+        "marketing": "Ofertas y recordatorios"
+      },
+      "active": "Activo desde {date} · origen: {source}",
+      "revoked": "Revocado el {date} · origen: {source}",
+      "notRecorded": "Sin registro",
+      "source": {
+        "menu": "Menú",
+        "chat": "Chat"
+      }
+    },
     "detailView": {
       "tabs": {
         "details": "Detalles",
@@ -624,7 +639,9 @@
       "noContact": "Sin contacto",
       "won": "Ganado",
       "lost": "Perdido",
-      "cartItems": "{count, plural, =1 {# artículo} other {# artículos}}"
+      "cartItems": "{count, plural, =1 {# artículo} other {# artículos}}",
+      "originDirect": "Directo del menú",
+      "originLink": "Enlace del CRM"
     },
     "form": {
       "editDeal": "Editar negocio",
@@ -713,7 +730,13 @@
         "channel": "Canal",
         "store": "Tienda",
         "allChannels": "Todos los canales",
-        "allStores": "Todas las tiendas"
+        "allStores": "Todas las tiendas",
+        "origin": "Origen",
+        "allOrigins": "Todos los orígenes",
+        "originOption": {
+          "crm_link": "Enlace del CRM",
+          "menu_direct": "Directo del menú"
+        }
       },
       "stages": {
         "link_sent": "Enlace enviado",
@@ -732,6 +755,14 @@
         "group": "Grupo",
         "allJourneys": "Todos los Journeys",
         "conversion": "Enlace a compra",
+        "purchaseRate": "Comprados / Journeys",
+        "journeys": "Journeys",
+        "noConnection": "Sin conexión",
+        "noStore": "Sin tienda",
+        "origin": {
+          "crm_link": "Enlace del CRM",
+          "menu_direct": "Directo del menú"
+        },
         "noData": "-",
         "empty": "Aún no hay Journeys.",
         "error": "No se pudo cargar el embudo del Journey."
@@ -1316,7 +1347,8 @@
           "journey_open": "Journey abierta",
           "journey_stage": "Etapa de la Journey",
           "conversation_unattended": "Sin humano y sin traspaso de la IA",
-          "journey_flag": "Mensaje de carrito abandonado ya enviado en la Journey"
+          "journey_flag": "Mensaje de carrito abandonado ya enviado en la Journey",
+          "business_acronym_is": "La sigla del negocio de la tienda es"
         },
         "replyReferenceLabel": "Instante de referencia",
         "replyReferences": {
@@ -1331,6 +1363,10 @@
         "orderStatusesHint": "Se activa cuando el pedido pasa a cualquiera de los estados marcados. Un estado sin automatización no envía nada.",
         "orderVariablesHint": "insertan los datos del pedido (id, código del estado y valor) en el texto. Disponibles en este disparador y en las automatizaciones de Evento de Journey para Purchase.",
         "conversationUnattendedHint": "Verdadero mientras no haya un agente asignado a la conversación y la IA no la haya traspasado. Se comprueba cuando se ejecuta el paso, también después de una espera.",
+        "businessAcronymLabel": "Sigla del negocio",
+        "businessAcronymPlaceholder": "p. ej. RPA",
+        "businessAcronymHint": "Verdadero cuando la sigla del negocio de la tienda de la conversación es igual a este texto (sin distinguir mayúsculas ni espacios en los extremos). Se comprueba cuando se ejecuta el paso, también después de una espera. Falso si la tienda no tiene sigla.",
+        "storeNameHint": "inserta el nombre de la tienda de la conversación. Queda vacío (con un aviso en el registro) si la conversación no tiene tienda.",
         "journeyFlagLabel": "Marca",
         "journeyFlags": {
           "abandoned_cart_sent": "Mensaje de carrito abandonado"
@@ -1338,6 +1374,12 @@
         "journeyFlagHint": "Verdadero una vez que el mensaje de carrito abandonado salió para esta Journey. Se comprueba cuando se ejecuta el paso, también después de una espera.",
         "markJourneyFlagLabel": "Enviar una vez por Journey (carrito abandonado)",
         "markJourneyFlagHint": "La Journey se marca justo antes del envío, así que este mensaje sale como máximo una vez por Journey, aunque varias ejecuciones lleguen a él. Si el envío falla, la marca se deshace.",
+        "consentPurposeLabel": "Consentimiento para quien nunca escribió",
+        "consentPurposeHint": "Para un cliente que nunca escribió al CRM, este paso solo envía si dio el consentimiento de esta finalidad (desde el menú). Quien ya escribió lo sigue recibiendo, salvo que haya revocado esa finalidad.",
+        "consentPurposes": {
+          "notifications": "Avisos del pedido",
+          "marketing": "Marketing"
+        },
         "stageComparisonLabel": "Comparación",
         "stageComparisons": {
           "before": "es anterior a",
@@ -2082,6 +2124,21 @@
       "menuUrlLabel": "Dirección del menú digital",
       "menuUrlPlaceholder": "https://menu.ejemplo.com",
       "menuUrlHint": "Opcional. Debe comenzar con https://. Déjalo vacío si la tienda no tiene menú digital.",
+      "storeKeyLabel": "Clave de la tienda",
+      "storeCodeLabel": "Código",
+      "storeCodePlaceholder": "Código (89)",
+      "storeAcronymLabel": "Sigla de la tienda",
+      "storeAcronymPlaceholder": "Tienda (RPA)",
+      "businessAcronymLabel": "Sigla del negocio",
+      "businessAcronymPlaceholder": "Negocio (BLC)",
+      "storeKeyHint": "Opcional. Completa las tres partes para formar la clave que envía el menú digital, como 89/RPA/BLC. No uses \"/\".",
+      "storeKeyPreview": "Clave de la tienda: {key}",
+      "notificationConnectionLabel": "Conexión de WhatsApp para avisos",
+      "notificationConnectionNone": "Ninguna (elige una)",
+      "notificationConnectionHint": "Se usa para avisar a los clientes sobre sus pedidos cuando la tienda tiene más de una conexión de WhatsApp activa.",
+      "toastKeyPartInvalid": "El código y las siglas de la tienda no pueden contener \"/\".",
+      "toastKeyTaken": "Otra tienda ya usa esta clave.",
+      "toastNotificationInvalid": "Elige una conexión de WhatsApp que pertenezca a esta tienda.",
       "cancel": "Cancelar",
       "save": "Guardar",
       "noConnections": "Aún no hay conexiones",

@@ -368,6 +368,14 @@ describe("validateStepsForActivation — journey conditions", () => {
     expect(cond({ subject: "journey_flag", operand: "nope" })).toHaveLength(1);
   });
 
+  it("business_acronym_is needs a non-blank acronym", () => {
+    expect(cond({ subject: "business_acronym_is", operand: "RPA" })).toEqual([]);
+    expect(cond({ subject: "business_acronym_is" }).map((i) => i.path)).toEqual([
+      "steps[0].operand",
+    ]);
+    expect(cond({ subject: "business_acronym_is", operand: "  " })).toHaveLength(1);
+  });
+
   it("send_message mark_journey_flag must be a known flag", () => {
     const send = (config: Record<string, unknown>) =>
       validateStepsForActivation([{ step_type: "send_message", step_config: config }] as never);
@@ -376,6 +384,19 @@ describe("validateStepsForActivation — journey conditions", () => {
     expect(send({ text: "hi", mark_journey_flag: "nope" }).map((i) => i.path)).toEqual([
       "steps[0].mark_journey_flag",
     ]);
+  });
+
+  it("send steps accept consent_purpose notifications|marketing only", () => {
+    const send = (type: string, config: Record<string, unknown>) =>
+      validateStepsForActivation([{ step_type: type, step_config: config }] as never);
+    expect(send("send_message", { text: "hi", consent_purpose: "notifications" })).toEqual([]);
+    expect(send("send_template", { template_name: "t", consent_purpose: "marketing" })).toEqual([]);
+    expect(
+      send("send_message", { text: "hi", consent_purpose: "spam" }).map((i) => i.path),
+    ).toEqual(["steps[0].consent_purpose"]);
+    expect(
+      send("send_template", { template_name: "t", consent_purpose: 1 }).map((i) => i.path),
+    ).toEqual(["steps[0].consent_purpose"]);
   });
 
   it("other subjects still require an operand", () => {

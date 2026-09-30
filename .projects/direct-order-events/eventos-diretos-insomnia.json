@@ -1,0 +1,726 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-10-01T12:00:00.000Z",
+  "__export_source": "insomnia.desktop.app:v8.6.1",
+  "resources": [
+    {
+      "_id": "wrk_wacrm_direct",
+      "_type": "workspace",
+      "parentId": null,
+      "name": "wacrm - Eventos diretos do cardápio",
+      "description": "Chamadas da API POST /api/v1/journey/events sem idtrack (store_key + customer.phone + consent). Preencha o ambiente (base_url, api_key, store_key, phone) antes de enviar; use um telefone SEU.",
+      "scope": "collection"
+    },
+    {
+      "_id": "env_base",
+      "_type": "environment",
+      "parentId": "wrk_wacrm_direct",
+      "name": "Base Environment",
+      "data": {
+        "base_url": "https://seu-crm.exemplo.com",
+        "api_key": "wacrm_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "store_key": "89/RPA/BLC",
+        "phone": "+5511999998888",
+        "order_id": "PED-DIRETO-0001",
+        "idtrack": "cole-aqui-o-idtrack-de-outro-contato",
+        "replay_event_id": "00000000-0000-4000-8000-000000000002"
+      },
+      "dataPropertyOrder": null,
+      "color": null,
+      "isPrivate": false,
+      "metaSortKey": 1
+    },
+    {
+      "_id": "fld_0",
+      "_type": "request_group",
+      "parentId": "wrk_wacrm_direct",
+      "name": "0. Verificar chave",
+      "environment": {},
+      "metaSortKey": -100
+    },
+    {
+      "_id": "req_me",
+      "_type": "request",
+      "parentId": "fld_0",
+      "name": "GET /api/v1/me (verificar a chave)",
+      "description": "Não exige escopo. Deve listar events:write.",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/v1/me",
+      "headers": [],
+      "parameters": [],
+      "metaSortKey": -200,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      }
+    },
+    {
+      "_id": "fld_1",
+      "_type": "request_group",
+      "parentId": "wrk_wacrm_direct",
+      "name": "A. Eventos diretos (sem idtrack) com consentimento",
+      "environment": {},
+      "metaSortKey": -300
+    },
+    {
+      "_id": "req_1",
+      "_type": "request",
+      "parentId": "fld_1",
+      "name": "ViewContent direto",
+      "description": "O cliente abriu o cardápio sem link do CRM. Resposta: stage \"browsing\".",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -400,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"ViewContent\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"consent\": { \"notifications\": true, \"marketing\": false, \"given_at\": \"{% now 'iso-8601', '' %}\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      }
+    },
+    {
+      "_id": "req_2",
+      "_type": "request",
+      "parentId": "fld_1",
+      "name": "AddToCart direto (1 item)",
+      "description": "Carrinho INTEIRO. Resposta: stage \"cart\". Sem consentimento marketing, o lembrete de carrinho abandonado NÃO sai; para testá-lo, envie antes o consentimento de marketing (consentimento de marketing, seção C).",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -500,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"AddToCart\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": { \"currency\": \"BRL\", \"cart\": { \"value\": 59.9, \"items\": [ { \"id\": \"pizza-calabresa-g\", \"name\": \"Pizza Calabresa G\", \"quantity\": 1, \"unit_price\": 59.9 } ] } }\n}"
+      }
+    },
+    {
+      "_id": "req_3",
+      "_type": "request",
+      "parentId": "fld_1",
+      "name": "AddToCart direto (2 itens)",
+      "description": "Carrinho inteiro de novo (R$ 89,80). Resposta: stage \"cart\".",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -600,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"AddToCart\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": { \"currency\": \"BRL\", \"cart\": { \"value\": 89.8, \"items\": [ { \"id\": \"pizza-calabresa-g\", \"name\": \"Pizza Calabresa G\", \"quantity\": 1, \"unit_price\": 59.9 }, { \"id\": \"refri-2l\", \"name\": \"Refrigerante 2L\", \"quantity\": 1, \"unit_price\": 29.9 } ] } }\n}"
+      }
+    },
+    {
+      "_id": "req_4",
+      "_type": "request",
+      "parentId": "fld_1",
+      "name": "InitiateCheckout direto",
+      "description": "Resposta: stage \"checkout\".",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -700,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"InitiateCheckout\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": { \"currency\": \"BRL\", \"cart\": { \"value\": 89.8, \"items\": [ { \"id\": \"pizza-calabresa-g\", \"name\": \"Pizza Calabresa G\", \"quantity\": 1, \"unit_price\": 59.9 }, { \"id\": \"refri-2l\", \"name\": \"Refrigerante 2L\", \"quantity\": 1, \"unit_price\": 29.9 } ] } }\n}"
+      }
+    },
+    {
+      "_id": "req_5",
+      "_type": "request",
+      "parentId": "fld_1",
+      "name": "Purchase direto com consentimento",
+      "description": "Purchase sem idtrack: store_key + customer.phone. O CRM cria o contato (se o telefone é novo), abre uma jornada direta, cria o pedido e, com notifications=true, dispara o agradecimento por template numa conversa criada FECHADA. Resposta: 200 { data: { event_id, journey_id, stage: \"won\", duplicate: false, messaging: \"eligible\" } } (messaging = no_connection se a loja não tem conexão de WhatsApp).",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -800,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"Purchase\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"consent\": { \"notifications\": true, \"marketing\": false, \"given_at\": \"{% now 'iso-8601', '' %}\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": { \"order_id\": \"{{ _.order_id }}\", \"currency\": \"BRL\", \"value\": 89.8, \"items\": [ { \"id\": \"pizza-calabresa-g\", \"name\": \"Pizza Calabresa G\", \"quantity\": 1, \"unit_price\": 59.9 }, { \"id\": \"refri-2l\", \"name\": \"Refrigerante 2L\", \"quantity\": 1, \"unit_price\": 29.9 } ] }\n}"
+      }
+    },
+    {
+      "_id": "fld_2",
+      "_type": "request_group",
+      "parentId": "wrk_wacrm_direct",
+      "name": "B. Status do pedido por telefone",
+      "environment": {},
+      "metaSortKey": -900
+    },
+    {
+      "_id": "req_6",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "received (APPROVED)",
+      "description": "OrderStatusChanged por store_key + phone. NUNCA cria contato: telefone ou pedido desconhecido = 400 order_not_found (envie o Purchase antes). Ordem: received → preparing → finished → (out_for_delivery OU ready_for_pickup) → delivered; cancelled antes de delivered.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1000,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": { \"order_id\": \"{{ _.order_id }}\", \"status\": \"received\" }\n}"
+      }
+    },
+    {
+      "_id": "req_7",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "preparing (DOING)",
+      "description": "OrderStatusChanged por store_key + phone. NUNCA cria contato: telefone ou pedido desconhecido = 400 order_not_found (envie o Purchase antes). Ordem: received → preparing → finished → (out_for_delivery OU ready_for_pickup) → delivered; cancelled antes de delivered.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1100,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": { \"order_id\": \"{{ _.order_id }}\", \"status\": \"preparing\" }\n}"
+      }
+    },
+    {
+      "_id": "req_8",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "finished (DONE)",
+      "description": "OrderStatusChanged por store_key + phone. NUNCA cria contato: telefone ou pedido desconhecido = 400 order_not_found (envie o Purchase antes). Ordem: received → preparing → finished → (out_for_delivery OU ready_for_pickup) → delivered; cancelled antes de delivered.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1200,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": { \"order_id\": \"{{ _.order_id }}\", \"status\": \"finished\" }\n}"
+      }
+    },
+    {
+      "_id": "req_9",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "out_for_delivery (DISPACHED)",
+      "description": "OrderStatusChanged por store_key + phone. NUNCA cria contato: telefone ou pedido desconhecido = 400 order_not_found (envie o Purchase antes). Ordem: received → preparing → finished → (out_for_delivery OU ready_for_pickup) → delivered; cancelled antes de delivered.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1300,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": { \"order_id\": \"{{ _.order_id }}\", \"status\": \"out_for_delivery\" }\n}"
+      }
+    },
+    {
+      "_id": "req_10",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "ready_for_pickup (READYTOPICKUP)",
+      "description": "OrderStatusChanged por store_key + phone. NUNCA cria contato: telefone ou pedido desconhecido = 400 order_not_found (envie o Purchase antes). Ordem: received → preparing → finished → (out_for_delivery OU ready_for_pickup) → delivered; cancelled antes de delivered.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1400,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": { \"order_id\": \"{{ _.order_id }}\", \"status\": \"ready_for_pickup\" }\n}"
+      }
+    },
+    {
+      "_id": "req_11",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "delivered (DELIVERED)",
+      "description": "OrderStatusChanged por store_key + phone. NUNCA cria contato: telefone ou pedido desconhecido = 400 order_not_found (envie o Purchase antes). Ordem: received → preparing → finished → (out_for_delivery OU ready_for_pickup) → delivered; cancelled antes de delivered.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1500,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": { \"order_id\": \"{{ _.order_id }}\", \"status\": \"delivered\" }\n}"
+      }
+    },
+    {
+      "_id": "req_12",
+      "_type": "request",
+      "parentId": "fld_2",
+      "name": "cancelled (CANCELED)",
+      "description": "OrderStatusChanged por store_key + phone. NUNCA cria contato: telefone ou pedido desconhecido = 400 order_not_found (envie o Purchase antes). Ordem: received → preparing → finished → (out_for_delivery OU ready_for_pickup) → delivered; cancelled antes de delivered.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1600,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"OrderStatusChanged\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": { \"order_id\": \"{{ _.order_id }}\", \"status\": \"cancelled\" }\n}"
+      }
+    },
+    {
+      "_id": "fld_3",
+      "_type": "request_group",
+      "parentId": "wrk_wacrm_direct",
+      "name": "C. Consentimento: marketing, revogação e ausência",
+      "environment": {},
+      "metaSortKey": -1700
+    },
+    {
+      "_id": "req_13",
+      "_type": "request",
+      "parentId": "fld_3",
+      "name": "Consentimento de marketing (ofertas e lembretes)",
+      "description": "Ativa o consentimento de marketing (permite o lembrete de carrinho abandonado). given_at precisa ser MAIS NOVO que o valor guardado; igual ou mais antigo não muda nada.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1800,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"ViewContent\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"consent\": { \"marketing\": true, \"given_at\": \"{% now 'iso-8601', '' %}\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      }
+    },
+    {
+      "_id": "req_14",
+      "_type": "request",
+      "parentId": "fld_3",
+      "name": "Revogação: consent.notifications false",
+      "description": "Revoga SÓ os avisos do pedido (o marketing segue como está). Depois disso, messaging = no_consent e nenhum aviso sai, inclusive para quem já escreveu ao CRM. Um true com given_at mais novo reativa.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -1900,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"ViewContent\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"consent\": { \"notifications\": false, \"given_at\": \"{% now 'iso-8601', '' %}\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      }
+    },
+    {
+      "_id": "req_15",
+      "_type": "request",
+      "parentId": "fld_3",
+      "name": "Evento sem consentimento (omitir NÃO revoga)",
+      "description": "Sem o campo consent: o evento é registrado (pedido, funil, última compra), nada é enviado e, para quem nunca escreveu ao CRM e não tem consentimento guardado, messaging = no_consent. Para ver isso com um contato novo, troque PHONE por um telefone que o CRM não conhece.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -2000,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"Purchase\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\",\n  \"properties\": { \"order_id\": \"{{ _.order_id }}-SEM-CONSENT\", \"currency\": \"BRL\", \"value\": 89.8, \"items\": [ { \"id\": \"pizza-calabresa-g\", \"name\": \"Pizza Calabresa G\", \"quantity\": 1, \"unit_price\": 59.9 }, { \"id\": \"refri-2l\", \"name\": \"Refrigerante 2L\", \"quantity\": 1, \"unit_price\": 29.9 } ] }\n}"
+      }
+    },
+    {
+      "_id": "fld_4",
+      "_type": "request_group",
+      "parentId": "wrk_wacrm_direct",
+      "name": "D. Erros e casos especiais",
+      "environment": {},
+      "metaSortKey": -2100
+    },
+    {
+      "_id": "req_16",
+      "_type": "request",
+      "parentId": "fld_4",
+      "name": "404 store_not_found (chave desconhecida)",
+      "description": "A chave não existe no CRM. NÃO repita: corrija a configuração.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -2200,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"ViewContent\",\n  \"store_key\": \"00/XXX/YYY\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      }
+    },
+    {
+      "_id": "req_17",
+      "_type": "request",
+      "parentId": "fld_4",
+      "name": "400 bad_request (telefone fora do formato internacional)",
+      "description": "Telefone sem \"+\" (precisa ser E.164: +5511999998888).",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -2300,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"ViewContent\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"11999998888\", \"name\": \"Cliente Teste\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      }
+    },
+    {
+      "_id": "req_18",
+      "_type": "request",
+      "parentId": "fld_4",
+      "name": "400 bad_request (sem idtrack e sem store_key + phone)",
+      "description": "Falta identificação: o evento precisa de idtrack OU store_key + customer.phone.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -2400,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"ViewContent\",\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      }
+    },
+    {
+      "_id": "req_19",
+      "_type": "request",
+      "parentId": "fld_4",
+      "name": "400 bad_request (consent.given_at no futuro)",
+      "description": "given_at mais de 5 minutos à frente do relógio do CRM é recusado (um relógio errado travaria as atualizações seguintes do consentimento). Nada do evento é gravado.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -2500,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"ViewContent\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"consent\": { \"notifications\": true, \"given_at\": \"2099-01-01T00:00:00Z\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      }
+    },
+    {
+      "_id": "req_20",
+      "_type": "request",
+      "parentId": "fld_4",
+      "name": "Conflito idtrack x telefone (o idtrack manda)",
+      "description": "Use um IDTRACK de um link enviado a OUTRO contato (não o dono de PHONE). O evento é atribuído ao contato do idtrack; customer e consent são IGNORADOS e nenhum consentimento é atualizado (o CRM registra o conflito no log, com o telefone mascarado). Resposta: 200 com a jornada do idtrack.",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -2600,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{% uuid 'v4' %}\",\n  \"name\": \"ViewContent\",\n  \"idtrack\": \"{{ _.idtrack }}\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"consent\": { \"notifications\": true, \"marketing\": true, \"given_at\": \"{% now 'iso-8601', '' %}\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      }
+    },
+    {
+      "_id": "req_21",
+      "_type": "request",
+      "parentId": "fld_4",
+      "name": "Idempotência: enviar 2x (mesmo event_id)",
+      "description": "Envie DUAS vezes. A segunda resposta traz duplicate: true e o cabeçalho Idempotent-Replayed: true, sem repetir efeitos (nem consentimento, nem mensagem).",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/journey/events",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "metaSortKey": -2700,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ _.api_key }}"
+      },
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"event_id\": \"{{ _.replay_event_id }}\",\n  \"name\": \"ViewContent\",\n  \"store_key\": \"{{ _.store_key }}\",\n  \"customer\": { \"phone\": \"{{ _.phone }}\", \"name\": \"Cliente Teste\" },\n  \"consent\": { \"notifications\": true, \"marketing\": false, \"given_at\": \"{% now 'iso-8601', '' %}\" },\n  \"occurred_at\": \"{% now 'iso-8601', '' %}\"\n}"
+      }
+    }
+  ]
+}

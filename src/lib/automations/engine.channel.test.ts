@@ -650,6 +650,18 @@ describe('{{menu_link}} (order journey, ticket #3)', () => {
     h.db.messages = h.db.messages.filter(
       (m) => m.conversation_id !== 'cv-store2'
     );
+    // Implicit consent is scoped to the connection, and the customer only wrote
+    // on another one: an explicit grant keeps this test about the closed window.
+    h.db.contact_consents = ['notifications', 'marketing'].map((purpose) => ({
+      id: `cc-${purpose}`,
+      account_id: 'acct-1',
+      contact_id: 'ct-1',
+      purpose,
+      granted: true,
+      given_at: '2026-01-01T00:00:00Z',
+      revoked_at: null,
+      updated_at: '2026-01-01T00:00:00Z',
+    }));
     steps({
       step_type: 'send_message',
       step_config: {

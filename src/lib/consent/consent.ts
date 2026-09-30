@@ -1,0 +1,308 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+/**
+ * Consent per PURPOSE, kept on the contact (`contact_consents`, migration 065).
+ * It is the PROOF of consent: when it was given, where from, and when revoked.
+ *
+ *   notifications : order notices (thanks, status)
+ *   marketing     : recovery and offers (abandoned cart)
+ *
+ * Every query is filtered by `accountId` (service-role client). Channel-agnostic
+ * on purpose: the core never imports a channel module (see `hasConsent`).
+ *
+ * PRECEDENCE in `hasConsent` (explicit revocation > implicit by having written):
+ *   1. an explicit row exists  -> it decides (`granted`); a revocation holds
+ *      even if the customer wrote to us ("PARAR" is honoured), and only a
+ *      NEWER explicit grant reactivates it (see `recordConsent`);
+ *   2. no explicit row         -> implicit consent when the customer ever wrote
+ *      to the CRM (on the sending connection, when one is given); nothing is
+ *      stored for it;
+ *   3. otherwise               -> no consent.
+ */
+
+export const CONSENT_PURPOSES = ['notifications', 'marketing'] as const;
+export type ConsentPurpose = (typeof CONSENT_PURPOSES)[number];
+
+export interface ConsentRow {
+  id: string;
+  purpose: ConsentPurpose;
+  granted: boolean;
+  given_at: string | null;
+  revoked_at: string | null;
+  source: string;
+  updated_at: string;
+}
+
+const COLUMNS =
+  'id, purpose, granted, given_at, revoked_at, source, updated_at';
+const CAS_TRIES = 3;
+
+const time = (v: string | null): number =>
+  v === null ? Number.NEGATIVE_INFINITY : new Date(v).getTime();
+
+/** When the stored decision was made: the later of given / revoked. */
+const decidedAt = (row: ConsentRow): number =>
+  Math.max(time(row.given_at), time(row.revoked_at));
+
+export async function findConsent(
+  db: SupabaseClient,
+  accountId: string,
+  contactId: string,
+  purpose: ConsentPurpose
+): Promise<ConsentRow | null> {
+  const { data, error } = await db
+    .from('contact_consents')
+    .select(COLUMNS)
+    .eq('account_id', accountId)
+    .eq('contact_id', contactId)
+    .eq('purpose', purpose)
+    .maybeSingle();
+  if (error) throw new Error(`consent lookup failed: ${error.message}`);
+  return (data as ConsentRow | null) ?? null;
+}
+
+/**
+ * Record an explicit decision (`granted` true = consent given, false =
+ * revoked) made at `at`. It only takes effect when `at` is STRICTLY newer than
+ * the stored decision: equal or older changes nothing (late or replayed
+ * events). Returns whether it was applied. A grant clears `revoked_at`
+ * (reactivation); a revocation keeps `given_at` (the proof of the past grant).
+ */
+export async function recordConsent(
+  db: SupabaseClient,
+  args: {
+    accountId: string;
+    contactId: string;
+    purpose: ConsentPurpose;
+    granted: boolean;
+    at: Date;
+    source: string;
+  }
+): Promise<boolean> {
+  const { accountId, contactId, purpose, granted, at, source } = args;
+  const atIso = at.toISOString();
+  for (let attempt = 0; attempt < CAS_TRIES; attempt++) {
+    const current = await findConsent(db, accountId, contactId, purpose);
+    if (!current) {
+      const { error } = await db.from('contact_consents').insert({
+        account_id: accountId,
+        contact_id: contactId,
+        purpose,
+        granted,
+        given_at: granted ? atIso : null,
+        revoked_at: granted ? null : atIso,
+        source,
+        updated_at: new Date().toISOString(),
+      });
+      if (!error) return true;
+      if ((error as { code?: string }).code !== '23505') {
+        throw new Error(`consent insert failed: ${error.message}`);
+      }
+      continue; // lost the race for the first row: re-read and compare
+    }
+    if (at.getTime() <= decidedAt(current)) return false;
+    const { data, error } = await db
+      .from('contact_consents')
+      .update({
+        granted,
+        given_at: granted ? atIso : current.given_at,
+        revoked_at: granted ? null : atIso,
+        source,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', current.id)
+      .eq('account_id', accountId)
+      // compare-and-swap: a concurrent write to the row makes us re-read
+      .eq('updated_at', current.updated_at)
+      .select('id');
+    if (error) throw new Error(`consent update failed: ${error.message}`);
+    if (Array.isArray(data) && data.length > 0) return true;
+  }
+  throw new Error('consent update kept conflicting; retry');
+}
+
+/** `consent` of an event, as validated by `parseCommonFields`. */
+export interface EventConsentInput {
+  notifications?: boolean;
+  marketing?: boolean;
+  givenAt?: Date;
+}
+
+/**
+ * Apply the `consent` of an event. A purpose left out is NOT touched (only an
+ * explicit `false` revokes); `givenAt` is the decision time of every purpose
+ * present (the payload parser guarantees it is there). Returns the purposes
+ * that changed.
+ */
+export async function applyEventConsent(
+  db: SupabaseClient,
+  args: {
+    accountId: string;
+    contactId: string;
+    consent: EventConsentInput | null;
+    source: string;
+  }
+): Promise<ConsentPurpose[]> {
+  const { consent } = args;
+  if (!consent?.givenAt) return [];
+  const changed: ConsentPurpose[] = [];
+  for (const purpose of CONSENT_PURPOSES) {
+    const granted = consent[purpose];
+    if (granted === undefined) continue;
+    const applied = await recordConsent(db, {
+      accountId: args.accountId,
+      contactId: args.contactId,
+      purpose,
+      granted,
+      at: consent.givenAt,
+      source: args.source,
+    });
+    if (applied) changed.push(purpose);
+  }
+  return changed;
+}
+
+/**
+ * Whether the customer ever wrote to the CRM: in any conversation of the
+ * account, or, with `connectionId`, only in a conversation of THAT connection
+ * (someone who wrote to brand B's number has not opted in to brand A's).
+ */
+export async function hasWrittenToUs(
+  db: SupabaseClient,
+  accountId: string,
+  contactId: string,
+  connectionId?: string | null
+): Promise<boolean> {
+  let q = db
+    .from('conversations')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('contact_id', contactId);
+  if (connectionId) q = q.eq('connection_id', connectionId);
+  const { data: convs, error } = await q;
+  if (error) throw new Error(`conversation lookup failed: ${error.message}`);
+  const ids = ((convs ?? []) as { id: string }[]).map((c) => c.id);
+  if (ids.length === 0) return false;
+  const { data, error: msgErr } = await db
+    .from('messages')
+    .select('id')
+    .in('conversation_id', ids)
+    .eq('sender_type', 'customer')
+    .limit(1);
+  if (msgErr) throw new Error(`message lookup failed: ${msgErr.message}`);
+  return Array.isArray(data) && data.length > 0;
+}
+
+/**
+ * May this contact be messaged for `purpose`? READ-ONLY: the implicit consent
+ * of someone who wrote to us is computed, never stored. See the precedence in
+ * the file header: an explicit revocation beats the implicit one. With
+ * `opts.connectionId` the implicit consent only counts when the customer wrote
+ * on that connection; without it, on any conversation (callers with no
+ * connection at hand).
+ */
+export async function hasConsent(
+  db: SupabaseClient,
+  accountId: string,
+  contactId: string,
+  purpose: ConsentPurpose,
+  opts?: { connectionId?: string | null }
+): Promise<boolean> {
+  const explicit = await findConsent(db, accountId, contactId, purpose);
+  if (explicit) return explicit.granted;
+  return hasWrittenToUs(db, accountId, contactId, opts?.connectionId);
+}
+
+/** Recipient status text of a broadcast row skipped for lack of consent. */
+export const NO_MARKETING_CONSENT_ERROR = 'Skipped: no marketing consent';
+
+// Contacts per query: keeps the `.in(...)` list under PostgREST's URL limits
+// and the conversations page under its row cap.
+const CONSENT_CHUNK = 100;
+
+/**
+ * BATCH form of `hasConsent`, for audiences of thousands: returns the ids, out
+ * of `contactIds`, that MAY be messaged for `purpose`. Two to three queries per
+ * chunk of contacts, never one per contact. Always filtered by `accountId`;
+ * `connectionId` scopes the implicit consent as in `hasConsent`.
+ *
+ * NARROWED on purpose (broadcasts existed before consent): only two groups are
+ * held back, everyone else keeps being messaged as before (imported and API
+ * contacts included):
+ *   - a contact with an EXPLICIT revocation of the purpose (for example one who
+ *     sent PARAR), even if they also wrote to us;
+ *   - a contact the digital menu created (`contacts.source = 'menu'`) who has no
+ *     explicit grant and never wrote on this connection.
+ */
+export async function contactsWithConsent(
+  db: SupabaseClient,
+  accountId: string,
+  contactIds: string[],
+  purpose: ConsentPurpose,
+  opts?: { connectionId?: string | null }
+): Promise<Set<string>> {
+  const allowed = new Set<string>();
+  const unique = [...new Set(contactIds)];
+  for (let i = 0; i < unique.length; i += CONSENT_CHUNK) {
+    const chunk = unique.slice(i, i + CONSENT_CHUNK);
+    const { data: explicitRows, error } = await db
+      .from('contact_consents')
+      .select('contact_id, granted')
+      .eq('account_id', accountId)
+      .eq('purpose', purpose)
+      .in('contact_id', chunk);
+    if (error) throw new Error(`consent lookup failed: ${error.message}`);
+    const explicit = new Map(
+      ((explicitRows ?? []) as { contact_id: string; granted: boolean }[]).map(
+        (r) => [r.contact_id, r.granted]
+      )
+    );
+    const undecided: string[] = [];
+    for (const id of chunk) {
+      const granted = explicit.get(id);
+      if (granted === undefined) undecided.push(id);
+      else if (granted) allowed.add(id);
+    }
+    if (undecided.length === 0) continue;
+
+    // Contacts the menu created need the implicit-consent check; every other
+    // undecided contact keeps the behavior broadcasts always had.
+    const { data: sourceRows, error: sourceErr } = await db
+      .from('contacts')
+      .select('id, source')
+      .eq('account_id', accountId)
+      .in('id', undecided);
+    if (sourceErr) {
+      throw new Error(`contact lookup failed: ${sourceErr.message}`);
+    }
+    const rows = (sourceRows ?? []) as { id: string; source: string | null }[];
+    const known = new Set(rows.map((r) => r.id));
+    const fromMenu = new Set(
+      rows.filter((r) => r.source === 'menu').map((r) => r.id)
+    );
+    // A contact this account does not have is never allowed (fail closed).
+    for (const id of undecided) {
+      if (known.has(id) && !fromMenu.has(id)) allowed.add(id);
+    }
+    if (fromMenu.size === 0) continue;
+
+    // Implicit: the customer wrote (on this connection, when given). One row
+    // per conversation that has at least one customer message.
+    let q = db
+      .from('conversations')
+      .select('contact_id, messages!inner(id)')
+      .eq('account_id', accountId)
+      .in('contact_id', [...fromMenu])
+      .eq('messages.sender_type', 'customer')
+      .limit(1, { referencedTable: 'messages' });
+    if (opts?.connectionId) q = q.eq('connection_id', opts.connectionId);
+    const { data: wrote, error: wroteErr } = await q;
+    if (wroteErr) {
+      throw new Error(`conversation lookup failed: ${wroteErr.message}`);
+    }
+    for (const r of (wrote ?? []) as { contact_id: string }[]) {
+      allowed.add(r.contact_id);
+    }
+  }
+  return allowed;
+}

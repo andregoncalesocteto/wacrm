@@ -227,16 +227,21 @@ BEGIN
     WHERE table_schema = 'public' AND is_nullable = 'YES' AND (
       (table_name = 'message_templates' AND column_name = 'connection_id')
       OR (table_name = 'broadcasts' AND column_name = 'connection_id')
-      OR (table_name = 'automation_pending_executions' AND column_name IN ('conversation_id', 'connection_id'))
     )
   ) <> 0 THEN
-    RAISE EXCEPTION 'message_templates/broadcasts/automation_pending_executions connection columns must be NOT NULL (migration 051)';
+    RAISE EXCEPTION 'message_templates/broadcasts connection columns must be NOT NULL (migration 051)';
   END IF;
   IF EXISTS (SELECT 1 FROM message_templates WHERE connection_id IS NULL)
      OR EXISTS (SELECT 1 FROM broadcasts WHERE connection_id IS NULL)
-     OR EXISTS (SELECT 1 FROM automation_pending_executions WHERE conversation_id IS NULL OR connection_id IS NULL)
   THEN
     RAISE EXCEPTION 'NULL connection rows left after migration 051';
+  END IF;
+  IF (
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'automation_pending_executions'
+      AND column_name IN ('conversation_id', 'connection_id') AND is_nullable = 'YES'
+  ) <> 2 THEN
+    RAISE EXCEPTION 'automation_pending_executions.conversation_id/connection_id must be nullable (migration 066)';
   END IF;
   IF to_regclass('public.message_templates_user_name_language_key') IS NOT NULL THEN
     RAISE EXCEPTION 'the old message_templates (user_id, name, language) index must be gone (migration 051)';
@@ -382,6 +387,76 @@ BEGIN
       AND column_name = 'origin_event_id'
   ) THEN
     RAISE EXCEPTION 'orders.origin_event_id is missing (migration 062)';
+  END IF;
+
+  -- 063: store key fields (generated normalized key, unique index), notice connection.
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'stores'
+      AND column_name = 'store_key_normalized'
+  ) THEN
+    RAISE EXCEPTION 'stores.store_key_normalized is missing (migration 063)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'stores'
+      AND column_name = 'notification_connection_id'
+  ) THEN
+    RAISE EXCEPTION 'stores.notification_connection_id is missing (migration 063)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'stores_account_store_key_uniq'
+  ) THEN
+    RAISE EXCEPTION 'stores_account_store_key_uniq index is missing (migration 063)';
+  END IF;
+
+  -- 064: direct journeys (origin, store anchor, nullable link/connection).
+  IF (
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND is_nullable = 'YES' AND (
+      (table_name = 'journeys' AND column_name IN ('link_sent_at', 'connection_id', 'store_id'))
+      OR (table_name = 'orders' AND column_name = 'idtrack')
+    )
+  ) <> 4 THEN
+    RAISE EXCEPTION 'journeys.link_sent_at/connection_id/store_id and orders.idtrack must be nullable (migration 064)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'journeys'
+      AND column_name = 'origin'
+  ) THEN
+    RAISE EXCEPTION 'journeys.origin is missing (migration 064)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'contacts'
+      AND column_name = 'source'
+  ) THEN
+    RAISE EXCEPTION 'contacts.source is missing (migration 064)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'uq_journeys_open_contact_store'
+  ) THEN
+    RAISE EXCEPTION 'uq_journeys_open_contact_store index is missing (migration 064)';
+  END IF;
+
+  IF to_regclass('public.contact_consents') IS NULL THEN
+    RAISE EXCEPTION 'contact_consents is missing (migration 065)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'uq_contact_consents_contact_purpose'
+  ) THEN
+    RAISE EXCEPTION 'uq_contact_consents_contact_purpose index is missing (migration 065)';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'uq_journeys_open_direct_contact_store'
+  ) THEN
+    RAISE EXCEPTION 'uq_journeys_open_direct_contact_store index is missing (migration 067)';
   END IF;
 
   RAISE NOTICE 'schema verification passed';

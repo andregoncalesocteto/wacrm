@@ -11,8 +11,12 @@ export interface AcceptedJourneyEvent {
   occurredAt: Date;
   journeyId: string;
   contactId: string;
-  conversationId: string;
-  connectionId: string;
+  /** Null for a direct event whose customer has no conversation yet: the
+   *  automation step creates it (after the consent check). */
+  conversationId: string | null;
+  connectionId: string | null;
+  /** Store of a direct event; lets a send step create the missing conversation. */
+  storeId?: string | null;
   /** Journey stage after the event (never behind where it was before). */
   stage: JourneyStage;
   /** Validated event properties (cart, order...), when the caller has them. */
@@ -61,8 +65,9 @@ export async function onJourneyEventAccepted(
     triggerType: 'journey_event',
     contactId: event.contactId,
     context: {
-      conversation_id: event.conversationId,
-      connection_id: event.connectionId,
+      ...(event.conversationId ? { conversation_id: event.conversationId } : {}),
+      ...(event.connectionId ? { connection_id: event.connectionId } : {}),
+      ...(event.storeId ? { store_id: event.storeId } : {}),
       journey_id: event.journeyId,
       journey_event_id: event.eventId,
       journey_event_name: event.name,
@@ -90,7 +95,9 @@ export async function onJourneyEventAccepted(
  */
 export async function onOrderStatusChanged(
   db: SupabaseClient,
-  change: OrderStatusChange
+  change: OrderStatusChange,
+  /** Store of a direct event: lets a send step create a missing conversation. */
+  storeId?: string | null
 ): Promise<void> {
   // Value and items are not in the change: read them from the order (account-scoped).
   const { data, error } = await db
@@ -120,6 +127,7 @@ export async function onOrderStatusChanged(
         : {}),
       ...(change.connectionId ? { connection_id: change.connectionId } : {}),
       ...(change.journeyId ? { journey_id: change.journeyId } : {}),
+      ...(storeId ? { store_id: storeId } : {}),
       order: {
         external_id: change.externalOrderId,
         status: change.status,

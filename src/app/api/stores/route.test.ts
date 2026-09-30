@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   db: {} as Record<string, Array<Record<string, unknown>>>,
   deleteError: null as null | { code: string; message: string },
   inserted: [] as Array<Record<string, unknown>>,
+  writeError: null as null | { code: string; message: string },
 }));
 
 vi.mock('@/lib/auth/account', async (importOriginal) => {
@@ -47,6 +48,9 @@ function makeClient() {
           filters.every(([k, v]) => r[k] === v)
         );
       const run = () => {
+        if ((op === 'insert' || op === 'update') && h.writeError) {
+          return { data: null, error: h.writeError };
+        }
         if (op === 'insert') {
           const row = { id: 'new-store', ...payload };
           h.inserted.push(row);
@@ -116,6 +120,7 @@ const params = (id: string) => ({ params: Promise.resolve({ id }) });
 beforeEach(() => {
   h.role = 'admin';
   h.deleteError = null;
+  h.writeError = null;
   h.inserted = [];
   h.db = {
     stores: [
@@ -307,5 +312,91 @@ describe('DELETE /api/stores/[id]', () => {
     expect((await DELETE(del(), params('s1'))).status).toBe(403);
     h.role = 'admin';
     expect((await DELETE(del(), params('sx'))).status).toBe(404);
+  });
+});
+
+describe('store key and notification connection', () => {
+  const patch = (id: string, body: unknown) =>
+    PATCH(
+      new Request('http://x', { method: 'PATCH', body: JSON.stringify(body) }),
+      params(id)
+    );
+
+  it('saves, changes and clears the three key fields', async () => {
+    expect(
+      (await patch('s1', { store_code: ' 89 ', store_acronym: 'RPA', business_acronym: 'BLC' })).status
+    ).toBe(200);
+    expect(h.db.stores[0]).toMatchObject({
+      store_code: '89',
+      store_acronym: 'RPA',
+      business_acronym: 'BLC',
+    });
+    await patch('s1', { business_acronym: 'PZA' });
+    expect(h.db.stores[0].business_acronym).toBe('PZA');
+    await patch('s1', { store_code: '', store_acronym: null, business_acronym: '' });
+    expect(h.db.stores[0]).toMatchObject({
+      store_code: null,
+      store_acronym: null,
+      business_acronym: null,
+    });
+  });
+
+  it('refuses "/" in a part with 400', async () => {
+    expect((await patch('s1', { store_code: '8/9' })).status).toBe(400);
+  });
+
+  it('answers 409 store_key_taken when the unique index rejects a duplicate key', async () => {
+    h.writeError = { code: '23505', message: 'duplicate key' };
+    const res = await patch('s1', { store_code: '89' });
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('store_key_taken');
+    const created = await POST(
+      json({ name: 'Nova', store_code: '89', store_acronym: 'R', business_acronym: 'B' })
+    );
+    expect(created.status).toBe(409);
+    expect((await created.json()).code).toBe('store_key_taken');
+  });
+
+  it('accepts a WhatsApp connection of the same store as the notice default, and clears it', async () => {
+    expect(
+      (await patch('s1', { notification_connection_id: '3f2b1c64-7a5e-4c1d-9b8a-0e1f2a3b4c5d' })).status
+    ).toBe(400);
+    h.db.channel_connections[0].id = '3f2b1c64-7a5e-4c1d-9b8a-0e1f2a3b4c5d';
+    expect(
+      (await patch('s1', { notification_connection_id: '3f2b1c64-7a5e-4c1d-9b8a-0e1f2a3b4c5d' })).status
+    ).toBe(200);
+    expect(h.db.stores[0].notification_connection_id).toBe(
+      '3f2b1c64-7a5e-4c1d-9b8a-0e1f2a3b4c5d'
+    );
+    expect((await patch('s1', { notification_connection_id: null })).status).toBe(200);
+    expect(h.db.stores[0].notification_connection_id).toBeNull();
+  });
+
+  it('refuses a connection of another store, another account or Telegram', async () => {
+    const T = '3f2b1c64-7a5e-4c1d-9b8a-0e1f2a3b4c5d';
+    // c2 is a Telegram connection of s2
+    h.db.channel_connections[1].id = T;
+    expect((await patch('s2', { notification_connection_id: T })).status).toBe(400);
+    // same connection id offered to a different store
+    expect((await patch('s1', { notification_connection_id: T })).status).toBe(400);
+    // connection of another account
+    h.db.channel_connections.push({
+      id: '4f2b1c64-7a5e-4c1d-9b8a-0e1f2a3b4c5d',
+      account_id: 'acct-2',
+      store_id: 's1',
+      channel_type: 'whatsapp_cloud',
+    });
+    expect(
+      (await patch('s1', { notification_connection_id: '4f2b1c64-7a5e-4c1d-9b8a-0e1f2a3b4c5d' })).status
+    ).toBe(400);
+    expect(h.db.stores[0].notification_connection_id).toBeUndefined();
+  });
+
+  it('refuses a notice connection on create (a new store has no connections)', async () => {
+    const res = await POST(
+      json({ name: 'Nova', notification_connection_id: '3f2b1c64-7a5e-4c1d-9b8a-0e1f2a3b4c5d' })
+    );
+    expect(res.status).toBe(400);
+    expect(h.inserted).toHaveLength(0);
   });
 });

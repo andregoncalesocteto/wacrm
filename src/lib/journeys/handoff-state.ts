@@ -62,7 +62,8 @@ export async function loadJourneyHandoffState(
       .eq('account_id', accountId)
       .eq('contact_id', contactId)
       .eq('connection_id', connectionId)
-      .order('link_sent_at', { ascending: false })
+      .order('link_sent_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     if (error) throw new Error(`journey lookup failed: ${error.message}`);

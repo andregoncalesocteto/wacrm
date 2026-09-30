@@ -19,9 +19,12 @@ export interface JourneyFilterValue {
   channelType: string;
   /** `all` or a store id. */
   storeId: string;
+  /** `all`, `crm_link` or `menu_direct`. */
+  origin: OriginFilter;
 }
 
 export const ALL_FILTER = 'all';
+export type OriginFilter = 'all' | 'crm_link' | 'menu_direct';
 
 interface JourneyFiltersProps {
   options: JourneyFilterOptions;
@@ -29,7 +32,7 @@ interface JourneyFiltersProps {
   onChange: (value: JourneyFilterValue) => void;
 }
 
-/** Channel-type and store filters for the order Journey pipeline. */
+/** Channel-type, store and origin filters for the order Journey pipeline. */
 export function JourneyFilters({
   options,
   value,
@@ -85,6 +88,30 @@ export function JourneyFilters({
               {s.name}
             </SelectItem>
           ))}
+        </SelectContent>
+      </Select>
+      <Select
+        value={value.origin}
+        onValueChange={(v) =>
+          v && onChange({ ...value, origin: v as OriginFilter })
+        }
+      >
+        <SelectTrigger
+          aria-label={t('origin')}
+          className="bg-card border-border text-foreground w-48"
+        >
+          <SelectValue>
+            {value.origin === ALL_FILTER
+              ? t('allOrigins')
+              : t(`originOption.${value.origin}`)}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_FILTER}>{t('allOrigins')}</SelectItem>
+          <SelectItem value="crm_link">{t('originOption.crm_link')}</SelectItem>
+          <SelectItem value="menu_direct">
+            {t('originOption.menu_direct')}
+          </SelectItem>
         </SelectContent>
       </Select>
     </div>

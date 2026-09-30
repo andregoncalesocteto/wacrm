@@ -9,6 +9,16 @@ const h = vi.hoisted(() => ({ callBotApi: vi.fn() }));
 vi.mock('@/lib/channels/providers/telegram/api', () => ({
   callBotApi: h.callBotApi,
 }));
+// Consent is covered in broadcast-core.consent.test.ts; here everyone is allowed.
+vi.mock('@/lib/consent/consent', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  contactsWithConsent: async (
+    _db: unknown,
+    _account: string,
+    ids: string[]
+  ) => new Set(ids),
+}));
+
 vi.mock('@/lib/channels/connections', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/channels/connections')>()),
   getConnectionCredentials: async () => ({ bot_token: 'tg-tok' }),

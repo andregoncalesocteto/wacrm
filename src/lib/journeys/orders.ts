@@ -32,7 +32,8 @@ export interface OrderRow {
   connection_id: string | null;
   journey_id: string | null;
   deal_id: string | null;
-  idtrack: string;
+  /** Null on an order that came from a direct event (no tracking token). */
+  idtrack: string | null;
   status: OrderStatus;
   value: number;
   currency: string;
@@ -229,7 +230,7 @@ export async function recordPurchase(
   args: {
     accountId: string;
     journey: JourneyRow;
-    idtrack: string;
+    idtrack: string | null;
     /** `event_id` of the Purchase: stored as the order's origin. */
     eventId: string;
     occurredAt: Date;

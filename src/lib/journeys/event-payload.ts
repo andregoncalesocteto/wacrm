@@ -29,15 +29,42 @@ export interface CartProperties {
   cart: { value: number; items: CartItem[] };
 }
 
+/** `customer` of an event (direct events, contract addendum v2). */
+export interface EventCustomer {
+  /** E.164 with the `+`. Absent only when the event carries an `idtrack`. */
+  phone: string | null;
+  name: string | null;
+}
+
+/**
+ * `consent` of an event (stored by `applyEventConsent`). A purpose left out is
+ * `undefined` (never a revocation); `givenAt` is required with any purpose.
+ */
+export interface EventConsent {
+  notifications?: boolean;
+  marketing?: boolean;
+  givenAt?: Date;
+}
+
 export interface CommonEventFields {
   eventId: string;
   name: string;
-  idtrack: string;
+  /** Null for a direct event (identified by `storeKey` + `customer.phone`). */
+  idtrack: string | null;
+  storeKey: string | null;
+  customer: EventCustomer | null;
+  consent: EventConsent | null;
   occurredAt: Date;
 }
 
 const MAX_EVENT_ID_LENGTH = 200;
 const MAX_CART_ITEMS = 200;
+const MAX_STORE_KEY_LENGTH = 200;
+const MAX_CUSTOMER_NAME_LENGTH = 200;
+/** Tolerated distance of `consent.given_at` into the future. */
+const MAX_CONSENT_CLOCK_SKEW_MS = 5 * 60 * 1000;
+/** E.164 with the mandatory `+` (the menu normalises before sending). */
+const E164 = /^\+[1-9]\d{6,14}$/;
 // ISO 8601 with an explicit UTC designator (`Z` or `+00:00`).
 const ISO_UTC =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]00:?00)$/;
@@ -69,7 +96,21 @@ export function parseCommonFields(body: unknown): CommonEventFields {
     );
   }
   const name = requireString(body, 'name');
-  const idtrack = requireString(body, 'idtrack');
+  const idtrack = optionalString(body, 'idtrack');
+  const storeKey = optionalString(body, 'store_key');
+  if (storeKey && storeKey.length > MAX_STORE_KEY_LENGTH) {
+    throw badRequest(
+      `'store_key' must have at most ${MAX_STORE_KEY_LENGTH} characters`
+    );
+  }
+  const customer = parseCustomer(body.customer);
+  const consent = parseConsent(body.consent);
+
+  if (!idtrack && !(storeKey && customer?.phone)) {
+    throw badRequest(
+      "The event must carry 'idtrack', or 'store_key' together with 'customer.phone'"
+    );
+  }
 
   const rawAt = requireString(body, 'occurred_at');
   const occurredAt = new Date(rawAt);
@@ -78,7 +119,92 @@ export function parseCommonFields(body: unknown): CommonEventFields {
       "'occurred_at' must be an ISO 8601 UTC timestamp, e.g. 2026-10-02T21:14:05Z"
     );
   }
-  return { eventId, name, idtrack, occurredAt };
+  return {
+    eventId,
+    name,
+    idtrack,
+    storeKey,
+    customer,
+    consent,
+    occurredAt,
+  };
+}
+
+/** A string field that may be absent/null; present means non-empty. */
+function optionalString(
+  body: Record<string, unknown>,
+  field: string,
+  path = field
+): string | null {
+  const v = body[field];
+  if (v === undefined || v === null) return null;
+  if (typeof v !== 'string' || v.trim() === '') {
+    throw badRequest(`'${path}' must be a non-empty string when present`);
+  }
+  return v.trim();
+}
+
+function parseCustomer(raw: unknown): EventCustomer | null {
+  if (raw === undefined || raw === null) return null;
+  if (!isObject(raw)) throw badRequest("'customer' must be an object");
+  const phone = optionalString(raw, 'phone', 'customer.phone');
+  if (phone !== null && !E164.test(phone)) {
+    throw badRequest(
+      "'customer.phone' must be in international E.164 format with a leading '+', e.g. +5511999998888"
+    );
+  }
+  const name = optionalString(raw, 'name', 'customer.name');
+  if (name && name.length > MAX_CUSTOMER_NAME_LENGTH) {
+    throw badRequest(
+      `'customer.name' must have at most ${MAX_CUSTOMER_NAME_LENGTH} characters`
+    );
+  }
+  return { phone, name };
+}
+
+function parseConsent(raw: unknown): EventConsent | null {
+  if (raw === undefined || raw === null) return null;
+  if (!isObject(raw)) throw badRequest("'consent' must be an object");
+  const consent: EventConsent = {};
+  for (const purpose of ['notifications', 'marketing'] as const) {
+    const v = raw[purpose];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== 'boolean') {
+      throw badRequest(`'consent.${purpose}' must be a boolean`);
+    }
+    consent[purpose] = v;
+  }
+  const given = raw.given_at;
+  if (given !== undefined && given !== null) {
+    const at = typeof given === 'string' ? new Date(given) : null;
+    if (
+      typeof given !== 'string' ||
+      !ISO_UTC.test(given) ||
+      !at ||
+      Number.isNaN(at.getTime())
+    ) {
+      throw badRequest(
+        "'consent.given_at' must be an ISO 8601 UTC timestamp, e.g. 2026-10-02T21:10:00Z"
+      );
+    }
+    // A wrong clock on the menu would otherwise freeze later updates of the
+    // purpose (an update only lands when its `given_at` is newer).
+    if (at.getTime() > Date.now() + MAX_CONSENT_CLOCK_SKEW_MS) {
+      throw badRequest(
+        "'consent.given_at' is in the future (more than 5 minutes ahead of the server clock); check the clock of the sender"
+      );
+    }
+    consent.givenAt = at;
+  }
+  if (
+    (consent.notifications !== undefined || consent.marketing !== undefined) &&
+    !consent.givenAt
+  ) {
+    throw badRequest(
+      "'consent.given_at' is required when 'consent' carries a purpose"
+    );
+  }
+  return consent;
 }
 
 function parseItems(raw: unknown, path: string, hint = ''): CartItem[] {

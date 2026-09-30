@@ -19,9 +19,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { STORE_LIMITS } from '@/lib/stores/validation';
+import { buildStoreKey } from '@/lib/stores/store-key';
 import {
   connectionChipState,
   hoursToText,
+  notificationCandidates,
   textToHours,
   validateDraft,
   type ConnectionChipState,
@@ -45,6 +47,10 @@ interface StoreRow {
   business_hours: Record<string, unknown> | null;
   manager_name: string | null;
   menu_url: string | null;
+  store_code: string | null;
+  store_acronym: string | null;
+  business_acronym: string | null;
+  notification_connection_id: string | null;
   connections: StoreConnection[];
 }
 
@@ -59,9 +65,17 @@ const CHIP_TONE: Record<ConnectionChipState, string> = {
 const CHANNEL_TYPES = ['whatsapp_cloud', 'telegram'] as const;
 
 function emptyDraft(): StoreDraft {
-  return { name: '', address: '', phone: '', hours: '',
+  return {
+    name: '',
+    address: '',
+    phone: '',
+    hours: '',
     manager_name: '',
     menu_url: '',
+    store_code: '',
+    store_acronym: '',
+    business_acronym: '',
+    notification_connection_id: '',
   };
 }
 
@@ -115,6 +129,10 @@ export function StoresPanel() {
       hours: hoursToText(s.business_hours),
       manager_name: s.manager_name ?? '',
       menu_url: s.menu_url ?? '',
+      store_code: s.store_code ?? '',
+      store_acronym: s.store_acronym ?? '',
+      business_acronym: s.business_acronym ?? '',
+      notification_connection_id: s.notification_connection_id ?? '',
     });
     setEditing({ id: s.id });
   };
@@ -130,7 +148,9 @@ export function StoresPanel() {
             ? t('toastNameTooLong', { max: STORE_LIMITS.name })
             : problem === 'menuUrlInvalid'
               ? t('toastMenuUrlInvalid')
-              : t('toastFieldTooLong')
+              : problem === 'keyPartInvalid'
+                ? t('toastKeyPartInvalid')
+                : t('toastFieldTooLong')
       );
       return;
     }
@@ -147,13 +167,26 @@ export function StoresPanel() {
             phone: draft.phone,
             manager_name: draft.manager_name,
             menu_url: draft.menu_url,
+            store_code: draft.store_code,
+            store_acronym: draft.store_acronym,
+            business_acronym: draft.business_acronym,
+            // Only an existing store can have a default (it has no connections yet otherwise).
+            ...(editing.id && {
+              notification_connection_id: draft.notification_connection_id,
+            }),
             business_hours: textToHours(draft.hours),
           }),
         }
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(data.error ?? t('toastSaveFailed'));
+        toast.error(
+          data.code === 'store_key_taken'
+            ? t('toastKeyTaken')
+            : data.code === 'invalid_notification_connection'
+              ? t('toastNotificationInvalid')
+              : (data.error ?? t('toastSaveFailed'))
+        );
         return;
       }
       toast.success(editing.id ? t('toastUpdated') : t('toastCreated'));
@@ -196,6 +229,10 @@ export function StoresPanel() {
     (CHANNEL_TYPES as readonly string[]).includes(type)
       ? tc(`type.${type as (typeof CHANNEL_TYPES)[number]}`)
       : type;
+
+  const whatsappOptions = notificationCandidates(
+    stores.find((s) => s.id === editing?.id)?.connections ?? []
+  );
 
   return (
     <section className="animate-in fade-in-50 max-w-3xl space-y-4 duration-200">
@@ -247,6 +284,11 @@ export function StoresPanel() {
                     {s.address || s.phone ? (
                       <p className="text-muted-foreground truncate text-xs">
                         {[s.address, s.phone].filter(Boolean).join(' · ')}
+                      </p>
+                    ) : null}
+                    {buildStoreKey(s) ? (
+                      <p className="text-muted-foreground truncate font-mono text-xs">
+                        {buildStoreKey(s)}
                       </p>
                     ) : null}
                     {s.menu_url ? (
@@ -393,6 +435,74 @@ export function StoresPanel() {
                 {t('menuUrlHint')}
               </p>
             </div>
+            <div className="space-y-1">
+              <Label>{t('storeKeyLabel')}</Label>
+              <div className="grid grid-cols-3 gap-2">
+                <Input
+                  id="store-code"
+                  aria-label={t('storeCodeLabel')}
+                  value={draft.store_code}
+                  maxLength={STORE_LIMITS.store_code}
+                  placeholder={t('storeCodePlaceholder')}
+                  onChange={(e) =>
+                    setDraft({ ...draft, store_code: e.target.value })
+                  }
+                />
+                <Input
+                  id="store-acronym"
+                  aria-label={t('storeAcronymLabel')}
+                  value={draft.store_acronym}
+                  maxLength={STORE_LIMITS.store_acronym}
+                  placeholder={t('storeAcronymPlaceholder')}
+                  onChange={(e) =>
+                    setDraft({ ...draft, store_acronym: e.target.value })
+                  }
+                />
+                <Input
+                  id="store-business-acronym"
+                  aria-label={t('businessAcronymLabel')}
+                  value={draft.business_acronym}
+                  maxLength={STORE_LIMITS.business_acronym}
+                  placeholder={t('businessAcronymPlaceholder')}
+                  onChange={(e) =>
+                    setDraft({ ...draft, business_acronym: e.target.value })
+                  }
+                />
+              </div>
+              <p className="text-muted-foreground text-xs">
+                {buildStoreKey(draft)
+                  ? t('storeKeyPreview', { key: buildStoreKey(draft) ?? '' })
+                  : t('storeKeyHint')}
+              </p>
+            </div>
+            {editing?.id && whatsappOptions.length > 1 ? (
+              <div className="space-y-1">
+                <Label htmlFor="store-notification-connection">
+                  {t('notificationConnectionLabel')}
+                </Label>
+                <select
+                  id="store-notification-connection"
+                  className="border-input bg-background h-8 w-full rounded-lg border px-2 text-sm"
+                  value={draft.notification_connection_id}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      notification_connection_id: e.target.value,
+                    })
+                  }
+                >
+                  <option value="">{t('notificationConnectionNone')}</option>
+                  {whatsappOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.display_name || channelLabel(c.channel_type)}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-muted-foreground text-xs">
+                  {t('notificationConnectionHint')}
+                </p>
+              </div>
+            ) : null}
           </div>
           <DialogFooter>
             <Button

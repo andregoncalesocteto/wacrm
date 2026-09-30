@@ -19,6 +19,16 @@ const h = vi.hoisted(() => ({
   getConnectionById: vi.fn(),
   getConnectionCredentials: vi.fn(),
 }));
+// Consent is covered in broadcast-core.consent.test.ts; here everyone is allowed.
+vi.mock('@/lib/consent/consent', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  contactsWithConsent: async (
+    _db: unknown,
+    _account: string,
+    ids: string[]
+  ) => new Set(ids),
+}));
+
 vi.mock('@/lib/channels/connections', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/channels/connections')>()),
   getConnectionById: h.getConnectionById,

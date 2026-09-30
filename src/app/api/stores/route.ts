@@ -5,6 +5,10 @@ import {
   toErrorResponse,
 } from '@/lib/auth/account';
 import { parseStoreInput } from '@/lib/stores/validation';
+import {
+  INVALID_NOTIFICATION_CONNECTION,
+  STORE_KEY_TAKEN,
+} from '@/lib/stores/store-key';
 
 /**
  * GET  /api/stores — stores of the caller's account (any member), each with a
@@ -69,12 +73,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
 
+    if (parsed.value.notification_connection_id) {
+      // A new store has no connections yet, so none can be its default.
+      return NextResponse.json(
+        INVALID_NOTIFICATION_CONNECTION,
+        { status: 400 }
+      );
+    }
+
     const { data, error } = await supabase
       .from('stores')
       .insert({ ...parsed.value, account_id: accountId })
       .select('*')
       .single();
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505') {
+        return NextResponse.json(STORE_KEY_TAKEN, { status: 409 });
+      }
+      throw error;
+    }
 
     return NextResponse.json(
       { store: { ...data, connections: [] } },

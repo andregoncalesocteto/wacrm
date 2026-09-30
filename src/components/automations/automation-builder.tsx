@@ -141,6 +141,34 @@ function FallbackTemplateFields({
   )
 }
 
+/**
+ * `consent_purpose` of a send step: which consent a customer who never wrote to
+ * the CRM must have given for this step to send. Unset counts as marketing.
+ */
+function ConsentPurposeField({
+  value,
+  onChange,
+  t,
+}: {
+  value: unknown
+  onChange: (v: "notifications" | "marketing") => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  return (
+    <FieldBlock label={t("config.consentPurposeLabel")}>
+      <select
+        value={value === "notifications" ? "notifications" : "marketing"}
+        onChange={(e) => onChange(e.target.value === "notifications" ? "notifications" : "marketing")}
+        className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+      >
+        <option value="notifications">{t("config.consentPurposes.notifications")}</option>
+        <option value="marketing">{t("config.consentPurposes.marketing")}</option>
+      </select>
+      <p className="mt-1 text-[11px] text-muted-foreground">{t("config.consentPurposeHint")}</p>
+    </FieldBlock>
+  )
+}
+
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
 // ------------------------------------------------------------
@@ -1478,6 +1506,10 @@ function StepEditor({
             <code className="rounded bg-muted px-1">{"{{order_value}}"}</code>{" "}
             {t("config.orderVariablesHint")}
           </p>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            <code className="rounded bg-muted px-1">{"{{store_name}}"}</code>{" "}
+            {t("config.storeNameHint")}
+          </p>
           <FallbackTemplateFields
             value={
               cfg.fallback_template as
@@ -1503,28 +1535,55 @@ function StepEditor({
               </span>
             </span>
           </label>
+          <ConsentPurposeField
+            value={cfg.consent_purpose}
+            onChange={(v) => set({ consent_purpose: v })}
+            t={t}
+          />
         </FieldBlock>
       )
     case "send_buttons":
     case "send_list":
       // The whole step_config IS the interactive payload; the shared
       // builder edits it in place (and enforces Meta's limits + preview).
+      // `consent_purpose` rides along on the same object, so it is carried
+      // over explicitly when the builder hands back a new payload.
       return (
-        <InteractiveBuilder
-          value={asInteractive(cfg)}
-          onChange={(payload) =>
-            onChange({ ...step, step_config: toStepConfig(payload) })
-          }
-        />
+        <>
+          <InteractiveBuilder
+            value={asInteractive(cfg)}
+            onChange={(payload) =>
+              onChange({
+                ...step,
+                step_config: {
+                  ...toStepConfig(payload),
+                  ...(cfg.consent_purpose ? { consent_purpose: cfg.consent_purpose } : {}),
+                },
+              })
+            }
+          />
+          <ConsentPurposeField
+            value={cfg.consent_purpose}
+            onChange={(v) => set({ consent_purpose: v })}
+            t={t}
+          />
+        </>
       )
     case "send_template":
       return (
-        <SendTemplateFields
-          templateName={(cfg.template_name as string) ?? ""}
-          language={(cfg.language as string) ?? ""}
-          onChange={(patch) => set(patch)}
-          t={t}
-        />
+        <>
+          <SendTemplateFields
+            templateName={(cfg.template_name as string) ?? ""}
+            language={(cfg.language as string) ?? ""}
+            onChange={(patch) => set(patch)}
+            t={t}
+          />
+          <ConsentPurposeField
+            value={cfg.consent_purpose}
+            onChange={(v) => set({ consent_purpose: v })}
+            t={t}
+          />
+        </>
       )
     case "add_tag":
     case "remove_tag":
@@ -1671,6 +1730,9 @@ function StepEditor({
                 {t("config.subjects.conversation_unattended")}
               </option>
               <option value="journey_flag">{t("config.subjects.journey_flag")}</option>
+              <option value="business_acronym_is">
+                {t("config.subjects.business_acronym_is")}
+              </option>
             </select>
           </FieldBlock>
           {cfg.subject === "journey_open" && (
@@ -1694,6 +1756,19 @@ function StepEditor({
               </select>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {t("config.journeyFlagHint")}
+              </p>
+            </FieldBlock>
+          )}
+          {cfg.subject === "business_acronym_is" && (
+            <FieldBlock label={t("config.businessAcronymLabel")}>
+              <Input
+                placeholder={t("config.businessAcronymPlaceholder")}
+                value={(cfg.operand as string) ?? ""}
+                onChange={(e) => set({ operand: e.target.value })}
+                className="bg-muted text-foreground"
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {t("config.businessAcronymHint")}
               </p>
             </FieldBlock>
           )}
@@ -1746,6 +1821,7 @@ function StepEditor({
             cfg.subject !== "customer_replied_since" &&
             cfg.subject !== "journey_stage" &&
             cfg.subject !== "journey_flag" &&
+            cfg.subject !== "business_acronym_is" &&
             cfg.subject !== "conversation_unattended" && (
           <FieldBlock label={t("config.operandLabel")}>
             <Input

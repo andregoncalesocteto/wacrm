@@ -47,6 +47,7 @@ import {
 } from '@/lib/journeys'
 
 import { orderVariable, type AutomationOrderContext } from './order-vars'
+import { gateSend, stepConsentPurpose } from './send-gate'
 
 // ------------------------------------------------------------
 // Public API
@@ -84,6 +85,10 @@ export interface AutomationContext {
   /** The order this run is about: order_status_changed (status change) or a
    *  Purchase journey_event. Feeds `{{order_id}}`/`{{order_status}}`/`{{order_value}}`. */
   order?: AutomationOrderContext
+  /** Store of a direct event (no conversation yet): lets a send step create the
+   *  conversation on the store's notification connection, after the consent
+   *  check. Absent for runs that already have a conversation. */
+  store_id?: string
 }
 
 export interface DispatchInput {
@@ -436,38 +441,48 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<RunStatus> {
       // (time-based, tag-based, new-contact) resolves the contact's most
       // recent one, same rule as a send step (design.md R4); a contact with
       // none at all fails the step, same as a send that can't resolve one.
-      let waitConversationId: string
-      try {
-        waitConversationId = await resolveConversationId(args, 'text')
-      } catch (err) {
-        if (err instanceof ExecutionIgnored) {
+      // A direct event (customer who never wrote) has a store but no
+      // conversation: the run parks WITHOUT one (columns are nullable since
+      // 066) and the send step creates it, closed, after the consent check.
+      let waitConversationId: string | null = null
+      if (!args.context.conversation_id && args.context.store_id) {
+        // no conversation to resolve
+      } else {
+        try {
+          waitConversationId = await resolveConversationId(args, 'text')
+        } catch (err) {
+          if (err instanceof ExecutionIgnored) {
+            results.push({
+              step_id: step.id,
+              step_type: step.step_type,
+              status: 'skipped',
+              detail: `ignored: ${err.message}`,
+            })
+            break
+          }
+          const msg = err instanceof Error ? err.message : String(err)
           results.push({
             step_id: step.id,
             step_type: step.step_type,
-            status: 'skipped',
-            detail: `ignored: ${err.message}`,
+            status: 'failed',
+            detail: msg,
           })
+          status = 'failed'
+          errorMessage = msg
           break
         }
-        const msg = err instanceof Error ? err.message : String(err)
-        results.push({
-          step_id: step.id,
-          step_type: step.step_type,
-          status: 'failed',
-          detail: msg,
-        })
-        status = 'failed'
-        errorMessage = msg
-        break
       }
-      const { data: convRow } = await db
-        .from('conversations')
-        .select('connection_id')
-        .eq('id', waitConversationId)
-        .eq('account_id', args.automation.account_id)
-        .maybeSingle()
-      const waitConnectionId =
-        (convRow as { connection_id?: string | null } | null)?.connection_id ?? null
+      let waitConnectionId: string | null = null
+      if (waitConversationId) {
+        const { data: convRow } = await db
+          .from('conversations')
+          .select('connection_id')
+          .eq('id', waitConversationId)
+          .eq('account_id', args.automation.account_id)
+          .maybeSingle()
+        waitConnectionId =
+          (convRow as { connection_id?: string | null } | null)?.connection_id ?? null
+      }
       await db.from('automation_pending_executions').insert({
         automation_id: args.automation.id,
         // Tenancy: account_id required NOT NULL post-017.
@@ -572,6 +587,8 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'send_message': {
       const cfg = step.step_config as SendMessageStepConfig
       if (!args.contactId) throw new Error('send_message needs a contact')
+      const contactId = args.contactId
+      args = await gateSendStep(args, contactId, cfg.consent_purpose)
       // `{{menu_link}}` resolves conversation -> connection -> store -> menu_url
       // and mints/renews the Tracking token BEFORE the send; a failure there
       // throws, so nothing is sent. The Journey opens only after the send.
@@ -580,7 +597,24 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         // Sending a link fires menu_link_sent: this run would trigger itself.
         throw new Error('{{menu_link}} is not allowed in a menu_link_sent automation')
       }
-      const preText = usesMenuLink ? cfg.text : interpolate(cfg.text, args)
+      // `{{store_name}}`: conversation -> connection -> store, read now. No
+      // store (or no conversation) leaves it empty and warns, never fails.
+      const usesStoreName = STORE_NAME_VARIABLE.test(cfg.text)
+      let storeName = ''
+      let warning = ''
+      if (usesStoreName) {
+        const store = await storeOfConversation(
+          args,
+          await resolveConversationId(args, 'text'),
+        )
+        storeName = store?.name ?? ''
+        if (!storeName.trim()) {
+          storeName = ''
+          warning = '; warning: {{store_name}} is empty (the conversation has no store)'
+        }
+      }
+      const extra = { store_name: storeName }
+      const preText = usesMenuLink ? cfg.text : interpolate(cfg.text, args, extra)
       if (!preText.trim()) throw new Error('send_message has empty text')
       const conversationId = await resolveConversationId(args, 'text')
       let menuLink: ResolvedMenuLink | null = null
@@ -590,9 +624,9 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           accountId: args.automation.account_id,
           userId: args.automation.user_id,
           conversationId,
-          contactId: args.contactId,
+          contactId,
         })
-        text = interpolate(replaceMenuLinkVariable(cfg.text, menuLink.url), args)
+        text = interpolate(replaceMenuLinkVariable(cfg.text, menuLink.url), args, extra)
       }
       // One-shot mark: claim it atomically BEFORE sending, so a second run
       // (or a concurrent one) finds it taken and sends nothing.
@@ -617,7 +651,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           accountId: args.automation.account_id,
           userId: args.automation.user_id,
           conversationId,
-          contactId: args.contactId,
+          contactId,
           text,
           // A template fallback would replace the text and drop the link, so a
           // link message never falls back: outside the window it fails visibly.
@@ -645,17 +679,21 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           accountId: args.automation.account_id,
           userId: args.automation.user_id,
           conversationId,
-          contactId: args.contactId,
+          contactId,
           connectionId: menuLink.connectionId,
         })
       }
-      return `sent via Meta (${whatsapp_message_id})`
+      return `sent via Meta (${whatsapp_message_id})${warning}`
     }
 
     case 'send_buttons':
     case 'send_list': {
-      const payload = step.step_config as SendButtonsStepConfig | SendListStepConfig
+      const { consent_purpose, ...payload } = step.step_config as
+        | SendButtonsStepConfig
+        | SendListStepConfig
       if (!args.contactId) throw new Error(`${step.step_type} needs a contact`)
+      const contactId = args.contactId
+      args = await gateSendStep(args, contactId, consent_purpose)
       // Validate against Meta's limits before the network call so a bad
       // payload surfaces as a clear failed-step detail rather than a raw
       // Meta 400 mid-conversation.
@@ -669,7 +707,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
         conversationId,
-        contactId: args.contactId,
+        contactId,
         payload,
       })
       return `interactive sent via Meta (${whatsapp_message_id})`
@@ -679,13 +717,15 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       const cfg = step.step_config as SendTemplateStepConfig
       if (!args.contactId) throw new Error('send_template needs a contact')
       if (!cfg.template_name) throw new Error('send_template needs template_name')
+      const contactId = args.contactId
+      args = await gateSendStep(args, contactId, cfg.consent_purpose)
       const conversationId = await resolveConversationId(args, 'templates')
       const params = templateParams(cfg.variables)
       const { whatsapp_message_id } = await engineSendTemplate({
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
         conversationId,
-        contactId: args.contactId,
+        contactId,
         templateName: cfg.template_name,
         language: cfg.language,
         params,
@@ -893,6 +933,37 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
 
 /** The run has nowhere valid to send; recorded as ignored, not failed. */
 class ExecutionIgnored extends Error {}
+
+/**
+ * Consent + conversation gate of a send step (see `gateSend`). Ignores the step
+ * with the reason when there is no consent for its purpose (or no notification
+ * connection for a direct event); otherwise returns the args to send with: the
+ * conversation created/found for a store-only run is put in the context.
+ */
+async function gateSendStep(
+  args: ExecuteArgs,
+  contactId: string,
+  declaredPurpose: unknown,
+): Promise<ExecuteArgs> {
+  const gate = await gateSend(supabaseAdmin(), {
+    accountId: args.automation.account_id,
+    userId: args.automation.user_id,
+    contactId,
+    purpose: stepConsentPurpose(declaredPurpose),
+    conversationId: args.context.conversation_id,
+    storeId: args.context.store_id,
+  })
+  if (!gate.ok) throw new ExecutionIgnored(gate.reason)
+  if (!gate.conversationId || args.context.conversation_id) return args
+  return {
+    ...args,
+    context: {
+      ...args.context,
+      conversation_id: gate.conversationId,
+      ...(gate.connectionId ? { connection_id: gate.connectionId } : {}),
+    },
+  }
+}
 
 type SendNeed = 'text' | keyof Pick<Capabilities, 'templates' | 'interactiveButtons' | 'interactiveList'>
 
@@ -1147,7 +1218,8 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
     case 'conversation_unattended': {
       // No human owns the conversation and the AI has not handed it off.
       const conv = await conditionConversation(args)
-      if (!conv) return false
+      // No conversation yet (a direct event): nobody attends the customer.
+      if (!conv) return true
       return !conv.assigned_agent_id && !conv.ai_autoreply_disabled
     }
     case 'journey_flag': {
@@ -1155,12 +1227,28 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       if (!isJourneyFlag(cfg.operand)) return false
       return isJourneyFlagSet(await currentJourney(args), cfg.operand)
     }
+    case 'business_acronym_is': {
+      // The store's acronym is read NOW (conversation -> connection -> store),
+      // so it also holds after a wait resumes. No store or no acronym: false.
+      const wanted = (cfg.operand ?? '').trim().toLowerCase()
+      if (!wanted) return false
+      // The store of the event (direct runs) wins over the conversation's.
+      const conv = args.context.store_id ? null : await conditionConversation(args)
+      const store = args.context.store_id
+        ? await storeById(args, args.context.store_id)
+        : conv
+          ? await storeOfConversation(args, conv.id)
+          : null
+      const acronym = (store?.business_acronym ?? '').trim().toLowerCase()
+      return acronym !== '' && acronym === wanted
+    }
     case 'customer_replied_since': {
       // Both sides are read from the database NOW (this runs when the step
       // executes, also after a wait resumes), never from a scheduling snapshot.
       const since = await replyReferenceInstant(cfg.operand, args)
       if (since === null) return false
       const conv = await conditionConversation(args)
+      // No conversation: the customer never wrote, so there is no reply.
       if (!conv) return false
       const { data } = await db
         .from('messages')
@@ -1186,6 +1274,54 @@ interface ConditionConversation {
   ai_autoreply_disabled: boolean | null
 }
 
+const STORE_NAME_VARIABLE = /\{\{\s*store_name\s*\}\}/
+
+/** A store of the automation's account, or null. */
+async function storeById(
+  args: ExecuteArgs,
+  storeId: string,
+): Promise<{ name: string | null; business_acronym: string | null } | null> {
+  const { data } = await supabaseAdmin()
+    .from('stores')
+    .select('name, business_acronym')
+    .eq('id', storeId)
+    .eq('account_id', args.automation.account_id)
+    .maybeSingle()
+  return (data as { name: string | null; business_acronym: string | null } | null) ?? null
+}
+
+/** The store of a conversation (conversation -> connection -> store), or null. */
+async function storeOfConversation(
+  args: ExecuteArgs,
+  conversationId: string,
+): Promise<{ name: string | null; business_acronym: string | null } | null> {
+  const db = supabaseAdmin()
+  const accountId = args.automation.account_id
+  const { data: conv } = await db
+    .from('conversations')
+    .select('connection_id')
+    .eq('id', conversationId)
+    .eq('account_id', accountId)
+    .maybeSingle()
+  const connectionId = (conv as { connection_id: string | null } | null)?.connection_id
+  if (!connectionId) return null
+  const { data: conn } = await db
+    .from('channel_connections')
+    .select('store_id')
+    .eq('id', connectionId)
+    .eq('account_id', accountId)
+    .maybeSingle()
+  const storeId = (conn as { store_id: string | null } | null)?.store_id
+  if (!storeId) return null
+  const { data: store } = await db
+    .from('stores')
+    .select('name, business_acronym')
+    .eq('id', storeId)
+    .eq('account_id', accountId)
+    .maybeSingle()
+  return (store as { name: string | null; business_acronym: string | null } | null) ?? null
+}
+
 /** Position of a stage in the funnel, or -1 when it is not one. */
 function stageRank(stage: string | undefined): number {
   return JOURNEY_STAGES.findIndex((s) => s.key === stage)
@@ -1208,11 +1344,26 @@ async function conditionConversation(
     return (data as ConditionConversation | null) ?? null
   }
   if (!args.contactId) return null
-  const { data } = await db
+  let query = db
     .from('conversations')
     .select('id, connection_id, assigned_agent_id, ai_autoreply_disabled')
     .eq('account_id', accountId)
     .eq('contact_id', args.contactId)
+  // A direct run carries its store: the fallback conversation must belong to
+  // a connection of THAT store. A conversation of another store is not this
+  // event's conversation (no conversation there means "no conversation").
+  const storeId = args.context.store_id
+  if (storeId) {
+    const { data: conns } = await db
+      .from('channel_connections')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('store_id', storeId)
+    const ids = ((conns ?? []) as { id: string }[]).map((c) => c.id)
+    if (ids.length === 0) return null
+    query = query.in('connection_id', ids)
+  }
+  const { data } = await query
     .order('last_message_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -1293,8 +1444,13 @@ function waitMs(cfg: WaitStepConfig): number {
   return Math.max(1_000, cfg.amount * unitMs)
 }
 
-function interpolate(s: string, args: ExecuteArgs): string {
+function interpolate(
+  s: string,
+  args: ExecuteArgs,
+  extra?: { store_name?: string },
+): string {
   return s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
+    if (key === 'store_name') return extra?.store_name ?? ''
     const [ns, prop] = String(key).split('.')
     if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
     if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')

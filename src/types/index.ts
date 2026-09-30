@@ -420,6 +420,10 @@ export interface Deal {
     cart_items_count: number;
     cart_value: number;
     cart_currency: string | null;
+    /** `crm_link` (link sent by the CRM) or `menu_direct` (event without link). */
+    origin?: 'crm_link' | 'menu_direct';
+    /** Store of a direct Journey (may have no connection). */
+    store_id?: string | null;
   } | null;
   assigned_to?: string;
   title: string;
@@ -598,8 +602,16 @@ export type AutomationTriggerConfig =
   | OrderStatusChangedTriggerConfig
   | Record<string, unknown>;
 
+/**
+ * Purpose of the consent a send step needs from a customer who never wrote to
+ * the CRM (`notifications` = order notices, `marketing` = offers/recovery).
+ * Absent = `marketing`, the strictest.
+ */
+export type StepConsentPurpose = 'notifications' | 'marketing';
+
 export interface SendMessageStepConfig {
   text: string;
+  consent_purpose?: StepConsentPurpose;
   /**
    * Template sent instead of `text` when the channel's reply window (WhatsApp
    * 24 h) is closed. Without it, a send outside the window fails visibly.
@@ -621,10 +633,15 @@ export interface SendMessageStepConfig {
  * payload (same shape stored on messages + quick replies). `kind` is
  * implied by the step_type but kept on the payload for a uniform shape.
  */
-export type SendButtonsStepConfig = InteractiveMessagePayload;
-export type SendListStepConfig = InteractiveMessagePayload;
+export type SendButtonsStepConfig = InteractiveMessagePayload & {
+  consent_purpose?: StepConsentPurpose;
+};
+export type SendListStepConfig = InteractiveMessagePayload & {
+  consent_purpose?: StepConsentPurpose;
+};
 
 export interface SendTemplateStepConfig {
+  consent_purpose?: StepConsentPurpose;
   template_name: string;
   language?: string;
   variables?: Record<string, string>;
@@ -678,7 +695,9 @@ export type ConditionSubject =
   /** No human is assigned and the AI has not handed the conversation off. */
   | 'conversation_unattended'
   /** The Journey carries the one-shot mark named by `operand`. */
-  | 'journey_flag';
+  | 'journey_flag'
+  /** The conversation's store has this business acronym (`operand`), case-insensitive. */
+  | 'business_acronym_is';
 
 /** `customer_replied_since` reference instants (the condition's `operand`). */
 export type ReplyReference = 'link_sent' | 'run_start';

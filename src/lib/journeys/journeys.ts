@@ -3,16 +3,24 @@ import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { JOURNEY_STAGES, type JourneyStage } from './constants';
 import { ensureJourneyPipeline } from './pipeline';
 
+/** How a Journey started: a link sent by the CRM, or a direct menu event. */
+export type JourneyOrigin = 'crm_link' | 'menu_direct';
+
 export interface JourneyRow {
   id: string;
   account_id: string;
   contact_id: string;
   conversation_id: string | null;
-  connection_id: string;
+  /** Null only for a direct Journey of a store with no WhatsApp connection. */
+  connection_id: string | null;
+  /** Set on direct Journeys (`origin = 'menu_direct'`); null on the others. */
+  store_id: string | null;
+  origin: JourneyOrigin;
   deal_id: string | null;
   state: 'open' | 'won' | 'lost';
   stage: JourneyStage;
-  link_sent_at: string;
+  /** Null on a direct Journey: no link was ever sent. */
+  link_sent_at: string | null;
   link_count: number;
   [column: string]: unknown;
 }
@@ -26,6 +34,20 @@ export interface OpenJourneyArgs {
   connectionId: string;
   /** Instant the menu link was sent: anchor of the resumption clocks. */
   linkSentAt?: Date;
+}
+
+export interface OpenDirectJourneyArgs {
+  accountId: string;
+  /** Audit `user_id` for the deal. */
+  userId: string;
+  contactId: string;
+  /** The store's notice connection; null when it has none. */
+  connectionId: string | null;
+  storeId: string;
+  /** Existing conversation of the contact on `connectionId`, when there is one. */
+  conversationId: string | null;
+  /** Stage the first event reaches: the Journey is born already there. */
+  stage: Exclude<JourneyStage, 'link_sent' | 'lost' | 'won'>;
 }
 
 const STAGE_RANK = new Map(JOURNEY_STAGES.map((s, i) => [s.key, i]));
@@ -55,6 +77,10 @@ export async function openOrRenewJourney(
         link_sent_at: at,
         link_count: (journey.link_count ?? 1) + 1,
         conversation_id: args.conversationId,
+        // A direct Journey that gets a CRM link is now a Journey WITH a link:
+        // resumptions (onMenuLinkSent) and the funnel must treat it as one.
+        // Its stage is untouched (never regresses).
+        origin: 'crm_link',
       })
       .eq('id', journey.id)
       .eq('account_id', args.accountId);
@@ -64,6 +90,7 @@ export async function openOrRenewJourney(
       link_sent_at: at,
       link_count: (journey.link_count ?? 1) + 1,
       conversation_id: args.conversationId,
+      origin: 'crm_link',
     };
   } else {
     const { data, error } = await db
@@ -73,6 +100,7 @@ export async function openOrRenewJourney(
         contact_id: args.contactId,
         conversation_id: args.conversationId,
         connection_id: args.connectionId,
+        origin: 'crm_link',
         state: 'open',
         stage: 'link_sent',
         link_sent_at: at,
@@ -113,7 +141,13 @@ export async function findOpenJourney(
 /** The Journey's single open deal, created at "Link enviado" when absent. */
 async function ensureJourneyDeal(
   db: SupabaseClient,
-  args: OpenJourneyArgs,
+  args: {
+    accountId: string;
+    userId: string;
+    contactId: string;
+    conversationId: string | null;
+    connectionId: string | null;
+  },
   journey: JourneyRow
 ): Promise<string> {
   const findDeal = async () => {
@@ -153,7 +187,9 @@ async function ensureJourneyDeal(
         account_id: args.accountId,
         user_id: args.userId,
         pipeline_id: pipelineId,
-        stage_id: stageIds.link_sent,
+        // A direct Journey is born already at the stage its first event
+        // reached, never at "Link enviado".
+        stage_id: stageIds[journey.stage],
         contact_id: args.contactId,
         conversation_id: args.conversationId,
         connection_id: args.connectionId,
@@ -265,4 +301,105 @@ export async function advanceJourneyStage(
       throw new Error(`journey deal advance failed: ${dealErr.message}`);
   }
   return true;
+}
+
+/**
+ * The contact's open Journey for a direct event: on the event's connection when
+ * there is one (a CRM-link Journey lives there), otherwise, and as the
+ * fallback, by (account, contact, STORE) whatever connection it has now. The
+ * notice connection of a store can appear, change or be disabled between
+ * events; looking up by the current connection alone missed the open Journey
+ * and opened a second one (migration 067 makes that impossible in the DB).
+ */
+export async function findOpenDirectJourney(
+  db: SupabaseClient,
+  args: Pick<
+    OpenDirectJourneyArgs,
+    'accountId' | 'contactId' | 'connectionId' | 'storeId'
+  >
+): Promise<JourneyRow | null> {
+  if (args.connectionId) {
+    const onConnection = await findOpenJourney(db, {
+      accountId: args.accountId,
+      contactId: args.contactId,
+      connectionId: args.connectionId,
+    });
+    if (onConnection) return onConnection;
+  }
+  const { data, error } = await db
+    .from('journeys')
+    .select('*')
+    .eq('account_id', args.accountId)
+    .eq('contact_id', args.contactId)
+    .eq('store_id', args.storeId)
+    .eq('state', 'open')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`journey lookup failed: ${error.message}`);
+  return (data as JourneyRow | null) ?? null;
+}
+
+/**
+ * Open the Journey of a direct event (no menu link): origin `menu_direct`,
+ * `link_sent_at` null, born at `args.stage` with its deal there. Reuses the
+ * open one when it exists (the DB forbids two per contact + connection, and
+ * two direct ones per contact + store); a concurrent loser re-reads. A Journey
+ * found with no connection gets the store's notice connection as soon as it
+ * has one (it is never moved from one connection to another).
+ */
+export async function openDirectJourney(
+  db: SupabaseClient,
+  args: OpenDirectJourneyArgs
+): Promise<JourneyRow> {
+  let journey = await findOpenDirectJourney(db, args);
+  if (!journey) {
+    const { data, error } = await db
+      .from('journeys')
+      .insert({
+        account_id: args.accountId,
+        contact_id: args.contactId,
+        conversation_id: args.conversationId,
+        connection_id: args.connectionId,
+        store_id: args.storeId,
+        origin: 'menu_direct',
+        state: 'open',
+        stage: args.stage,
+        link_sent_at: null,
+        link_count: 0,
+      })
+      .select('*')
+      .single();
+    if (error && !isUniqueViolation(error)) {
+      throw new Error(`journey creation failed: ${error.message}`);
+    }
+    journey =
+      (data as JourneyRow | null) ?? (await findOpenDirectJourney(db, args));
+    if (!journey) throw new Error('journey could not be opened');
+  }
+  if (!journey.connection_id && args.connectionId) {
+    const { error } = await db
+      .from('journeys')
+      .update({
+        connection_id: args.connectionId,
+        ...(journey.conversation_id || !args.conversationId
+          ? {}
+          : { conversation_id: args.conversationId }),
+      })
+      .eq('id', journey.id)
+      .eq('account_id', args.accountId);
+    // A unique violation means another open Journey already sits on that
+    // connection: keep this one as it is.
+    if (error && !isUniqueViolation(error)) {
+      throw new Error(`journey connection update failed: ${error.message}`);
+    }
+    if (!error) {
+      journey = { ...journey, connection_id: args.connectionId };
+    }
+  }
+  if (!journey.deal_id) {
+    const dealId = await ensureJourneyDeal(db, args, journey);
+    journey = { ...journey, deal_id: dealId };
+  }
+  return journey;
 }

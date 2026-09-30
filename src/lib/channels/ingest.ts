@@ -11,6 +11,11 @@ import {
 } from './connection-state';
 import { resolveOrCreateContact, type ContactRow } from './identity';
 import { isValidStatusTransition } from './status-ladder';
+import {
+  isOptOutText,
+  isRevokedNow,
+  revokeConsentFromChat,
+} from '@/lib/consent/opt-out';
 import type { Connection, InboundContent, InboundEvent } from './types';
 
 /**
@@ -93,6 +98,11 @@ export interface IngestedMessage extends IngestContext {
   interactiveReplyId: string | null;
   /** True when no customer message existed in the conversation before this one. */
   isFirstInbound: boolean;
+  /**
+   * True when this TEXT message was an opt-out ("PARAR") and the consent was
+   * revoked here. The fan-out confirms it and keeps the AI reply quiet.
+   */
+  optOut: boolean;
 }
 
 export type IngestOutcome =
@@ -430,6 +440,31 @@ async function ingestMessage(
     .eq('sender_type', 'customer');
   const isFirstInbound = (priorCustomerMessages ?? 0) === 0;
 
+  // "PARAR": revoke both consent purposes BEFORE the message is stored, and let
+  // a failure PROPAGATE (the batch loop records it as an ingest failure and the
+  // message is NOT stored). Doing it after the insert lost the revocation: the
+  // message was already saved, so a provider redelivery was deduplicated and
+  // nothing retried it. Now a redelivery finds no stored message and runs the
+  // whole thing again (the revocation itself is idempotent: `recordConsent`
+  // only applies a STRICTLY newer decision). Only plain text from the customer.
+  // `optOut` (which triggers the "you will no longer receive..." confirmation)
+  // is true only if the explicit state is revoked AFTER the write: a newer
+  // consent from the menu than this message keeps it granted, and confirming
+  // a stop that did not happen would be a lie.
+  let optOut = false;
+  if (event.content.type === 'text' && isOptOutText(shape.contentText)) {
+    const who = { accountId: connection.account_id, contactId: contact.id };
+    await revokeConsentFromChat(db, { ...who, at: event.at });
+    optOut = await isRevokedNow(db, who);
+    if (!optOut) {
+      channelLog(
+        'warn',
+        connCtx(connection, event.externalId),
+        'opt-out not applied: a newer consent holds; no confirmation sent'
+      );
+    }
+  }
+
   // The single idempotency boundary: UNIQUE (conversation_id, message_id).
   // A replay conflicts, `ignoreDuplicates` makes it ON CONFLICT DO NOTHING and
   // `.select()` returns the row only for a genuine first insert. It sits
@@ -499,6 +534,7 @@ async function ingestMessage(
     mediaUrl,
     interactiveReplyId: shape.interactiveReplyId,
     isFirstInbound,
+    optOut,
   };
   await runHook('onMessageStored', opts.hooks?.onMessageStored, stored);
   return { status: 'stored', ...stored };

@@ -137,6 +137,30 @@ describe('GET /api/v1/stores', () => {
     expect(body.meta.next_cursor).toBeNull();
   });
 
+  it('returns the store key fields and the computed store_key', async () => {
+    h.db.stores[0].store_code = '89';
+    h.db.stores[0].store_acronym = 'RPA';
+    h.db.stores[0].business_acronym = 'BLC';
+    const body = await (await listStores(req('/api/v1/stores'))).json();
+    expect(body.data[0]).toMatchObject({
+      store_code: '89',
+      store_acronym: 'RPA',
+      business_acronym: 'BLC',
+      store_key: '89/RPA/BLC',
+    });
+  });
+
+  it('store_key is null unless all three parts are set', async () => {
+    h.db.stores[0].store_code = '89';
+    const body = await (await listStores(req('/api/v1/stores'))).json();
+    expect(body.data[0]).toMatchObject({
+      store_code: '89',
+      store_acronym: null,
+      business_acronym: null,
+      store_key: null,
+    });
+  });
+
   it('returns menu_url (null when the store has no menu)', async () => {
     h.db.stores.push({ id: 's4', account_id: 'acct-1', name: 'Sem menu' });
     const body = await (await listStores(req('/api/v1/stores'))).json();

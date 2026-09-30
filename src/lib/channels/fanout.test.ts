@@ -56,6 +56,14 @@ vi.mock('@/lib/ai/auto-reply', () => ({
   },
 }));
 
+const sent = vi.fn();
+vi.mock('./send', () => ({
+  sendOutbound: (a: unknown) => {
+    order.push('send');
+    return sent(a);
+  },
+}));
+
 import { conversationCreatedHook, fanOutInbound, fanoutHook } from './fanout';
 import { ingestInbound, type IngestedMessage } from './ingest';
 
@@ -89,6 +97,39 @@ beforeEach(() => {
   automations.mockResolvedValue(undefined);
   ai.mockResolvedValue(undefined);
   vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+
+describe('fanOutInbound: "PARAR"', () => {
+  it('confirms as free text, keeps automations and skips the AI reply', async () => {
+    sent.mockResolvedValue(undefined);
+    await fanOutInbound(
+      stored({ contentText: 'PARAR', optOut: true } as Partial<IngestedMessage>),
+      opts
+    );
+    expect(sent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: 'acc',
+        conversationId: 'cv',
+        message: { type: 'text', text: expect.stringMatching(/\S{3}/) },
+      })
+    );
+    expect(calls).toEqual(['flows', 'auto:new_message_received', 'auto:keyword_match']);
+  });
+
+  it('a failed confirmation does not stop the other engines', async () => {
+    sent.mockRejectedValue(new Error('window closed'));
+    await fanOutInbound(
+      stored({ contentText: 'PARAR', optOut: true } as Partial<IngestedMessage>),
+      opts
+    );
+    expect(calls).toContain('auto:keyword_match');
+  });
+
+  it('a normal message sends no confirmation and still gets the AI reply', async () => {
+    await fanOutInbound(stored(), opts);
+    expect(sent).not.toHaveBeenCalled();
+    expect(calls).toContain('ai');
+  });
 });
 
 describe('fanOutInbound', () => {

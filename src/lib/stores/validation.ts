@@ -6,6 +6,9 @@ export const STORE_LIMITS = {
   phone: 40,
   manager_name: 120,
   menu_url: 2048,
+  store_code: 40,
+  store_acronym: 40,
+  business_acronym: 40,
 } as const;
 
 /**
@@ -23,6 +26,9 @@ export function isValidMenuUrl(raw: string): boolean {
   }
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export interface StoreInput {
   name?: string;
   address?: string | null;
@@ -30,6 +36,11 @@ export interface StoreInput {
   business_hours?: Record<string, unknown> | null;
   manager_name?: string | null;
   menu_url?: string | null;
+  store_code?: string | null;
+  store_acronym?: string | null;
+  business_acronym?: string | null;
+  /** Checked against the DB by the route (same store/account, WhatsApp). */
+  notification_connection_id?: string | null;
   settings?: Record<string, unknown>;
 }
 
@@ -61,7 +72,15 @@ export function parseStoreInput(body: unknown, partial: boolean): StoreParse {
     out.name = name;
   }
 
-  for (const key of ['address', 'phone', 'manager_name', 'menu_url'] as const) {
+  for (const key of [
+    'address',
+    'phone',
+    'manager_name',
+    'menu_url',
+    'store_code',
+    'store_acronym',
+    'business_acronym',
+  ] as const) {
     if (!(key in body)) continue;
     const raw = body[key];
     if (raw === null || raw === undefined) {
@@ -81,7 +100,29 @@ export function parseStoreInput(body: unknown, partial: boolean): StoreParse {
     if (key === 'menu_url' && v && !isValidMenuUrl(v)) {
       return { ok: false, error: 'menu_url must be a valid https:// URL' };
     }
+    if (
+      (key === 'store_code' ||
+        key === 'store_acronym' ||
+        key === 'business_acronym') &&
+      v.includes('/')
+    ) {
+      return { ok: false, error: `${key} must not contain "/"` };
+    }
     out[key] = v || null;
+  }
+
+  if ('notification_connection_id' in body) {
+    const raw = body.notification_connection_id;
+    if (raw === null || raw === undefined || raw === '') {
+      out.notification_connection_id = null;
+    } else if (typeof raw === 'string' && UUID_RE.test(raw)) {
+      out.notification_connection_id = raw;
+    } else {
+      return {
+        ok: false,
+        error: 'notification_connection_id must be a UUID or null',
+      };
+    }
   }
 
   if ('business_hours' in body) {

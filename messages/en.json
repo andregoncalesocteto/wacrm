@@ -437,6 +437,21 @@
       "noTagsAvailable": "No tags available. Create tags in Settings.",
       "phoneRequired": "Phone number is required"
     },
+    "consents": {
+      "title": "Message consent",
+      "optOutConfirmation": "Done. You will no longer receive messages from us. If you change your mind, just place a new order.",
+      "purpose": {
+        "notifications": "Order notices",
+        "marketing": "Offers and reminders"
+      },
+      "active": "Active since {date} · source: {source}",
+      "revoked": "Revoked on {date} · source: {source}",
+      "notRecorded": "Not recorded",
+      "source": {
+        "menu": "Menu",
+        "chat": "Chat"
+      }
+    },
     "detailView": {
       "tabs": {
         "details": "Details",
@@ -624,7 +639,9 @@
       "noContact": "No contact",
       "won": "Won",
       "lost": "Lost",
-      "cartItems": "{count, plural, =1 {# item} other {# items}}"
+      "cartItems": "{count, plural, =1 {# item} other {# items}}",
+      "originDirect": "Direct from menu",
+      "originLink": "CRM link"
     },
     "form": {
       "editDeal": "Edit Deal",
@@ -713,7 +730,13 @@
         "channel": "Channel",
         "store": "Store",
         "allChannels": "All channels",
-        "allStores": "All stores"
+        "allStores": "All stores",
+        "origin": "Origin",
+        "allOrigins": "All origins",
+        "originOption": {
+          "crm_link": "CRM link",
+          "menu_direct": "Direct from menu"
+        }
       },
       "stages": {
         "link_sent": "Link sent",
@@ -732,6 +755,14 @@
         "group": "Group",
         "allJourneys": "All Journeys",
         "conversion": "Link to purchase",
+        "purchaseRate": "Purchased / Journeys",
+        "journeys": "Journeys",
+        "noConnection": "No connection",
+        "noStore": "No store",
+        "origin": {
+          "crm_link": "CRM link",
+          "menu_direct": "Direct from menu"
+        },
         "noData": "-",
         "empty": "No Journeys yet.",
         "error": "Could not load the Journey funnel."
@@ -1316,7 +1347,8 @@
           "journey_open": "Journey is open",
           "journey_stage": "Journey stage",
           "conversation_unattended": "No human and no AI handoff",
-          "journey_flag": "Journey abandoned-cart message already sent"
+          "journey_flag": "Journey abandoned-cart message already sent",
+          "business_acronym_is": "Store business acronym is"
         },
         "replyReferenceLabel": "Reference instant",
         "replyReferences": {
@@ -1331,6 +1363,10 @@
         "orderStatusesHint": "Fires when the order moves to any of the checked statuses. A status with no automation sends nothing.",
         "orderVariablesHint": "insert the order data (id, status code and value) into the text. Available in this trigger and in Journey Event automations for Purchase.",
         "conversationUnattendedHint": "True while no agent is assigned to the conversation and the AI has not handed it off. Checked when the step runs, including after a wait.",
+        "businessAcronymLabel": "Business acronym",
+        "businessAcronymPlaceholder": "e.g. RPA",
+        "businessAcronymHint": "True when the business acronym of the conversation's store equals this text (case and surrounding spaces ignored). Checked when the step runs, including after a wait. False if the store has no acronym.",
+        "storeNameHint": "inserts the name of the conversation's store. Empty (with a warning in the log) if the conversation has no store.",
         "journeyFlagLabel": "Flag",
         "journeyFlags": {
           "abandoned_cart_sent": "Abandoned-cart message"
@@ -1338,6 +1374,12 @@
         "journeyFlagHint": "True once the abandoned-cart message went out for this Journey. Checked when the step runs, including after a wait.",
         "markJourneyFlagLabel": "Send once per Journey (abandoned cart)",
         "markJourneyFlagHint": "The Journey is marked right before the send, so this message goes out at most once per Journey, even if several runs reach it. If the send fails, the mark is undone.",
+        "consentPurposeLabel": "Consent for customers who never wrote",
+        "consentPurposeHint": "For a customer who has never written to the CRM, this step only sends if they gave the consent of this purpose (from the menu). Customers who already wrote keep receiving it, unless they revoked that purpose.",
+        "consentPurposes": {
+          "notifications": "Order notices",
+          "marketing": "Marketing"
+        },
         "stageComparisonLabel": "Comparison",
         "stageComparisons": {
           "before": "is before",
@@ -2092,6 +2134,21 @@
       "menuUrlLabel": "Digital menu URL",
       "menuUrlPlaceholder": "https://menu.example.com",
       "menuUrlHint": "Optional. Must start with https://. Leave blank if the store has no digital menu.",
+      "storeKeyLabel": "Store key",
+      "storeCodeLabel": "Code",
+      "storeCodePlaceholder": "Code (89)",
+      "storeAcronymLabel": "Store acronym",
+      "storeAcronymPlaceholder": "Store (RPA)",
+      "businessAcronymLabel": "Business acronym",
+      "businessAcronymPlaceholder": "Business (BLC)",
+      "storeKeyHint": "Optional. Fill the three parts to form the key the digital menu sends, such as 89/RPA/BLC. Do not use \"/\".",
+      "storeKeyPreview": "Store key: {key}",
+      "notificationConnectionLabel": "WhatsApp connection for notices",
+      "notificationConnectionNone": "None (choose one)",
+      "notificationConnectionHint": "Used to message customers about their orders when the store has more than one active WhatsApp connection.",
+      "toastKeyPartInvalid": "The store code and acronyms cannot contain \"/\".",
+      "toastKeyTaken": "Another store already uses this store key.",
+      "toastNotificationInvalid": "Choose a WhatsApp connection that belongs to this store.",
       "cancel": "Cancel",
       "save": "Save",
       "noConnections": "No connections yet",
