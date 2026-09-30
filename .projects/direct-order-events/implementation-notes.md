@@ -141,3 +141,14 @@ Sem migration (conversas já aceitam `status='closed'`; `consent_purpose` vive e
 **Testes**: `engine.characterization.test.ts` (describe "Abandoned cart for a DIRECT Journey"): 10 min/uma vez/template/conversa fechada, espera sem conversa, só `notifications` = nada enviado + motivo no log, revogação, Purchase cancela, rajada, resposta durante a espera, quem já escreveu, retomadas nunca disparam. `journey-preset.test.ts` atualizado (cart = marketing).
 
 **Decisões / fora**: `docs/order-journey.md` ganhou frase sobre o carrinho direto e a exclusão das retomadas; `docs/docker.md` (faixa "055 a 062") não foi atualizado (já estava defasado desde a 063). Sem UI nova, sem texto i18n. Uma execução parada com a conversa criada DEPOIS (o cliente escreve na espera) não reescreve `conversation_id` da linha pendente; o envio acha a conversa pela busca do contato/loja.
+
+## #25 Documentação e verificação ponta a ponta
+
+Sem migration. Sem mudança de contrato além da correção abaixo.
+
+- **`consent.given_at` no futuro** (`src/lib/journeys/event-payload.ts`, `parseConsent`): mais de 5 minutos à frente de `Date.now()` é `400 bad_request` (mensagem cita `consent.given_at` e "future"), já no parser, antes de criar contato/jornada. Tolerância `MAX_CONSENT_CLOCK_SKEW_MS`. `route.direct.test.ts` fixa `Date` em 2026-10-10 (`vi.useFakeTimers({ toFake: ['Date'] })`) para as datas fixas de outubro de 2026 dos testes.
+- **Docs:** `docs/public-api.md` (migrations 055 a 066, contradição sobre eventos sem `idtrack` removida, exemplos diretos, `given_at` futuro, "PARAR", `messaging`), `docs/order-journey.md` (tabela 063 a 066, seção "Orders that do not come from a CRM link", funil por origem), `docs/docker.md`. Adendo: uma linha na seção 3.
+- **Operador e testes manuais:** `manual-configuracao.md`, `eventos-diretos-curl.sh` (validado com `bash -n`), `eventos-diretos-insomnia.json` (gerados de uma mesma lista de casos, por um script descartável; se mudar o contrato, edite os dois).
+- **`verification.md`:** mapa dos 8 critérios para testes, limites honestos, resultado das 66 migrations num Postgres descartável (0 falhas, verify-schema passou, 063 a 066 reaplicáveis).
+- **Testes novos** em `journey.integration.test.ts`: revogação `false` depois de `true`, PARAR e reativação por consentimento mais novo, loja sem conexão, replay com campos novos, BLC/PZA com `{{store_name}}`, carrinho abandonado direto com e sem `marketing`.
+- **Fora:** UI sem teste de componente; convenção de templates por WABA sem teste com duas WABAs reais; sem teto diário de primeiros contatos.
