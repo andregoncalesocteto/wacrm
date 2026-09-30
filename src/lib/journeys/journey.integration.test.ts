@@ -903,6 +903,54 @@ describe('direct events to a customer who never wrote (consent, closed conversat
     expect(h.waTemplates).toHaveLength(1);
   });
 
+  it('abandoned cart of a direct Journey: sent by template only with marketing consent, 10 minutes after the last cart event', async () => {
+    for (const step of t('automation_steps')) {
+      const cfg = step.step_config as Row;
+      if (
+        step.step_type === 'send_message' &&
+        cfg.consent_purpose === 'marketing'
+      ) {
+        cfg.fallback_template = { name: 'order_update', language: 'en' };
+      }
+    }
+    const res = await direct('AddToCart', {
+      consent: { marketing: true, given_at: '2026-10-02T20:00:00Z' },
+      ...cart,
+    });
+    expect(res.status).toBe(200);
+    at(5);
+    await runCron();
+    expect(h.waTemplates).toEqual([]);
+    at(11);
+    await runCron();
+    expect(h.waTemplates).toEqual([{ to: DIGITS, name: 'order_update' }]);
+    expect(h.waSends).toEqual([]);
+    expect(conversations()).toHaveLength(1);
+    expect(conversations()[0].status).toBe('closed');
+    // Once per Journey: a later sweep sends nothing more.
+    at(40);
+    await runCron();
+    expect(h.waTemplates).toHaveLength(1);
+  });
+
+  it('abandoned cart without marketing consent (only notifications): nothing is sent, with the reason logged', async () => {
+    for (const step of t('automation_steps')) {
+      const cfg = step.step_config as Row;
+      if (
+        step.step_type === 'send_message' &&
+        cfg.consent_purpose === 'marketing'
+      ) {
+        cfg.fallback_template = { name: 'order_update', language: 'en' };
+      }
+    }
+    await direct('AddToCart', { consent, ...cart });
+    at(11);
+    await runCron();
+    expect(sentCount()).toBe(0);
+    expect(conversations()).toHaveLength(0);
+    expect(skippedReasons()).toContain('ignored: sem consentimento: marketing');
+  });
+
   it('two brands in one account (BLC and PZA): ONE set of automations, {{store_name}} names each store', async () => {
     const PHONE_B = '+5511888887777';
     const DIGITS_B = '5511888887777';
