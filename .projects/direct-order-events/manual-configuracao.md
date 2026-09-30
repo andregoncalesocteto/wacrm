@@ -70,20 +70,20 @@ A regra é **um conjunto só** de automações para todas as marcas.
 
 ## Problemas comuns
 
-| Sintoma | Causa provável | O que fazer |
-| --- | --- | --- |
-| `404 store_not_found` | A chave enviada não existe no CRM | Conferir o que está em **Configurações → Lojas** (três campos preenchidos) e o que o cardápio envia. Não adianta reenviar |
-| `400` com "customer.phone" | Telefone sem `+` ou fora do formato E.164 | O cardápio deve normalizar antes do envio (`+5511999998888`) |
-| `400` "consent.given_at is in the future" | Relógio do cardápio adiantado mais de 5 minutos | Corrigir o relógio ou enviar o momento real do aceite |
-| `400` "given_at is required" | Enviou `consent` com finalidade mas sem data | Sempre enviar `given_at` junto |
-| `messaging: no_consent` | Sem consentimento ativo para avisos, e o cliente nunca escreveu | Conferir o bloco de consentimento do contato e o que o cardápio envia |
-| `messaging: no_connection` | Loja sem WhatsApp, ou com várias conexões e nenhuma escolhida | Passo 2 |
-| O evento entrou mas nada foi enviado | Passo ignorado por finalidade, sem template, automação desligada ou fora do agendador | Ver o **log** da automação: a mensagem do passo diz o motivo |
-| Consentimento "não atualiza" | O `given_at` enviado não é mais novo que o guardado | Enviar a data real do último aceite/revogação do cliente |
-| Um evento com `idtrack` e telefone de outro cliente não atualizou o consentimento | Conflito: o `idtrack` manda, `customer` e `consent` são ignorados (fica no log, com o telefone mascarado) | Esperado; corrigir o que o cardápio envia |
-| Conversas "Abertas" cheias de avisos | Não deveria: conversas de avisos nascem fechadas | Conferir se a conversa foi criada antes desta versão |
-| Cliente recebe aviso depois de responder PARAR | O consentimento do cardápio mais novo reativou | Esperado: vale o mais recente; conferir a data no contato |
-| Funil com poucas "Link enviado" | Jornadas diretas nunca passam por "link enviado" | Esperado: use "Compradas / Jornadas" para as diretas |
+| Sintoma                                                                           | Causa provável                                                                                            | O que fazer                                                                                                               |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `404 store_not_found`                                                             | A chave enviada não existe no CRM                                                                         | Conferir o que está em **Configurações → Lojas** (três campos preenchidos) e o que o cardápio envia. Não adianta reenviar |
+| `400` com "customer.phone"                                                        | Telefone sem `+` ou fora do formato E.164                                                                 | O cardápio deve normalizar antes do envio (`+5511999998888`)                                                              |
+| `400` "consent.given_at is in the future"                                         | Relógio do cardápio adiantado mais de 5 minutos                                                           | Corrigir o relógio ou enviar o momento real do aceite                                                                     |
+| `400` "given_at is required"                                                      | Enviou `consent` com finalidade mas sem data                                                              | Sempre enviar `given_at` junto                                                                                            |
+| `messaging: no_consent`                                                           | Sem consentimento ativo para avisos, e o cliente nunca escreveu                                           | Conferir o bloco de consentimento do contato e o que o cardápio envia                                                     |
+| `messaging: no_connection`                                                        | Loja sem WhatsApp, ou com várias conexões e nenhuma escolhida                                             | Passo 2                                                                                                                   |
+| O evento entrou mas nada foi enviado                                              | Passo ignorado por finalidade, sem template, automação desligada ou fora do agendador                     | Ver o **log** da automação: a mensagem do passo diz o motivo                                                              |
+| Consentimento "não atualiza"                                                      | O `given_at` enviado não é mais novo que o guardado                                                       | Enviar a data real do último aceite/revogação do cliente                                                                  |
+| Um evento com `idtrack` e telefone de outro cliente não atualizou o consentimento | Conflito: o `idtrack` manda, `customer` e `consent` são ignorados (fica no log, com o telefone mascarado) | Esperado; corrigir o que o cardápio envia                                                                                 |
+| Conversas "Abertas" cheias de avisos                                              | Não deveria: conversas de avisos nascem fechadas                                                          | Conferir se a conversa foi criada antes desta versão                                                                      |
+| Cliente recebe aviso depois de responder PARAR                                    | O consentimento do cardápio mais novo reativou                                                            | Esperado: vale o mais recente; conferir a data no contato                                                                 |
+| Funil com poucas "Link enviado"                                                   | Jornadas diretas nunca passam por "link enviado"                                                          | Esperado: use "Compradas / Jornadas" para as diretas                                                                      |
 
 ## O que este manual não cobre
 
