@@ -56,3 +56,15 @@ Sem migration (usa `stores.business_acronym` do #17). Tudo em `src/lib/automatio
 - Fake compartilhado `crm-world.fake.ts`: unicidade `(account_id, phone)` em `contacts` (modela a 022).
 
 **Fora / atenção**: o funil ainda conta Jornadas diretas em `link_sent` (todas alcançam o passo 0), o que infla a conversão; a separação por origem é o #21. Respostas de eventos gravadas antes desta versão não têm `messaging` num replay. Sem consentimento guardado (#20) nem criação de conversa fechada.
+
+## #21 Funil da Journey separado por origem
+
+Sem migration. `src/lib/journeys/funnel.ts`: `FunnelCounts` ganhou `total` e `purchaseRate` (comprou / total de Jornadas); novo `FunnelWithOrigin` (`byOrigin: {crm_link, menu_direct}`), usado por `total` e por cada `FunnelGroup`. `JourneyFunnel` tem a mesma forma, mais os campos novos (`/api/journeys/funnel` sem mudança de rota).
+
+**Decisões**
+- Jornada direta nunca conta em `link_sent` (o funil dela começa na primeira etapa alcançada); `conversion` (link -> comprou) só vale para `crm_link`, inclusive no agregado (`conversion` do agregado = o de `byOrigin.crm_link`). Para as diretas, `purchaseRate` = compradas / total de Jornadas diretas. Linhas legadas sem `origin` contam como `crm_link`.
+- Nada some por causa do join: Jornada sem conexão vai para o grupo de canal `NO_GROUP` ("Sem conexão"); a loja vem de `conn.store_id`, senão de `journeys.store_id`, senão `NO_GROUP` ("Sem loja"). Grupos ordenados por `total` (antes por `link_sent`).
+- Quadro: cada grupo tem uma linha agregada e uma por origem; colunas novas "Jornadas" e "Compradas / Jornadas". O quadro segue sem filtro de datas e sem reagir ao filtro do pipeline. O estado vazio agora é `total.total === 0` (só-diretas não some).
+- Filtro do pipeline ganhou origem (`JourneyFilterValue.origin`); o embed do deal passou a trazer `journeys.store_id`, usado no filtro de loja quando o deal não tem conexão. O filtro de canal exclui deals sem conexão. Card do deal mostra "Direto do cardápio" ou "Link do CRM" quando há Jornada.
+
+**Fora**: não há opção "sem conexão" no filtro de canal.

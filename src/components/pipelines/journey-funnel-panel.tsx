@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import {
   Table,
@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/table';
 import {
   FUNNEL_STAGES,
+  JOURNEY_ORIGINS,
+  NO_GROUP,
   type FunnelCounts,
   type FunnelGroup,
   type JourneyFunnel,
@@ -46,7 +48,13 @@ export function JourneyFunnelPanel() {
 
   const percent = (rate: number | null) =>
     rate === null ? t('noData') : format.number(rate, 'percent');
-  const channelLabel = (type: string) => (tType.has(type) ? tType(type) : type);
+  const number = (n: number) => format.number(n, 'integer');
+  const channelLabel = (type: string) =>
+    type === NO_GROUP
+      ? t('noConnection')
+      : tType.has(type)
+        ? tType(type)
+        : type;
 
   const renderTable = (title: string, groups: FunnelGroup[]) => (
     <div className="space-y-2">
@@ -56,6 +64,7 @@ export function JourneyFunnelPanel() {
           <TableHeader>
             <TableRow>
               <TableHead>{t('group')}</TableHead>
+              <TableHead className="text-right">{t('journeys')}</TableHead>
               {FUNNEL_STAGES.map((s) => (
                 <TableHead key={s} className="text-right">
                   {tStages(s)}
@@ -63,17 +72,30 @@ export function JourneyFunnelPanel() {
               ))}
               <TableHead className="text-right">{tStages('lost')}</TableHead>
               <TableHead className="text-right">{t('conversion')}</TableHead>
+              <TableHead className="text-right">{t('purchaseRate')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {groups.map((g) => (
-              <FunnelRow
-                key={g.key}
-                label={g.label}
-                counts={g}
-                percent={percent}
-                number={(n) => format.number(n, 'integer')}
-              />
+              <Fragment key={g.key}>
+                <FunnelRow
+                  label={g.label}
+                  counts={g}
+                  percent={percent}
+                  number={number}
+                  bold
+                />
+                {JOURNEY_ORIGINS.map((o) => (
+                  <FunnelRow
+                    key={o}
+                    label={t(`origin.${o}`)}
+                    counts={g.byOrigin[o]}
+                    percent={percent}
+                    number={number}
+                    origin={o}
+                  />
+                ))}
+              </Fragment>
             ))}
           </TableBody>
         </Table>
@@ -96,18 +118,28 @@ export function JourneyFunnelPanel() {
         <p className="text-muted-foreground text-sm">{t('error')}</p>
       ) : !data ? (
         <div className="bg-muted h-24 animate-pulse rounded" />
-      ) : data.total.reached.link_sent === 0 ? (
+      ) : data.total.total === 0 ? (
         <p className="text-muted-foreground text-sm">{t('empty')}</p>
       ) : (
         <div className="space-y-5">
           {renderTable(t('overall'), [
-            { key: 'all', label: t('allJourneys'), ...data.total },
+            {
+              key: 'all',
+              ...data.total,
+              label: t('allJourneys'),
+            } as FunnelGroup,
           ])}
           {renderTable(
             t('byChannel'),
             data.byChannel.map((g) => ({ ...g, label: channelLabel(g.label) }))
           )}
-          {renderTable(t('byStore'), data.byStore)}
+          {renderTable(
+            t('byStore'),
+            data.byStore.map((g) => ({
+              ...g,
+              label: g.key === NO_GROUP ? t('noStore') : g.label,
+            }))
+          )}
         </div>
       )}
     </section>
@@ -119,18 +151,31 @@ function FunnelRow({
   counts,
   percent,
   number,
+  bold,
+  origin,
 }: {
   label: string;
   counts: FunnelCounts;
   percent: (rate: number | null) => string;
   number: (n: number) => string;
+  bold?: boolean;
+  origin?: 'crm_link' | 'menu_direct';
 }) {
+  // A direct Journey has no "link sent" step: show a dash, not a zero.
+  const noLink = origin === 'menu_direct';
   return (
-    <TableRow>
-      <TableCell className="font-medium">{label}</TableCell>
+    <TableRow data-origin={origin}>
+      <TableCell
+        className={bold ? 'font-medium' : 'text-muted-foreground pl-6 text-xs'}
+      >
+        {label}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {number(counts.total)}
+      </TableCell>
       {FUNNEL_STAGES.map((s) => (
         <TableCell key={s} className="text-right tabular-nums">
-          {number(counts.reached[s])}
+          {s === 'link_sent' && noLink ? '-' : number(counts.reached[s])}
         </TableCell>
       ))}
       <TableCell className="text-right tabular-nums">
@@ -138,6 +183,9 @@ function FunnelRow({
       </TableCell>
       <TableCell className="text-right font-semibold tabular-nums">
         {percent(counts.conversion)}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {percent(counts.purchaseRate)}
       </TableCell>
     </TableRow>
   );

@@ -625,7 +625,8 @@
       "won": "Ganho",
       "lost": "Perdido",
       "cartItems": "{count, plural, =1 {# item} other {# itens}}",
-      "originDirect": "Direto do cardápio"
+      "originDirect": "Direto do cardápio",
+      "originLink": "Link do CRM"
     },
     "form": {
       "editDeal": "Editar negócio",
@@ -714,7 +715,13 @@
         "channel": "Canal",
         "store": "Loja",
         "allChannels": "Todos os canais",
-        "allStores": "Todas as lojas"
+        "allStores": "Todas as lojas",
+        "origin": "Origem",
+        "allOrigins": "Todas as origens",
+        "originOption": {
+          "crm_link": "Link do CRM",
+          "menu_direct": "Direto do cardápio"
+        }
       },
       "stages": {
         "link_sent": "Link enviado",
@@ -733,6 +740,14 @@
         "group": "Grupo",
         "allJourneys": "Todas as Jornadas",
         "conversion": "Link até compra",
+        "purchaseRate": "Compradas / Jornadas",
+        "journeys": "Jornadas",
+        "noConnection": "Sem conexão",
+        "noStore": "Sem loja",
+        "origin": {
+          "crm_link": "Link do CRM",
+          "menu_direct": "Direto do cardápio"
+        },
         "noData": "-",
         "empty": "Ainda não há Jornadas.",
         "error": "Não foi possível carregar o funil da Jornada."

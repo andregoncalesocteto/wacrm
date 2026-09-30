@@ -78,6 +78,7 @@ export default function PipelinesPage() {
   const [journeyFilter, setJourneyFilter] = useState<JourneyFilterValue>({
     channelType: ALL_FILTER,
     storeId: ALL_FILTER,
+    origin: ALL_FILTER,
   });
 
   // Dialog / sheet state
@@ -124,7 +125,7 @@ export default function PipelinesPage() {
       const { data } = await supabase
         .from('deals')
         .select(
-          `*, contact:contacts(*, ${CONTACT_IDENTITIES_EMBED}), assignee:profiles!deals_assigned_to_fkey(*), journey:journeys!deals_journey_id_fkey(cart_items_count, cart_value, cart_currency, origin)`
+          `*, contact:contacts(*, ${CONTACT_IDENTITIES_EMBED}), assignee:profiles!deals_assigned_to_fkey(*), journey:journeys!deals_journey_id_fkey(cart_items_count, cart_value, cart_currency, origin, store_id)`
         )
         .eq('pipeline_id', pipelineId)
         .order('created_at', { ascending: false });
@@ -370,16 +371,25 @@ export default function PipelinesPage() {
 
   const visibleDeals = useMemo(() => {
     if (!isJourneyPipeline) return deals;
-    const { channelType, storeId } = journeyFilter;
-    if (channelType === ALL_FILTER && storeId === ALL_FILTER) return deals;
+    const { channelType, storeId, origin } = journeyFilter;
+    if (
+      channelType === ALL_FILTER &&
+      storeId === ALL_FILTER &&
+      origin === ALL_FILTER
+    )
+      return deals;
     const connById = new Map(connections.map((c) => [c.id, c]));
     return deals.filter((d) => {
+      // A deal without an origin is a legacy CRM-link one.
+      if (origin !== ALL_FILTER && (d.journey?.origin ?? 'crm_link') !== origin)
+        return false;
       const conn = d.connection_id ? connById.get(d.connection_id) : undefined;
-      if (!conn) return false;
-      return (
-        (channelType === ALL_FILTER || conn.channel_type === channelType) &&
-        (storeId === ALL_FILTER || conn.store_id === storeId)
-      );
+      // A direct Journey may have no connection: its store comes from the
+      // Journey itself; it has no channel, so a channel filter excludes it.
+      if (channelType !== ALL_FILTER && conn?.channel_type !== channelType)
+        return false;
+      const dealStoreId = conn?.store_id ?? d.journey?.store_id;
+      return storeId === ALL_FILTER || dealStoreId === storeId;
     });
   }, [isJourneyPipeline, deals, connections, journeyFilter]);
 

@@ -625,7 +625,8 @@
       "won": "성사",
       "lost": "실패",
       "cartItems": "{count, plural, other {#개 상품}}",
-      "originDirect": "메뉴 직접 주문"
+      "originDirect": "메뉴 직접 주문",
+      "originLink": "CRM 링크"
     },
     "form": {
       "editDeal": "딜 수정",
@@ -714,7 +715,13 @@
         "channel": "채널",
         "store": "매장",
         "allChannels": "모든 채널",
-        "allStores": "모든 매장"
+        "allStores": "모든 매장",
+        "origin": "출처",
+        "allOrigins": "모든 출처",
+        "originOption": {
+          "crm_link": "CRM 링크",
+          "menu_direct": "메뉴 직접 주문"
+        }
       },
       "stages": {
         "link_sent": "링크 발송",
@@ -733,6 +740,14 @@
         "group": "그룹",
         "allJourneys": "모든 여정",
         "conversion": "링크에서 구매까지",
+        "purchaseRate": "구매 / 여정",
+        "journeys": "여정",
+        "noConnection": "연결 없음",
+        "noStore": "매장 없음",
+        "origin": {
+          "crm_link": "CRM 링크",
+          "menu_direct": "메뉴 직접 주문"
+        },
         "noData": "-",
         "empty": "아직 여정이 없습니다.",
         "error": "여정 퍼널을 불러오지 못했습니다."

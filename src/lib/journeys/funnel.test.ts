@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { deepestStepReached, journeyFunnel } from './funnel';
+import { deepestStepReached, journeyFunnel, NO_GROUP } from './funnel';
 
 type Row = Record<string, unknown>;
 
@@ -202,13 +202,128 @@ describe('journeyFunnel', () => {
   });
 });
 
+describe('journeyFunnel by origin', () => {
+  // Centro (s1): WhatsApp wa1 + Telegram tg1. Praia (s2): WhatsApp wa2.
+  // CRM link: wa1 -> 4 link_sent only, 1 browsing, 1 won; tg1 -> 1 won;
+  //           wa2 -> 2 link_sent only.
+  // Direct:   wa1 -> 1 cart, 1 won (nasce em checkout);
+  //           no connection @ s1 -> 1 browsing, 1 lost after cart;
+  //           no connection @ s2 -> 1 checkout; no connection, no store -> 1 won.
+  const direct = (connection: string | null, store: string | null, o: Row) =>
+    journey('a', connection as never, {
+      origin: 'menu_direct',
+      store_id: store,
+      link_sent_at: null,
+      ...o,
+    });
+  const db = () =>
+    fakeDb({
+      stores: [
+        { id: 's1', account_id: 'a', name: 'Centro' },
+        { id: 's2', account_id: 'a', name: 'Praia' },
+      ],
+      channel_connections: [
+        { id: 'wa1', account_id: 'a', channel_type: 'whatsapp_cloud', store_id: 's1' },
+        { id: 'tg1', account_id: 'a', channel_type: 'telegram', store_id: 's1' },
+        { id: 'wa2', account_id: 'a', channel_type: 'whatsapp_cloud', store_id: 's2' },
+      ],
+      journeys: [
+        ...many(4, () => journey('a', 'wa1', { origin: 'crm_link' })),
+        journey('a', 'wa1', { origin: 'crm_link', ...times('browsing') }),
+        journey('a', 'wa1', { origin: 'crm_link', ...times('won') }),
+        journey('a', 'tg1', times('won')), // legacy row, no origin
+        ...many(2, () => journey('a', 'wa2')),
+        direct('wa1', 's1', times('cart')),
+        direct('wa1', 's1', times('won')),
+        direct(null, 's1', times('browsing')),
+        direct(null, 's1', { ...times('cart'), stage: 'lost' }),
+        direct(null, 's2', times('checkout')),
+        direct(null, null, times('won')),
+      ],
+    });
+
+  it('keeps direct Journeys out of "link sent" and of the link conversion', async () => {
+    const { total } = await journeyFunnel(db(), { accountId: 'a' });
+    // link origin: 9 Journeys, 2 won; direct: 6 Journeys, 2 won.
+    expect(total.total).toBe(15);
+    expect(total.reached).toEqual({
+      link_sent: 9,
+      browsing: 3 + 6,
+      cart: 2 + 5,
+      checkout: 2 + 3,
+      won: 4,
+    });
+    expect(total.conversion).toBeCloseTo(2 / 9);
+    expect(total.purchaseRate).toBeCloseTo(4 / 15);
+  });
+
+  it('splits the total by origin', async () => {
+    const { total } = await journeyFunnel(db(), { accountId: 'a' });
+    expect(total.byOrigin.crm_link.reached).toEqual({
+      link_sent: 9,
+      browsing: 3,
+      cart: 2,
+      checkout: 2,
+      won: 2,
+    });
+    expect(total.byOrigin.crm_link.conversion).toBeCloseTo(2 / 9);
+    expect(total.byOrigin.menu_direct.total).toBe(6);
+    expect(total.byOrigin.menu_direct.reached).toEqual({
+      link_sent: 0,
+      browsing: 6,
+      cart: 5,
+      checkout: 3,
+      won: 2,
+    });
+    expect(total.byOrigin.menu_direct.lost).toBe(1);
+    expect(total.byOrigin.menu_direct.conversion).toBeNull();
+    expect(total.byOrigin.menu_direct.purchaseRate).toBeCloseTo(2 / 6);
+  });
+
+  it('groups by channel, with a "no connection" group for the direct ones', async () => {
+    const f = await journeyFunnel(db(), { accountId: 'a' });
+    const wa = f.byChannel.find((g) => g.key === 'whatsapp_cloud')!;
+    const tg = f.byChannel.find((g) => g.key === 'telegram')!;
+    const none = f.byChannel.find((g) => g.key === NO_GROUP)!;
+    expect(wa.total).toBe(10);
+    expect(wa.byOrigin.crm_link.total).toBe(8);
+    expect(wa.byOrigin.menu_direct.total).toBe(2);
+    expect(wa.reached.link_sent).toBe(8);
+    expect(wa.byOrigin.menu_direct.purchaseRate).toBeCloseTo(1 / 2);
+    expect(tg.byOrigin.crm_link.conversion).toBe(1);
+    expect(tg.byOrigin.menu_direct.total).toBe(0);
+    expect(none.total).toBe(4);
+    expect(none.byOrigin.crm_link.total).toBe(0);
+    expect(none.byOrigin.menu_direct.reached.won).toBe(1);
+    // nothing vanishes: channel groups add up to the total
+    expect(f.byChannel.reduce((n, g) => n + g.total, 0)).toBe(15);
+  });
+
+  it('groups by store, through store_id when there is no connection', async () => {
+    const f = await journeyFunnel(db(), { accountId: 'a' });
+    const centro = f.byStore.find((g) => g.label === 'Centro')!;
+    const praia = f.byStore.find((g) => g.label === 'Praia')!;
+    const none = f.byStore.find((g) => g.key === NO_GROUP)!;
+    expect(centro.total).toBe(11);
+    expect(centro.byOrigin.crm_link.total).toBe(7);
+    expect(centro.byOrigin.menu_direct.total).toBe(4);
+    expect(centro.byOrigin.menu_direct.reached.link_sent).toBe(0);
+    expect(centro.byOrigin.menu_direct.lost).toBe(1);
+    expect(praia.byOrigin.crm_link.total).toBe(2);
+    expect(praia.byOrigin.menu_direct.reached.checkout).toBe(1);
+    expect(none.total).toBe(1);
+    expect(f.byStore.reduce((n, g) => n + g.total, 0)).toBe(15);
+  });
+});
+
 describe('journeyFunnel with a direct Journey that has no connection', () => {
-  it('counts it in the total and in its store, without breaking the channel groups', async () => {
+  it('counts it in the total and in its store, and in the "no connection" channel group', async () => {
     const db = fakeDb({
       journeys: [
         journey('a', 'c1', times('won')),
         journey('a', null as never, {
           ...times('cart'),
+          origin: 'menu_direct',
           store_id: 's1',
           link_sent_at: null,
         }),
@@ -220,8 +335,11 @@ describe('journeyFunnel with a direct Journey that has no connection', () => {
     });
     const funnel = await journeyFunnel(db, { accountId: 'a' });
     expect(funnel.total.reached.cart).toBe(2);
-    expect(funnel.byChannel).toHaveLength(1);
-    expect(funnel.byChannel[0].reached.cart).toBe(1);
+    expect(funnel.total.reached.link_sent).toBe(1);
+    expect(funnel.byChannel.map((g) => g.key).sort()).toEqual(
+      [NO_GROUP, 'whatsapp_cloud'].sort()
+    );
+    expect(funnel.byChannel.find((g) => g.key === 'whatsapp_cloud')!.reached.cart).toBe(1);
     expect(funnel.byStore).toHaveLength(1);
     expect(funnel.byStore[0]).toMatchObject({ key: 's1', label: 'Centro' });
     expect(funnel.byStore[0].reached.cart).toBe(2);

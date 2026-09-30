@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { JourneyStage } from './constants';
+import type { JourneyOrigin } from './journeys';
 
 /** Funnel steps in order; `lost` is an outcome, not a step. */
 export const FUNNEL_STAGES = [
@@ -16,18 +17,36 @@ export interface FunnelCounts {
   reached: Record<FunnelStage, number>;
   /** Journeys closed as lost (they still count in the steps they reached). */
   lost: number;
-  /** Link sent -> Bought, 0..1; null when no Journey has a link sent. */
+  /**
+   * Link sent -> Bought, 0..1, over CRM-link Journeys only (a direct Journey
+   * never had a link sent); null when none has a link sent.
+   */
   conversion: number | null;
+  /** Journeys counted (any stage, lost included). */
+  total: number;
+  /** Bought / total Journeys, 0..1; null without Journeys. */
+  purchaseRate: number | null;
 }
 
-export interface FunnelGroup extends FunnelCounts {
+export const JOURNEY_ORIGINS: JourneyOrigin[] = ['crm_link', 'menu_direct'];
+
+/** Counts of both origins together, plus each origin on its own. */
+export interface FunnelWithOrigin extends FunnelCounts {
+  byOrigin: Record<JourneyOrigin, FunnelCounts>;
+}
+
+export interface FunnelGroup extends FunnelWithOrigin {
+  /** `NO_GROUP` for Journeys with no connection (channel) or no store. */
   key: string;
   /** Store name (by store) or channel type (by channel). */
   label: string;
 }
 
+/** Group key of the Journeys that have no connection / no store. */
+export const NO_GROUP = '__none__';
+
 export interface JourneyFunnel {
-  total: FunnelCounts;
+  total: FunnelWithOrigin;
   byChannel: FunnelGroup[];
   byStore: FunnelGroup[];
 }
@@ -37,6 +56,8 @@ const PAGE = 1000;
 interface JourneyMilestones {
   /** Null on a direct Journey of a store with no WhatsApp connection. */
   connection_id: string | null;
+  /** Absent (legacy rows) means `crm_link`. */
+  origin?: JourneyOrigin | null;
   /** Set on direct Journeys; used to group them by store without a connection. */
   store_id?: string | null;
   stage: JourneyStage;
@@ -66,21 +87,52 @@ const emptyCounts = (): FunnelCounts => ({
   reached: { link_sent: 0, browsing: 0, cart: 0, checkout: 0, won: 0 },
   lost: 0,
   conversion: null,
+  total: 0,
+  purchaseRate: null,
 });
 
-function add(counts: FunnelCounts, j: JourneyMilestones) {
+const emptyWithOrigin = (): FunnelWithOrigin => ({
+  ...emptyCounts(),
+  byOrigin: { crm_link: emptyCounts(), menu_direct: emptyCounts() },
+});
+
+const originOf = (j: JourneyMilestones): JourneyOrigin =>
+  j.origin === 'menu_direct' ? 'menu_direct' : 'crm_link';
+
+function addTo(counts: FunnelCounts, j: JourneyMilestones, origin: JourneyOrigin) {
   const deepest = deepestStepReached(j);
   FUNNEL_STAGES.forEach((s, i) => {
+    // A direct Journey never had a link sent: its funnel starts at the first
+    // step it reached.
+    if (i === 0 && origin === 'menu_direct') return;
     if (i <= deepest) counts.reached[s]++;
   });
   if (j.stage === 'lost') counts.lost++;
+  counts.total++;
 }
 
-function finish(counts: FunnelCounts): FunnelCounts {
+function add(counts: FunnelWithOrigin, j: JourneyMilestones) {
+  const origin = originOf(j);
+  addTo(counts, j, origin);
+  addTo(counts.byOrigin[origin], j, origin);
+}
+
+function rates(counts: FunnelCounts): FunnelCounts {
   counts.conversion =
     counts.reached.link_sent > 0
       ? counts.reached.won / counts.reached.link_sent
       : null;
+  counts.purchaseRate =
+    counts.total > 0 ? counts.reached.won / counts.total : null;
+  return counts;
+}
+
+function finish<T extends FunnelWithOrigin>(counts: T): T {
+  rates(counts);
+  JOURNEY_ORIGINS.forEach((o) => rates(counts.byOrigin[o]));
+  // Link -> purchase only makes sense for Journeys that had a link sent, and
+  // the combined `link_sent` is already only theirs.
+  counts.conversion = counts.byOrigin.crm_link.conversion;
   return counts;
 }
 
@@ -106,7 +158,9 @@ async function selectAll<T>(
 
 /**
  * Conversion funnel of the account's Journeys, overall and grouped by the
- * channel type and by the store of each Journey's connection. Read-only and
+ * channel type and by store, and split by origin (CRM link / direct). A Journey
+ * without a connection (direct) is grouped under `NO_GROUP` for the channel
+ * and by its own `store_id` for the store, so none is dropped. Read-only and
  * always filtered by `account_id` (works with an RLS client or service-role).
  */
 export async function journeyFunnel(
@@ -119,7 +173,7 @@ export async function journeyFunnel(
         db
           .from('journeys')
           .select(
-            'connection_id, store_id, stage, first_view_content_at, last_add_to_cart_at, checkout_started_at, purchased_at'
+            'connection_id, store_id, origin, stage, first_view_content_at, last_add_to_cart_at, checkout_started_at, purchased_at'
           )
           .eq('account_id', args.accountId)
           .order('id')
@@ -151,7 +205,7 @@ export async function journeyFunnel(
   const connById = new Map(connections.map((c) => [c.id, c]));
   const storeName = new Map(stores.map((s) => [s.id, s.name]));
 
-  const total = emptyCounts();
+  const total = emptyWithOrigin();
   const byChannel = new Map<string, FunnelGroup>();
   const byStore = new Map<string, FunnelGroup>();
   const group = (
@@ -160,30 +214,27 @@ export async function journeyFunnel(
     label: string
   ): FunnelGroup => {
     let g = map.get(key);
-    if (!g) map.set(key, (g = { key, label, ...emptyCounts() }));
+    if (!g) map.set(key, (g = { key, label, ...emptyWithOrigin() }));
     return g;
   };
 
   for (const j of journeys) {
     const conn = j.connection_id ? connById.get(j.connection_id) : undefined;
+    const storeId = conn?.store_id ?? j.store_id ?? null;
     add(total, j);
-    if (!conn) {
-      // No connection (direct, store without WhatsApp): still counts for its
-      // store, but has no channel.
-      if (j.store_id) {
-        add(
-          group(byStore, j.store_id, storeName.get(j.store_id) ?? j.store_id),
-          j
-        );
-      }
-      continue;
-    }
-    add(group(byChannel, conn.channel_type, conn.channel_type), j);
+    add(
+      group(
+        byChannel,
+        conn?.channel_type ?? NO_GROUP,
+        conn?.channel_type ?? NO_GROUP
+      ),
+      j
+    );
     add(
       group(
         byStore,
-        conn.store_id,
-        storeName.get(conn.store_id) ?? conn.store_id
+        storeId ?? NO_GROUP,
+        storeId ? (storeName.get(storeId) ?? storeId) : NO_GROUP
       ),
       j
     );
@@ -194,7 +245,7 @@ export async function journeyFunnel(
       .map((g) => ({ ...g, ...finish(g) }))
       .sort(
         (a, b) =>
-          b.reached.link_sent - a.reached.link_sent ||
+          b.total - a.total ||
           a.label.localeCompare(b.label)
       );
   return {

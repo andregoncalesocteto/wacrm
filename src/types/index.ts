@@ -422,6 +422,8 @@ export interface Deal {
     cart_currency: string | null;
     /** `crm_link` (link sent by the CRM) or `menu_direct` (event without link). */
     origin?: 'crm_link' | 'menu_direct';
+    /** Store of a direct Journey (may have no connection). */
+    store_id?: string | null;
   } | null;
   assigned_to?: string;
   title: string;

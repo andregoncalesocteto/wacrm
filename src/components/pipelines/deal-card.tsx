@@ -110,12 +110,18 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         </div>
       )}
 
-      {deal.journey?.origin === 'menu_direct' && (
+      {deal.journey && (
         <div
           className="text-muted-foreground mt-2 text-[11px]"
-          data-testid="deal-origin-direct"
+          data-testid={
+            deal.journey.origin === 'menu_direct'
+              ? 'deal-origin-direct'
+              : 'deal-origin-link'
+          }
         >
-          {t('originDirect')}
+          {deal.journey.origin === 'menu_direct'
+            ? t('originDirect')
+            : t('originLink')}
         </div>
       )}
 

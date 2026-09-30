@@ -625,7 +625,8 @@
       "won": "Ganado",
       "lost": "Perdido",
       "cartItems": "{count, plural, =1 {# artículo} other {# artículos}}",
-      "originDirect": "Directo del menú"
+      "originDirect": "Directo del menú",
+      "originLink": "Enlace del CRM"
     },
     "form": {
       "editDeal": "Editar negocio",
@@ -714,7 +715,13 @@
         "channel": "Canal",
         "store": "Tienda",
         "allChannels": "Todos los canales",
-        "allStores": "Todas las tiendas"
+        "allStores": "Todas las tiendas",
+        "origin": "Origen",
+        "allOrigins": "Todos los orígenes",
+        "originOption": {
+          "crm_link": "Enlace del CRM",
+          "menu_direct": "Directo del menú"
+        }
       },
       "stages": {
         "link_sent": "Enlace enviado",
@@ -733,6 +740,14 @@
         "group": "Grupo",
         "allJourneys": "Todos los Journeys",
         "conversion": "Enlace a compra",
+        "purchaseRate": "Comprados / Journeys",
+        "journeys": "Journeys",
+        "noConnection": "Sin conexión",
+        "noStore": "Sin tienda",
+        "origin": {
+          "crm_link": "Enlace del CRM",
+          "menu_direct": "Directo del menú"
+        },
         "noData": "-",
         "empty": "Aún no hay Journeys.",
         "error": "No se pudo cargar el embudo del Journey."

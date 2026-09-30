@@ -625,7 +625,8 @@
       "won": "Won",
       "lost": "Lost",
       "cartItems": "{count, plural, =1 {# item} other {# items}}",
-      "originDirect": "Direct from menu"
+      "originDirect": "Direct from menu",
+      "originLink": "CRM link"
     },
     "form": {
       "editDeal": "Edit Deal",
@@ -714,7 +715,13 @@
         "channel": "Channel",
         "store": "Store",
         "allChannels": "All channels",
-        "allStores": "All stores"
+        "allStores": "All stores",
+        "origin": "Origin",
+        "allOrigins": "All origins",
+        "originOption": {
+          "crm_link": "CRM link",
+          "menu_direct": "Direct from menu"
+        }
       },
       "stages": {
         "link_sent": "Link sent",
@@ -733,6 +740,14 @@
         "group": "Group",
         "allJourneys": "All Journeys",
         "conversion": "Link to purchase",
+        "purchaseRate": "Purchased / Journeys",
+        "journeys": "Journeys",
+        "noConnection": "No connection",
+        "noStore": "No store",
+        "origin": {
+          "crm_link": "CRM link",
+          "menu_direct": "Direct from menu"
+        },
         "noData": "-",
         "empty": "No Journeys yet.",
         "error": "Could not load the Journey funnel."
