@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Coins,
   FileText,
   KeyRound,
@@ -41,7 +42,11 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export const DEFAULT_SECTION: SettingsSection = 'overview';
 
-/** Rail grouping. `adminOnly` items are hidden for non-admins. */
+/**
+ * Rail grouping of the panel sections. There is no `adminOnly` here: each
+ * panel decides what a non-admin may do (`useCan`). Only `RailLink`s are
+ * hidden from non-admins.
+ */
 export interface SectionMeta {
   id: SettingsSection;
   label: string;
@@ -63,6 +68,31 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   members: { id: 'members', label: 'Team members', icon: UsersRound, group: 'workspace' },
   api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace' },
 };
+
+/**
+ * Rail items that navigate to a page of their own instead of switching
+ * `?tab=`. They are NOT sections (no panel, not in `SETTINGS_SECTIONS`), so
+ * `resolveSection` and the page's panel map are untouched. `adminOnly` hides the
+ * item for anyone below owner/admin; it is cosmetics: the page itself checks the
+ * role (see `lib/manuals/access.ts`).
+ */
+export interface RailLink {
+  id: 'manuals';
+  href: string;
+  icon: LucideIcon;
+  group: SectionMeta['group'];
+  adminOnly: boolean;
+}
+
+export const RAIL_LINKS: readonly RailLink[] = [
+  {
+    id: 'manuals',
+    href: '/settings/manuals',
+    icon: BookOpen,
+    group: 'workspace',
+    adminOnly: true,
+  },
+];
 
 export const RAIL_GROUPS: { label: string | null; group: SectionMeta['group'] }[] = [
   { label: null, group: 'top' },

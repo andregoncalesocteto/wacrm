@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useRef, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 
+import { useCan } from '@/hooks/use-can';
 import { cn } from '@/lib/utils';
 import {
   RAIL_GROUPS,
+  RAIL_LINKS,
   SECTION_META,
   SETTINGS_SECTIONS,
   type SettingsSection,
@@ -32,6 +35,7 @@ export function SettingsRail({
   hints?: Partial<Record<SettingsSection, ReactNode>>;
 }) {
   const t = useTranslations('Settings');
+  const canSeeAdminLinks = useCan('edit-settings');
   const activeRef = useRef<HTMLButtonElement>(null);
 
   // When horizontal (mobile), keep the active chip in view. On desktop
@@ -101,6 +105,26 @@ export function SettingsRail({
                     </span>
                   ) : null}
                 </button>
+              );
+            })}
+            {RAIL_LINKS.filter(
+              (link) =>
+                link.group === group && (!link.adminOnly || canSeeAdminLinks),
+            ).map((link) => {
+              const Icon = link.icon;
+              return (
+                <Link
+                  key={link.id}
+                  href={link.href}
+                  className={cn(
+                    'flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium whitespace-nowrap transition-colors',
+                    'lg:w-full',
+                    'text-muted-foreground hover:bg-muted hover:text-foreground',
+                  )}
+                >
+                  <Icon className="size-4 shrink-0" />
+                  <span className="flex-1">{t(`sections.${link.id}`)}</span>
+                </Link>
               );
             })}
           </div>

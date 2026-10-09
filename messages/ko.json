@@ -2111,7 +2111,8 @@
       "fields": "필드 & 태그",
       "deals": "딜 & 통화",
       "members": "팀원",
-      "api": "API 키"
+      "api": "API 키",
+      "manuals": "매뉴얼"
     },
     "stores": {
       "title": "매장",

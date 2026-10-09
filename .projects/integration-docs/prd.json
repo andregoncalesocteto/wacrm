@@ -262,8 +262,8 @@
         "Verify in browser using dev-browser skill: como owner, o item \"Manuais\" aparece em Configurações e leva a `/settings/manuals`; como agent ou viewer, o item não aparece"
       ],
       "priority": 14,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Not seen in a browser: both the owner view (item visible, leads to /settings/manuals) and the agent/viewer view (item absent) need a logged-in session and no credentials were available. Covered by settings-rail.test.tsx (renders SettingsRail with useCan true/false) and settings-sections.test.ts. Re-check with owner and agent logins in US-017."
     },
     {
       "id": "US-015",

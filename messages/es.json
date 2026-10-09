@@ -2101,7 +2101,8 @@
       "fields": "Campos y etiquetas",
       "deals": "Negocios y moneda",
       "members": "Miembros del equipo",
-      "api": "Claves de API"
+      "api": "Claves de API",
+      "manuals": "Manuales"
     },
     "stores": {
       "title": "Tiendas",

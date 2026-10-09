@@ -156,3 +156,13 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - `vi.hoisted` is how a mock factory reads a mutable variable (the stubbed role).
   - The dashboard layout is a client shell: a server page inside it is fine.
 ---
+
+## 2026-10-09 - US-014
+- settings-sections.ts: new `RailLink` + `RAIL_LINKS` (`manuals` → /settings/manuals, BookOpen, group workspace, adminOnly true), kept OUT of SETTINGS_SECTIONS/SECTION_META (so resolveSection and the page's panel Record are untouched); fixed the stale comment that claimed `adminOnly` items were hidden (SectionMeta never had it). settings-rail.tsx: calls `useCan('edit-settings')` and renders the group's RAIL_LINKS as next/link items with the buttons' style, hiding `adminOnly` ones for non-admins. `Settings.sections.manuals` in the 4 catalogues (surgical edit: 3 lines each).
+- Tests: settings-rail.test.tsx (2: link shown to an admin, hidden from an agent while every real section stays) and 2 more in settings-sections.test.ts.
+- NOT verified in a browser (no credentials), see the story's notes in prd.json. Carry to US-017.
+- Files changed: src/components/settings/{settings-sections.ts,settings-rail.tsx,settings-sections.test.ts,settings-rail.test.tsx}, messages/*.json
+- **Learnings for future iterations:**
+  - Pre-existing lint WARNINGS in src/components/settings (ai-config, ai-knowledge, api-keys-settings, sessions-card, settings-overview) are not from this feature; `eslint <dir>` exits 0 with them.
+  - Client components using next-intl/useCan can be render-tested with `renderToStaticMarkup` by mocking `next-intl` (useTranslations → key) and `@/hooks/use-can`.
+---
