@@ -2766,7 +2766,11 @@
     "indexTitle": "Documentación de integración",
     "indexIntro": "Manuales y referencia de la API para conectar un menú digital a este CRM.",
     "manualsHeading": "Manuales",
-    "apiReferenceDesc": "Todos los endpoints, campos y ejemplos, con la opción de probar una llamada."
+    "apiReferenceDesc": "Todos los endpoints, campos y ejemplos, con la opción de probar una llamada.",
+    "statusPreStable": "Contrato preestable",
+    "statusStable": "Contrato estable",
+    "supportNote": "¿Dudas? Habla con el equipo del CRM que te envió este enlace.",
+    "tryItOutNotice": "En producción, la llamada sale del servidor del menú. “Try it out” es para pruebas: usa una clave de prueba."
   },
   "Manuals": {
     "title": "Manuales",

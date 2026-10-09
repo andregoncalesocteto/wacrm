@@ -166,3 +166,13 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - Pre-existing lint WARNINGS in src/components/settings (ai-config, ai-knowledge, api-keys-settings, sessions-card, settings-overview) are not from this feature; `eslint <dir>` exits 0 with them.
   - Client components using next-intl/useCan can be render-tested with `renderToStaticMarkup` by mocking `next-intl` (useTranslations → key) and `@/hooks/use-can`.
 ---
+
+## 2026-10-09 - US-015
+- src/lib/manuals/contract-status.ts: ONE constant `CONTRACT_STATUS = 'pre-stable'` (+ message-key map). /developers layout shows a badge ("Contrato pré-estável") next to the site title and the support sentence in a footer ("Dúvidas? Fale com a equipe do CRM que enviou este link."), neither names a client; the API-reference page shows the Try-it-out notice above the Swagger. Keys Developers.{statusPreStable,statusStable,supportNote,tryItOutNotice} in the 4 catalogues. contract-status.test.ts (5): the status is known and starts pre-stable; every locale has the texts.
+- To flip to "estável" once the pilot (Bella Capri) integrates: change `CONTRACT_STATUS` to 'stable' in contract-status.ts, nothing else.
+- Browser (next dev :3100, signed out): badge, footer text and notice appear on /developers, the manual and /developers/api-reference; dark and light themes legible (light = `document.documentElement.setAttribute('data-mode','light')`).
+- Files changed: src/lib/manuals/contract-status.ts(+test), src/app/developers/layout.tsx, src/app/developers/api-reference/page.tsx, messages/*.json
+- **Learnings for future iterations:**
+  - Theme switch in this app is the `data-mode` attribute on <html> (dark by default), NOT a `dark` class.
+  - In dev-browser scripts do not use `waitUntil: 'networkidle'` on dev pages (the HMR socket can keep it busy) and do not select `main`: Swagger UI has its own `<main id="operations">`; use `main.mx-auto`.
+---

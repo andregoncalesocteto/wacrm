@@ -280,7 +280,7 @@
         "Verify in browser using dev-browser skill: o selo, o texto de suporte e o aviso aparecem em `/developers`, no manual e no Swagger, em tema claro e escuro"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

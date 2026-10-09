@@ -2766,7 +2766,11 @@
     "indexTitle": "Documentação de integração",
     "indexIntro": "Manuais e referência da API para conectar um cardápio digital a este CRM.",
     "manualsHeading": "Manuais",
-    "apiReferenceDesc": "Todos os endpoints, campos e exemplos, com a opção de testar uma chamada."
+    "apiReferenceDesc": "Todos os endpoints, campos e exemplos, com a opção de testar uma chamada.",
+    "statusPreStable": "Contrato pré-estável",
+    "statusStable": "Contrato estável",
+    "supportNote": "Dúvidas? Fale com a equipe do CRM que enviou este link.",
+    "tryItOutNotice": "Em produção, a chamada sai do servidor do cardápio. O “Try it out” serve para testes: use uma chave de teste."
   },
   "Manuals": {
     "title": "Manuais",

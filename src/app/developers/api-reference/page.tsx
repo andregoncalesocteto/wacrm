@@ -18,6 +18,9 @@ export default async function ApiReferencePage() {
       <h1 className="mb-4 text-3xl font-bold tracking-tight">
         {t('apiReference')}
       </h1>
+      <p className="border-border bg-muted/50 text-muted-foreground mb-4 rounded-lg border px-4 py-3 text-sm">
+        {t('tryItOutNotice')}
+      </p>
       <SwaggerViewer url="/developers/openapi.yaml" />
     </div>
   );

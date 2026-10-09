@@ -2778,7 +2778,11 @@
     "indexTitle": "Integration documentation",
     "indexIntro": "Manuals and the API reference for connecting a digital menu to this CRM.",
     "manualsHeading": "Manuals",
-    "apiReferenceDesc": "Every endpoint, field and example, with the option to try a call."
+    "apiReferenceDesc": "Every endpoint, field and example, with the option to try a call.",
+    "statusPreStable": "Pre-stable contract",
+    "statusStable": "Stable contract",
+    "supportNote": "Questions? Contact the CRM team that sent you this link.",
+    "tryItOutNotice": "In production, the call must come from your menu's server. “Try it out” is for tests: use a test API key."
   },
   "Manuals": {
     "title": "Manuals",
