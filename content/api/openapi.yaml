@@ -8,8 +8,9 @@ info:
     evolui. Com isso o CRM move o negócio no funil, recupera carrinhos
     abandonados e avisa o cliente sobre o pedido.
 
-    O passo a passo completo (configuração no CRM e integração) está em
-    `manual-integracao.md`, na mesma pasta deste arquivo.
+    O manual de integração, com o passo a passo e as regras de reenvio, está em
+    `/developers`, no mesmo endereço deste documento. Dúvidas: fale com a equipe do
+    CRM que enviou este link.
 
     ## Regras que valem para todo evento
 
@@ -43,12 +44,10 @@ info:
 
     Pré-estável até o primeiro cliente integrar; depois, congelada (uma quebra
     exige `v2`). Quebras antes disso são avisadas nas notas de versão.
-  contact:
-    name: Time responsável pelo CRM (informe aqui o seu canal de suporte)
 
 servers:
-  - url: https://SEU-CRM.exemplo.com
-    description: Endereço do CRM, informado pelo operador (sem barra no final).
+  - url: /
+    description: A própria origem em que este documento é servido (o CRM que você está acessando).
 
 tags:
   - name: Eventos

@@ -19,3 +19,12 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
 - `src/middleware.ts` only protects a hardcoded prefix list (`/settings` is in it, `/developers` is not); `src/middleware.test.ts` has the mock pattern to extend.
 - `lib/auth/account.ts` has `requireRole`, `UnauthorizedError`, `ForbiddenError` for server code. The dashboard has no server page yet: US-013 sets the pattern.
 - Format with prettier before committing (`npm run format`); commit style: imperative, terse first line, `feat: [Story ID] - [Story Title]`.
+
+## 2026-10-09 - US-001
+- Moved docs/integracao-cardapio/openapi.yaml to content/api/openapi.yaml (git mv); `servers` is now `- url: /`; removed the `contact` placeholder; the description points to /developers and says to ask the CRM team that sent the link.
+- Files changed: content/api/openapi.yaml (moved + edited)
+- **Learnings for future iterations:**
+  - `npm run format:check` already FAILS on the whole repo (446 files, before this feature). Do not chase it: check only the files you touch with `npx prettier --check <files>`.
+  - The root `.prettierrc` is applied to .projects/*.md and .yaml too; run `npx prettier --write <file>` on whatever you create.
+  - A helper that flips `passes` lives only in the session scratchpad; flip it by hand in .projects/integration-docs/prd.json if you do not have it.
+---
