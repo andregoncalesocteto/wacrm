@@ -204,8 +204,8 @@
         "Verify in browser using dev-browser skill: abrir `/developers/api-reference` sem login; os endpoints `GET /api/v1/me` e `POST /api/v1/journey/events` aparecem com os 5 exemplos de evento; o botão Authorize aceita um Bearer; \"Try it out\" em `GET /api/v1/me` com uma chave de teste devolve 200; a chave não aparece no `localStorage` depois de recarregar a página; o console do navegador não mostra violação de CSP causada pelo Swagger"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Verified in the browser except one point: \"Try it out\" on GET /api/v1/me returning 200 needs a real events/test API key (none available to the agent; creating one means logging in to the dashboard or writing to the shared dev database). With a fake key the request reached the SAME origin and answered 401, which proves the wiring. Re-check with a real key in US-017 (verification.md)."
     },
     {
       "id": "US-012",

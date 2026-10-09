@@ -119,3 +119,16 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - A folder named `openapi.yaml` under src/app is a valid route segment (like sitemap.xml).
   - With the ignore comments, content/manuals is NOT auto-traced into standalone: the admin pages (read at runtime) need the explicit `outputFileTracingIncludes` of US-012, and US-017 must prove the files are in the image.
 ---
+
+## 2026-10-09 - US-011
+- SPIKE RESULT (ADR-002 risk): swagger-ui-react 5.33.1 WORKS with React 19.2.4 and Next 16.3.5 (dev and prod build): no plan B needed (swagger-ui-dist not used).
+- src/components/manuals/swagger-viewer.tsx ('use client'; next/dynamic ssr:false; `swagger-ui-react/swagger-ui.css`; `persistAuthorization={false}`; light panel with colorScheme light) and src/app/developers/api-reference/page.tsx (Server Component; title from Developers.apiReference). Installed swagger-ui-react and @types/swagger-ui-react.
+- Browser: 2 operations (/api/v1/journey/events, /api/v1/me); the server dropdown shows `/ - A própria origem…`; Authorize accepts a Bearer; "Try it out" on GET /api/v1/me sent `GET http://localhost:3100/api/v1/me` with the Bearer (same origin, no CORS); the key is NOT in localStorage nor sessionStorage and Authorize is not "locked" after a reload; the only console error was the expected 401 of a fake key, no CSP violation.
+- Prod build: /developers loads 161 KB of JS (11 files), /developers/api-reference 514 KB (14 files): Swagger is loaded only on its route.
+- NOT verified: a 200 from "Try it out" with a real key (see the story's notes in prd.json); carry it to US-017.
+- Files changed: package.json, package-lock.json, src/components/manuals/swagger-viewer.tsx, src/app/developers/api-reference/page.tsx
+- **Learnings for future iterations:**
+  - The `react/jsx-no-literals` rule flags a literal like "…" in JSX, even in a loading fallback; use an empty element or a translated string.
+  - Prettier collapses multi-line arrow bodies: re-read a file after `prettier --write` before regex-editing it.
+  - `ps -eo pid,args | grep [n]ext` shows two next servers: one is the Docker container (wacrm-app-1, port 3000), do not kill it. Find yours with `ss -ltnp | grep :3100`.
+---
