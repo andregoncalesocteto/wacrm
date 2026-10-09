@@ -1,0 +1,320 @@
+{
+  "project": "wacrm",
+  "branchName": "ralph/integration-docs",
+  "description": "Manuais e Swagger na web — publica o manual de integração e a referência da API (Swagger UI) em /developers, sem login, e o manual de configuração do operador em /settings/manuals (owner/admin), com conteúdo versionado no repo em content/.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Mover o contrato OpenAPI para `content/api/`",
+      "description": "Como mantenedor, quero o `openapi.yaml` numa pasta de conteúdo própria e com servidor relativo, para o Swagger chamar sempre o CRM que o dev está vendo.",
+      "acceptanceCriteria": [
+        "`docs/integracao-cardapio/openapi.yaml` é movido (`git mv`) para `content/api/openapi.yaml`",
+        "O bloco `servers` do YAML passa a ser `- url: /`, com descrição explicando que o servidor é a própria origem",
+        "O campo `contact.name` com o placeholder é removido, e a `description` do `info` diz que dúvidas devem ir à equipe do CRM que enviou o link",
+        "O YAML continua carregando sem erro (`node -e` com `js-yaml`) e todos os `$ref` resolvem",
+        "`docs/integracao-cardapio/manual-integracao.md` ainda existe neste ponto (a divisão é a US-002 e a US-003)",
+        "`npm run format:check` passa",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Escrever o manual de integração público",
+      "description": "Como dev do cardápio externo, quero um manual só da integração, que não dependa do manual do operador, para implementar os eventos sem acesso ao CRM.",
+      "acceptanceCriteria": [
+        "Criar `content/manuals/pt/integracao-cardapio.md` com o conteúdo da Parte B de `manual-integracao.md` (seções \"Como funciona\", B.1 a B.10, \"Problemas comuns\", \"Limitações conhecidas\"), em Markdown puro, sem MDX",
+        "Nenhuma referência a seções do manual do operador (`A.1`…`A.11`); onde a Parte B citava o operador, o texto diz \"peça ao operador do CRM\" (por exemplo, a `store_key`, a URL base e a chave de API)",
+        "Nenhum link relativo exceto `./openapi.yaml`, `./configuracao-jornada-pedido.md` (se citado) e âncoras `#…` para títulos do próprio arquivo, e todas as âncoras apontam para um título existente",
+        "A URL base nos exemplos usa o token `{URL_BASE}`; `{{menu_link}}`, `{{order_id}}` e semelhantes aparecem como texto literal",
+        "O texto diz que o contrato é pré-estável e que em produção a chamada sai do servidor, nunca do navegador",
+        "Não contém nada que pareça uma chave real: `grep -E 'wacrm_live_[A-Za-z0-9]{20,}'` no arquivo não encontra nada",
+        "`npm run format:check` passa",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Escrever o manual de configuração do operador",
+      "description": "Como operador do CRM, quero um manual só da configuração, para ligar a jornada de pedido sem misturar com instruções de desenvolvimento.",
+      "acceptanceCriteria": [
+        "Criar `content/manuals/pt/configuracao-jornada-pedido.md` com o conteúdo da Parte A de `manual-integracao.md` (A.1 a A.11)",
+        "O item \"O que entregar ao time do cardápio\" (A.9) passa a pedir ao operador que envie o link `{URL_BASE}/developers`, e lista o que mais entregar (chave de API, URL base, `store_key` de cada loja, `idtrack` de teste)",
+        "Referências a \"seção B.x\" viram links para `./integracao-cardapio.md` (ou texto equivalente), sem números de seção do outro manual",
+        "Os tokens `{{menu_link}}`, `{{order_id}}`, `{{order_status}}`, `{{order_value}}` e `{{store_name}}` aparecem como texto literal; `{URL_BASE}` só onde há URL do CRM",
+        "Não contém chave real (mesma verificação da US-002)",
+        "`docs/integracao-cardapio/` é removido por inteiro (os dois manuais agora vivem em `content/`)",
+        "`grep -rn \"integracao-cardapio/\" --include=*.md --include=*.ts .` não aponta para o diretório removido (exceto o próprio nome do slug)",
+        "`npm run format:check` passa",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Registro e carregador de manuais",
+      "description": "Como mantenedor, quero um registro tipado e um carregador de duas funções, para que servir um manual `admin` como público exija um erro deliberado.",
+      "acceptanceCriteria": [
+        "Instalar `react-markdown`, `remark-gfm`, `rehype-slug` e os pacotes do pipeline que forem importados diretamente (`unified`, `remark-parse`, `remark-rehype`, um utilitário de texto de `hast`), declarados em `package.json`",
+        "`src/lib/manuals/registry.ts` exporta `MANUALS` com os dois manuais (`integracao-cardapio` público, `configuracao-jornada-pedido` admin), `ManualMeta` e `ManualVisibility`; o slug `api-reference` é reservado e o registro rejeita (erro no carregamento do módulo ou teste) um manual com esse slug",
+        "`src/lib/manuals/loader.ts` exporta `getPublicManual`, `getAdminManual`, `listPublicManuals`, `listAdminManuals`; `getPublicManual` devolve `null` para slug inexistente ou `admin`; `getAdminManual` devolve `null` para slug inexistente ou público",
+        "O carregador troca o token `{URL_BASE}` por `NEXT_PUBLIC_SITE_URL` sem barra final, e por `https://SEU-CRM.exemplo.com` quando a variável não existe; `{{menu_link}}` e outros `{{…}}` ficam intactos",
+        "O carregador lê de `content/manuals/<locale>/`, caindo em `pt` quando a pasta do locale não existe",
+        "O carregador extrai `headings` (`h2` e `h3`, com `id` e `text`) usando o pipeline `unified` com `remark-gfm` e `rehype-slug`, de modo que títulos com crases e títulos repetidos recebam o mesmo `id` que o HTML renderizará",
+        "O carregador lança erro se o arquivo de um manual do registro não existir (nunca devolve conteúdo vazio)",
+        "Testes (`loader.test.ts`) cobrem: público×admin, `null` para slug inexistente, substituição de `{URL_BASE}` com e sem a variável, `{{menu_link}}` intacto, fallback de locale, `ids` de títulos com crases e repetidos, erro para arquivo ausente",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Reescrita de links entre manuais",
+      "description": "Como leitor, quero que os links entre os manuais e para o `openapi.yaml` levem à rota certa, para não cair em 404 ao clicar.",
+      "acceptanceCriteria": [
+        "Função pura `resolveManualHref(href, { visibility })` em `src/lib/manuals/links.ts`",
+        "`./openapi.yaml` → `/developers/openapi.yaml`",
+        "`./<slug>.md` de um manual do registro → `/developers/<slug>` se público, `/settings/manuals/<slug>` se admin; um manual `admin` referenciado a partir de um manual público devolve `null` (o chamador mostra só o texto, sem link)",
+        "`#âncora`, `http(s)://` e `mailto:` passam sem alteração",
+        "Qualquer outro link relativo devolve `null`",
+        "Testes (`links.test.ts`) cobrem os cinco casos acima",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Testes-guarda do conteúdo",
+      "description": "Como mantenedor, quero que o CI falhe quando o contrato, os manuais ou o YAML divergirem, para o dev externo nunca implementar em cima de documentação errada.",
+      "acceptanceCriteria": [
+        "Adicionar `js-yaml` e `@types/js-yaml` como `devDependencies`",
+        "M3: teste compara os `enum` de `name` e de `status` do `content/api/openapi.yaml` com `JOURNEY_EVENT_NAMES` e `ORDER_EVENT_STATUSES` exportados por `src/lib/journeys/event-payload.ts`",
+        "M3: teste exercita os limites contra os parsers de `event-payload.ts` (200 itens aceitos e 201 recusados no carrinho; `quantity` 0 recusada; `order_id` com 201 caracteres recusado; telefone sem `+` recusado) e confere que o YAML declara os mesmos números (`maxItems: 200`, `minimum: 1`, `maxLength: 200`, `pattern` do telefone)",
+        "M5: teste falha se qualquer manual com `visibility: 'public'` ou o YAML casar `wacrm_live_[A-Za-z0-9]{20,}`",
+        "Teste falha se algum link relativo de qualquer manual não resolver por `resolveManualHref` (ou se uma âncora `#…` não existir como `id` nos `headings` do próprio manual)",
+        "Teste falha se um manual do registro não tiver arquivo em `content/manuals/pt/`",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Componentes de leitura do manual",
+      "description": "Como leitor, quero o manual renderizado com tabelas, blocos de código, âncoras e um índice lateral, para navegar um documento de várias centenas de linhas.",
+      "acceptanceCriteria": [
+        "`src/components/manuals/manual-view.tsx` (Server Component) renderiza o Markdown com `react-markdown`, `remark-gfm` e `rehype-slug`, sem HTML cru e sem `dangerouslySetInnerHTML`",
+        "Tabelas ficam dentro de um contêiner com rolagem horizontal; `code` inline e `pre` usam fonte monoespaçada com fundo dos tokens do tema (claro e escuro funcionam)",
+        "Links passam por `resolveManualHref`: link resolvido vira `<a>` (externo com `rel=\"noopener noreferrer\"` e `target=\"_blank\"`); link que devolve `null` é renderizado como texto simples",
+        "`src/components/manuals/manual-toc.tsx` renderiza o índice a partir de `headings` (`h2` e `h3`), com links `#id`",
+        "Classes `print:` escondem o índice na impressão",
+        "Teste (`manual-view.test.tsx`) renderiza um manual com `react-dom/server` e confirma que todo `id` do índice existe no HTML e que `{{menu_link}}` aparece literal",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Rotas públicas: layout e página do manual",
+      "description": "Como dev do cardápio externo, quero abrir o manual de integração por uma URL pública, sem login.",
+      "acceptanceCriteria": [
+        "`src/app/developers/layout.tsx` com layout mínimo (precedente: `src/app/join/layout.tsx`) e `metadata.robots = { index: false, follow: false }`",
+        "`src/app/developers/[slug]/page.tsx` renderiza `<ManualView/>` e `<ManualToc/>` com `getPublicManual(slug)`; usa `generateStaticParams` a partir de `listPublicManuals()` e `export const dynamicParams = false`",
+        "Slug de um manual `admin` (`/developers/configuracao-jornada-pedido`) e slug inexistente respondem 404",
+        "Os textos de interface da página (rótulo do índice, link \"Referência da API\") passam por `useTranslations` e existem nos quatro catálogos; `npm test` (paridade de chaves) passa",
+        "Teste em `src/middleware.test.ts`: sem sessão, `/developers` e `/developers/integracao-cardapio` passam sem redirecionamento",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass",
+        "Verify in browser using dev-browser skill: abrir `/developers/integracao-cardapio` sem estar logado; tabelas rolam no celular; o índice leva às seções; o tema escuro fica legível"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Rotas públicas: índice de `/developers`",
+      "description": "Como operador, quero uma página de entrada que eu possa mandar ao time externo, listando o que há para ler.",
+      "acceptanceCriteria": [
+        "`src/app/developers/page.tsx` lista os manuais de `listPublicManuals()` (título e descrição) com link para `/developers/<slug>`",
+        "Mostra um cartão \"Referência da API\" com link para `/developers/api-reference`",
+        "Nenhum manual `admin` aparece na lista",
+        "Textos de interface em `useTranslations` nos quatro catálogos",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass",
+        "Verify in browser using dev-browser skill: abrir `/developers` sem login; a lista mostra só o manual de integração; os links funcionam"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Rota do `openapi.yaml`",
+      "description": "Como dev do cardápio, quero importar o contrato por URL no Insomnia, no Postman ou no editor.swagger.io.",
+      "acceptanceCriteria": [
+        "`src/app/developers/openapi.yaml/route.ts` com `export const dynamic = 'force-static'` devolve o conteúdo de `content/api/openapi.yaml`",
+        "Cabeçalhos: `Content-Type: application/yaml; charset=utf-8` e `Access-Control-Allow-Origin: *` (somente nessa rota)",
+        "Teste do handler confirma status 200, os dois cabeçalhos e que o corpo é igual ao arquivo",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass",
+        "`npm run build` termina sem erro e `/developers/openapi.yaml` aparece como estática na saída do build"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Página do Swagger UI",
+      "description": "Como dev do cardápio externo, quero ler a referência da API e testar uma chamada com a minha chave.",
+      "acceptanceCriteria": [
+        "Instalar `swagger-ui-react`; antes de qualquer outra coisa nesta história, confirmar que ele renderiza com React 19.2 e Next 16.3 (`npm run build` e abrir a página). Se falhar, registrar o erro em `progress.txt` e usar `swagger-ui-dist` montado num `useEffect` do mesmo componente cliente (plano B do ADR-002)",
+        "`src/components/manuals/swagger-viewer.tsx` é um componente cliente que carrega o Swagger com `next/dynamic` (`ssr: false`), `url=\"/developers/openapi.yaml\"`, `persistAuthorization` desligado, dentro de um painel de fundo claro",
+        "`src/app/developers/api-reference/page.tsx` renderiza o viewer; o slug `api-reference` não colide com `[slug]`",
+        "O Swagger não é carregado em nenhuma outra rota (conferir pela saída do build: o chunk só é referenciado por essa página)",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass",
+        "Verify in browser using dev-browser skill: abrir `/developers/api-reference` sem login; os endpoints `GET /api/v1/me` e `POST /api/v1/journey/events` aparecem com os 5 exemplos de evento; o botão Authorize aceita um Bearer; \"Try it out\" em `GET /api/v1/me` com uma chave de teste devolve 200; a chave não aparece no `localStorage` depois de recarregar a página; o console do navegador não mostra violação de CSP causada pelo Swagger"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Cache e entrega dos manuais da área logada",
+      "description": "Como mantenedor, quero que o manual do operador nunca seja guardado em cache compartilhado e que o conteúdo esteja na imagem Docker.",
+      "acceptanceCriteria": [
+        "Em `next.config.ts`, a regra de `Cache-Control` pública (`s-maxage=300`) exclui `settings/manuals` no `source`, e uma regra nova aplica `Cache-Control: private, no-store` a `/settings/manuals/:path*`",
+        "`outputFileTracingIncludes` declara `content/manuals//*` para `/settings/manuals/*`",
+        "Nenhuma outra regra de cache ou de segurança existente é alterada",
+        "Teste unitário importa a função `headers()` da configuração e confirma: existe a regra `private, no-store` para `/settings/manuals/:path*`, e o `source` da regra pública não casa `/settings/manuals/x` (usando o mesmo casamento de padrão do Next, ou, se isso for inviável em teste, documentando no `progress.txt` por que a verificação ficou para a US-017)",
+        "`npm run build` passa",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Manual do operador: páginas servidor com checagem de papel",
+      "description": "Como owner ou admin, quero ler o manual de configuração dentro do CRM; como agent ou viewer, não devo vê-lo.",
+      "acceptanceCriteria": [
+        "Helper `requireManualsAccess()` (em `src/lib/manuals/access.ts`) chama `requireRole('admin')`, converte `UnauthorizedError` em `redirect('/login')` e `ForbiddenError` em `notFound()`, e relança qualquer outro erro",
+        "`src/app/(dashboard)/settings/manuals/page.tsx` lista `listAdminManuals()` com link para `/settings/manuals/<slug>` e um link de volta para `/settings`",
+        "`src/app/(dashboard)/settings/manuals/[slug]/page.tsx` chama `requireManualsAccess()` primeiro, depois `getAdminManual(slug)` (`notFound()` se `null`) e renderiza `<ManualView/>` e `<ManualToc/>`",
+        "`/settings/manuals/integracao-cardapio` (manual público) responde 404 nessa árvore",
+        "Testes (`access.test.ts`, com `requireRole` simulado) cobrem: owner e admin passam; agent e viewer resultam em `notFound`; sem sessão resulta em redirecionamento para `/login`; erro inesperado é relançado",
+        "Teste em `src/middleware.test.ts`: sem sessão, `/settings/manuals` redireciona para `/login`",
+        "Textos de interface em `useTranslations` nos quatro catálogos",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass",
+        "Verify in browser using dev-browser skill: logado como owner, abrir `/settings/manuals/configuracao-jornada-pedido` e ver o manual; logado como agent (ou viewer), a mesma URL responde 404; sem sessão, redireciona para o login"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Item \"Manuais\" na barra lateral de Configurações",
+      "description": "Como owner ou admin, quero chegar ao manual a partir da barra lateral, e quem não tem permissão nem vê o item.",
+      "acceptanceCriteria": [
+        "`src/components/settings/settings-sections.ts` exporta `RAIL_LINKS` (id `manuals`, `href: '/settings/manuals'`, ícone `BookOpen`, grupo `workspace`, `adminOnly: true`) e não adiciona `manuals` a `SETTINGS_SECTIONS` nem a `SECTION_META`",
+        "`settings-rail.tsx` renderiza cada item de `RAIL_LINKS` como `<Link>` ao fim do seu grupo, com o mesmo estilo dos botões, e esconde os `adminOnly` quando `useCan('edit-settings')` é falso",
+        "Chave `Settings.sections.manuals` presente nos quatro catálogos",
+        "Os testes existentes de `settings-sections.test.ts` seguem passando e há um novo teste: `RAIL_LINKS` tem o item `manuals` com `adminOnly: true` e `SETTINGS_SECTIONS` não o contém",
+        "O comentário desatualizado em `settings-sections.ts` (\"`adminOnly` items are hidden for non-admins\") passa a descrever o comportamento real",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass",
+        "Verify in browser using dev-browser skill: como owner, o item \"Manuais\" aparece em Configurações e leva a `/settings/manuals`; como agent ou viewer, o item não aparece"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Selo \"pré-estável\", suporte e aviso do Try-it-out",
+      "description": "Como dev externo, quero saber que o contrato ainda pode mudar e a quem recorrer, e ser avisado de que a chave não deve ser colada em produção no navegador.",
+      "acceptanceCriteria": [
+        "O layout público (`/developers/`) mostra um selo \"Contrato pré-estável\" e um texto de suporte: \"Dúvidas? Fale com a equipe do CRM que enviou este link.\" Nenhum cliente é citado pelo nome",
+        "A página do Swagger mostra um aviso curto: em produção, a chamada sai do servidor do cardápio; o \"Try it out\" é para testes com uma chave de teste",
+        "O texto do selo vem de uma constante única, para ser trocado por \"estável\" num PR quando o piloto integrar",
+        "Textos nos quatro catálogos",
+        "Typecheck passes",
+        "Lint passes",
+        "Tests pass",
+        "Verify in browser using dev-browser skill: o selo, o texto de suporte e o aviso aparecem em `/developers`, no manual e no Swagger, em tema claro e escuro"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Documentação do projeto",
+      "description": "Como mantenedor, quero que a regra de manter contrato e manuais juntos esteja escrita, e que a documentação existente aponte para as novas páginas.",
+      "acceptanceCriteria": [
+        "`CLAUDE.md` do projeto ganha uma nota curta: o contrato de eventos vive em `src/lib/journeys/event-payload.ts` e em `content/api/openapi.yaml`, e uma mudança num exige atualizar o outro e o manual correspondente em `content/manuals/pt/` no mesmo PR; descreve o mapa de rotas (`/developers/` público, `/settings/manuals/` owner/admin) e que `content/` nunca vem de `.projects/`",
+        "`docs/public-api.md` (seção do endpoint de eventos) e `docs/order-journey.md` apontam para `/developers` como a documentação para o time do cardápio",
+        "Os três ADRs não são alterados (a aceitação é uma decisão humana)",
+        "`npm run format:check` passa",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Verificação na stack Docker",
+      "description": "Como mantenedor, quero confirmar que a feature funciona na imagem `standalone`, onde o CI não chega.",
+      "acceptanceCriteria": [
+        "Subir a stack Docker (skill `wacrm-stack`) com `--build` e abrir `/developers`, `/developers/integracao-cardapio`, `/developers/api-reference` e `/developers/openapi.yaml` sem cookie: todas respondem 200",
+        "Como owner, `/settings/manuals` e `/settings/manuals/configuracao-jornada-pedido` respondem 200 e mostram o manual (prova de que `content/` está na imagem)",
+        "`curl -I` em `/settings/manuals/configuracao-jornada-pedido` mostra `Cache-Control: private, no-store`",
+        "Como agent ou viewer, `/settings/manuals` responde 404; sem sessão, redireciona para `/login`",
+        "No Swagger, \"Try it out\" em `GET /api/v1/me` com uma chave de teste devolve 200 na stack Docker",
+        "O resultado de cada item acima é registrado em `.projects/integration-docs/verification.md`",
+        "Se o Docker não estiver disponível no ambiente, a história fica incompleta e o motivo é registrado em `progress.txt`; ela não é marcada como concluída",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+# Ralph Progress Log — ralph/integration-docs
+Started: 2026-10-09
+PRD: .projects/integration-docs/prd.json (17 stories, priority order = id order, no gaps; source: prd-integration-docs.md).
+Base docs: SOLUTION.md, design.md, adr/ADR-001-manuais-como-arquivos-versionados-com-registro.md,
+adr/ADR-002-swagger-ui-empacotado-e-mesma-origem.md, adr/ADR-003-duas-arvores-de-rota-publica-estatica-e-operador-privada.md,
+prd-integration-docs.md. The design's "Ajustes ao SOLUTION.md" section corrects two premises of the SOLUTION
+(SettingsRail has NO `adminOnly` flag; next.config.ts applies a public s-maxage=300 Cache-Control to every route) — read it first.
+No test-scenarios.json (acceptanceCriteria are the bar).
+Largest stories (split on the spot if the context runs out): US-004 (loader + headings pipeline) and US-011 (Swagger UI + spike).
+US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and say why here — do not mark it passes.
+
+## Codebase Patterns
+- Run project commands from the repo root (cwd can drift into .projects/… or node_modules/…): `npm run typecheck`, `npm run lint`, `npm test`, `npm run format:check`.
+- This Next.js (16.3) is not the one you know: read the relevant guide in node_modules/next/dist/docs/ before writing Next code (AGENTS.md).
+- Manual/API content lives in `content/` (content/manuals/pt/*.md, content/api/openapi.yaml). NEVER read content from `.projects/`; it once held a committed API key.
+- Do not touch `.projects/**/adr/*`: accepting an ADR is a human decision, and an accepted ADR is never edited.
+- All UI text goes through `useTranslations` and every new key goes into ALL four catalogues (messages/{en,es,pt,ko}.json); src/i18n/*.test.ts enforces parity. The manuals' own content is Portuguese only and does not go through the catalogues.
+- Tests are colocated (`foo.ts` + `foo.test.ts`), vitest in the `node` environment; `.tsx` tests render with `react-dom/server`.
+- `src/middleware.ts` only protects a hardcoded prefix list (`/settings` is in it, `/developers` is not); `src/middleware.test.ts` has the mock pattern to extend.
+- `lib/auth/account.ts` has `requireRole`, `UnauthorizedError`, `ForbiddenError` for server code. The dashboard has no server page yet: US-013 sets the pattern.
+- Format with prettier before committing (`npm run format`); commit style: imperative, terse first line, `feat: [Story ID] - [Story Title]`.
