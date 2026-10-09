@@ -2101,7 +2101,8 @@
       "fields": "Campos e tags",
       "deals": "Negócios e moeda",
       "members": "Membros da equipe",
-      "api": "Chaves de API"
+      "api": "Chaves de API",
+      "manuals": "Manuais"
     },
     "stores": {
       "title": "Lojas",
@@ -2757,5 +2758,31 @@
       "delivered": "Entregue",
       "cancelled": "Cancelado"
     }
+  },
+  "Developers": {
+    "siteTitle": "Documentação para desenvolvedores",
+    "tocLabel": "Nesta página",
+    "apiReference": "Referência da API",
+    "indexTitle": "Documentação de integração",
+    "indexIntro": "Manuais e referência da API para conectar um cardápio digital a este CRM.",
+    "manualsHeading": "Manuais",
+    "apiReferenceDesc": "Todos os endpoints, campos e exemplos, com a opção de testar uma chamada.",
+    "statusPreStable": "Contrato pré-estável",
+    "statusStable": "Contrato estável",
+    "supportNote": "Dúvidas? Fale com a equipe do CRM que enviou este link.",
+    "tryItOutNotice": "Em produção, a chamada sai do servidor do cardápio. O “Try it out” serve para testes: use uma chave de teste."
+  },
+  "Manuals": {
+    "title": "Manuais",
+    "intro": "Guias do operador para configurar e usar o CRM.",
+    "backToSettings": "Voltar às configurações",
+    "backToManuals": "Todos os manuais",
+    "tocLabel": "Nesta página"
+  },
+  "NotFound": {
+    "title": "Página não encontrada",
+    "description": "O endereço não existe ou você não tem acesso a ele.",
+    "backHome": "Voltar ao início",
+    "backToDocs": "Voltar à documentação"
   }
 }

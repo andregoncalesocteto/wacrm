@@ -2101,7 +2101,8 @@
       "fields": "Campos y etiquetas",
       "deals": "Negocios y moneda",
       "members": "Miembros del equipo",
-      "api": "Claves de API"
+      "api": "Claves de API",
+      "manuals": "Manuales"
     },
     "stores": {
       "title": "Tiendas",
@@ -2757,5 +2758,31 @@
       "delivered": "Entregado",
       "cancelled": "Cancelado"
     }
+  },
+  "Developers": {
+    "siteTitle": "Documentación para desarrolladores",
+    "tocLabel": "En esta página",
+    "apiReference": "Referencia de la API",
+    "indexTitle": "Documentación de integración",
+    "indexIntro": "Manuales y referencia de la API para conectar un menú digital a este CRM.",
+    "manualsHeading": "Manuales",
+    "apiReferenceDesc": "Todos los endpoints, campos y ejemplos, con la opción de probar una llamada.",
+    "statusPreStable": "Contrato preestable",
+    "statusStable": "Contrato estable",
+    "supportNote": "¿Dudas? Habla con el equipo del CRM que te envió este enlace.",
+    "tryItOutNotice": "En producción, la llamada sale del servidor del menú. “Try it out” es para pruebas: usa una clave de prueba."
+  },
+  "Manuals": {
+    "title": "Manuales",
+    "intro": "Guías del operador para configurar y usar el CRM.",
+    "backToSettings": "Volver a configuración",
+    "backToManuals": "Todos los manuales",
+    "tocLabel": "En esta página"
+  },
+  "NotFound": {
+    "title": "Página no encontrada",
+    "description": "La dirección no existe o no tienes acceso a ella.",
+    "backHome": "Volver al inicio",
+    "backToDocs": "Volver a la documentación"
   }
 }

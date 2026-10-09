@@ -2111,7 +2111,8 @@
       "fields": "Fields & tags",
       "deals": "Deals & currency",
       "members": "Team members",
-      "api": "API keys"
+      "api": "API keys",
+      "manuals": "Manuals"
     },
     "stores": {
       "title": "Stores",
@@ -2769,5 +2770,31 @@
       "delivered": "Delivered",
       "cancelled": "Cancelled"
     }
+  },
+  "Developers": {
+    "siteTitle": "Developer docs",
+    "tocLabel": "On this page",
+    "apiReference": "API reference",
+    "indexTitle": "Integration documentation",
+    "indexIntro": "Manuals and the API reference for connecting a digital menu to this CRM.",
+    "manualsHeading": "Manuals",
+    "apiReferenceDesc": "Every endpoint, field and example, with the option to try a call.",
+    "statusPreStable": "Pre-stable contract",
+    "statusStable": "Stable contract",
+    "supportNote": "Questions? Contact the CRM team that sent you this link.",
+    "tryItOutNotice": "In production, the call must come from your menu's server. “Try it out” is for tests: use a test API key."
+  },
+  "Manuals": {
+    "title": "Manuals",
+    "intro": "Operator guides for setting up and using the CRM.",
+    "backToSettings": "Back to settings",
+    "backToManuals": "All manuals",
+    "tocLabel": "On this page"
+  },
+  "NotFound": {
+    "title": "Page not found",
+    "description": "This address does not exist or you do not have access to it.",
+    "backHome": "Back to home",
+    "backToDocs": "Back to the documentation"
   }
 }

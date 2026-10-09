@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SECTION,
   RAIL_GROUPS,
+  RAIL_LINKS,
   SECTION_META,
   SETTINGS_SECTIONS,
   resolveSection,
@@ -36,5 +37,23 @@ describe('sections metadata', () => {
     expect(SECTION_META.stores.group).toBe('workspace');
     expect(SECTION_META.channels.group).toBe('workspace');
     expect(RAIL_GROUPS.map((g) => g.group)).toContain('workspace');
+  });
+});
+
+describe('rail links', () => {
+  it('has the admin-only Manuals link in the workspace group', () => {
+    expect(RAIL_LINKS).toHaveLength(1);
+    expect(RAIL_LINKS[0]).toMatchObject({
+      id: 'manuals',
+      href: '/settings/manuals',
+      group: 'workspace',
+      adminOnly: true,
+    });
+  });
+
+  it('keeps links out of the sections (no panel, not resolvable by ?tab=)', () => {
+    expect(SETTINGS_SECTIONS as readonly string[]).not.toContain('manuals');
+    expect(Object.keys(SECTION_META)).not.toContain('manuals');
+    expect(resolveSection('manuals')).toBe(DEFAULT_SECTION);
   });
 });

@@ -1,0 +1,729 @@
+openapi: 3.0.3
+info:
+  title: wacrm - API de eventos da jornada de pedido
+  version: 1.0.0-pre
+  description: |
+    Contrato para o **backend de um cardápio digital** informar ao wacrm (o CRM)
+    o que o cliente faz depois de receber o link do cardápio e como o pedido
+    evolui. Com isso o CRM move o negócio no funil, recupera carrinhos
+    abandonados e avisa o cliente sobre o pedido.
+
+    O manual de integração, com o passo a passo e as regras de reenvio, está em
+    `/developers`, no mesmo endereço deste documento. Dúvidas: fale com a equipe do
+    CRM que enviou este link.
+
+    ## Regras que valem para todo evento
+
+    - **Só servidor para servidor.** A chave de API é um segredo; quem a tiver
+      consegue forjar um `Purchase`. Nunca a coloque no navegador.
+    - **Um evento por chamada**, corpo JSON, sem envio em lote.
+    - **Todo evento tem um `event_id` único** (por exemplo, um UUID). Reenviar o
+      mesmo `event_id` é seguro: o CRM devolve a resposta original, com o
+      cabeçalho `Idempotent-Replayed: true`, e não repete nenhum efeito
+      (nenhuma mensagem duplicada ao cliente).
+    - **Identificação do cliente.** Cada evento traz `idtrack`, **ou**
+      `store_key` junto com `customer.phone`. Sem nenhum dos dois, a resposta é
+      `400`. Se vierem os dois, o `idtrack` manda.
+    - **A ordem de chegada não importa.** A etapa da jornada e o status do
+      pedido só avançam; evento atrasado é aceito (`200`) e ignorado quando
+      ficou para trás.
+
+    ## Reenvio
+
+    | Resposta | Reenviar? |
+    | --- | --- |
+    | `429`, `5xx`, falha de rede ou timeout | **Sim**, com o **mesmo** `event_id` e espera crescente (30 s, 2 min, 10 min, 1 h, 6 h, até 24 h). Em `429`, respeite `Retry-After`. |
+    | `400 order_not_found` | **Sim**, com espera crescente: o `Purchase` desse pedido ainda não chegou ao CRM. |
+    | Demais `400`, `401`, `403`, `404`, `410` | **Não.** O mesmo corpo falha do mesmo jeito; registre o erro e investigue. |
+
+    `Purchase` e `OrderStatusChanged` devem sair de uma **fila de saída
+    (outbox)** com reenvio: perder um `Purchase` faz o CRM tratar quem comprou
+    como quem desistiu.
+
+    ## Estabilidade
+
+    Pré-estável até o primeiro cliente integrar; depois, congelada (uma quebra
+    exige `v2`). Quebras antes disso são avisadas nas notas de versão.
+
+servers:
+  - url: /
+    description: A própria origem em que este documento é servido (o CRM que você está acessando).
+
+tags:
+  - name: Eventos
+    description: Eventos da jornada de pedido enviados pelo backend do cardápio.
+  - name: Conta
+    description: Verificação da chave de API.
+
+security:
+  - bearerAuth: []
+
+paths:
+  /api/v1/me:
+    get:
+      tags: [Conta]
+      operationId: getMe
+      summary: Confere a chave de API
+      description: |
+        Devolve a conta à qual a chave pertence e os escopos que ela carrega.
+        Não exige escopo nenhum. Use para verificar se a chave e a URL estão
+        corretas antes de enviar o primeiro evento; a chave de integração do
+        cardápio deve listar `events:write`.
+      responses:
+        '200':
+          description: Chave válida.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      account:
+                        type: object
+                        properties:
+                          id: { type: string }
+                          name: { type: string }
+                      key:
+                        type: object
+                        properties:
+                          id: { type: string }
+                          scopes:
+                            type: array
+                            items: { type: string }
+                            example: [events:write]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/journey/events:
+    post:
+      tags: [Eventos]
+      operationId: postJourneyEvent
+      summary: Envia um evento da jornada de pedido
+      description: |
+        Escopo exigido: **`events:write`** (exclusivo deste endpoint: a chave não
+        lê contatos, conversas nem mensagens).
+
+        Os cinco eventos (`name`) e quando enviá-los:
+
+        | `name` | Quando | `properties` |
+        | --- | --- | --- |
+        | `ViewContent` | O cliente abriu o cardápio ou um produto. Envie no primeiro acesso da sessão. | não tem |
+        | `AddToCart` | O cliente mudou o carrinho. Pode repetir, cada vez com `event_id` novo. | carrinho **inteiro** |
+        | `InitiateCheckout` | O cliente iniciou o fechamento do pedido. | carrinho **inteiro** |
+        | `Purchase` | O pedido foi feito. Fecha a jornada como ganha, cria o pedido no CRM e dispara o agradecimento. | pedido |
+        | `OrderStatusChanged` | O pedido mudou de estado depois de feito. | `order_id` e `status` |
+
+        **O `idtrack` precisa ser guardado junto do pedido** no momento do
+        `Purchase`: os `OrderStatusChanged` chegam horas depois, quando a sessão
+        do navegador já não existe. Para pedidos sem link do CRM, grave o
+        telefone e a chave da loja no pedido.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/ViewContentEvent'
+                - $ref: '#/components/schemas/CartEvent'
+                - $ref: '#/components/schemas/PurchaseEvent'
+                - $ref: '#/components/schemas/OrderStatusChangedEvent'
+            examples:
+              ViewContent:
+                summary: ViewContent (com idtrack)
+                value:
+                  event_id: 9b1f6c3e-7f64-4c7a-9a1e-1f2b3c4d5e6f
+                  name: ViewContent
+                  idtrack: trk_8f3a...
+                  occurred_at: '2026-10-02T21:14:05Z'
+              AddToCart:
+                summary: AddToCart (carrinho inteiro)
+                value:
+                  event_id: b6d2c1a4-5e0f-4b7d-8a3c-9e1f2d3c4b5a
+                  name: AddToCart
+                  idtrack: trk_8f3a...
+                  occurred_at: '2026-10-02T21:16:40Z'
+                  properties:
+                    currency: BRL
+                    cart:
+                      value: 89.8
+                      items:
+                        - {
+                            id: pizza-calabresa-g,
+                            name: Pizza Calabresa G,
+                            quantity: 1,
+                            unit_price: 59.9,
+                          }
+                        - {
+                            id: refri-2l,
+                            name: Refrigerante 2L,
+                            quantity: 1,
+                            unit_price: 29.9,
+                          }
+              InitiateCheckout:
+                summary: InitiateCheckout (carrinho inteiro)
+                value:
+                  event_id: c0a7e3f1-2b4d-4c6e-9f8a-1b2c3d4e5f60
+                  name: InitiateCheckout
+                  idtrack: trk_8f3a...
+                  occurred_at: '2026-10-02T21:19:02Z'
+                  properties:
+                    currency: BRL
+                    cart:
+                      value: 89.8
+                      items:
+                        - {
+                            id: pizza-calabresa-g,
+                            name: Pizza Calabresa G,
+                            quantity: 1,
+                            unit_price: 59.9,
+                          }
+                        - {
+                            id: refri-2l,
+                            name: Refrigerante 2L,
+                            quantity: 1,
+                            unit_price: 29.9,
+                          }
+              Purchase:
+                summary: Purchase (com idtrack)
+                value:
+                  event_id: c41e8d27-6a3b-4f9c-b1d0-7e2a5c8f9b34
+                  name: Purchase
+                  idtrack: trk_8f3a...
+                  occurred_at: '2026-10-02T21:22:11Z'
+                  properties:
+                    order_id: PED-2026-104233
+                    currency: BRL
+                    value: 89.8
+                    items:
+                      - {
+                          id: pizza-calabresa-g,
+                          name: Pizza Calabresa G,
+                          quantity: 1,
+                          unit_price: 59.9,
+                        }
+                      - {
+                          id: refri-2l,
+                          name: Refrigerante 2L,
+                          quantity: 1,
+                          unit_price: 29.9,
+                        }
+              PurchaseDirect:
+                summary: Purchase sem link do CRM (loja + telefone + consentimento)
+                value:
+                  event_id: f2d1a6b8-3c5e-4d7f-8a9b-0c1d2e3f4a5b
+                  name: Purchase
+                  store_key: 89/RPA/BLC
+                  customer: { phone: '+5511999998888', name: Maria Souza }
+                  consent:
+                    notifications: true
+                    marketing: false
+                    given_at: '2026-10-02T21:10:00Z'
+                  occurred_at: '2026-10-02T21:22:11Z'
+                  properties:
+                    order_id: PED-2026-104233
+                    currency: BRL
+                    value: 89.8
+                    items:
+                      - {
+                          id: pizza-calabresa-g,
+                          name: Pizza Calabresa G,
+                          quantity: 1,
+                          unit_price: 59.9,
+                        }
+              OrderStatusChanged:
+                summary: OrderStatusChanged (com idtrack gravado no pedido)
+                value:
+                  event_id: d78a4b2c-1e3f-4a5b-9c6d-7e8f9a0b1c2d
+                  name: OrderStatusChanged
+                  idtrack: trk_8f3a...
+                  occurred_at: '2026-10-02T21:35:00Z'
+                  properties:
+                    order_id: PED-2026-104233
+                    status: preparing
+              RevokeConsent:
+                summary: Só atualizar o consentimento (revogar marketing)
+                value:
+                  event_id: a91c5d3e-2f4a-4b6c-8d7e-9f0a1b2c3d4e
+                  name: ViewContent
+                  store_key: 89/RPA/BLC
+                  customer: { phone: '+5511999998888' }
+                  consent:
+                    { marketing: false, given_at: '2026-10-09T18:00:00Z' }
+                  occurred_at: '2026-10-09T18:00:00Z'
+      responses:
+        '200':
+          description: |
+            Evento aceito. Também é `200` o reenvio de um `event_id` já
+            processado (`duplicate: true`, com o cabeçalho
+            `Idempotent-Replayed: true`) e o status de pedido mais antigo que o
+            atual (aceito, mas ignorado: nada é gravado nem enviado ao cliente).
+          headers:
+            Idempotent-Replayed:
+              description: '`true` quando o `event_id` já tinha sido processado.'
+              schema: { type: string, enum: ['true'] }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/EventResult'
+              examples:
+                novo:
+                  value:
+                    data:
+                      event_id: b6d2c1a4-5e0f-4b7d-8a3c-9e1f2d3c4b5a
+                      journey_id: 3f1c2a9e-8d7b-4c6a-9e5f-1a2b3c4d5e6f
+                      stage: cart
+                      duplicate: false
+                direto:
+                  value:
+                    data:
+                      event_id: f2d1a6b8-3c5e-4d7f-8a9b-0c1d2e3f4a5b
+                      journey_id: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                      stage: won
+                      duplicate: false
+                      messaging: eligible
+        '400':
+          description: |
+            Corpo inválido (`bad_request`) ou `OrderStatusChanged` de um
+            `order_id` que o CRM não conhece para esse cliente (`order_not_found`).
+            A `message` nomeia o campo com problema. Veja a seção de reenvio:
+            só `order_not_found` merece nova tentativa.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                sem_identificacao:
+                  summary: Faltou idtrack, ou store_key com customer.phone
+                  value:
+                    error:
+                      code: bad_request
+                      message: "The event must carry 'idtrack', or 'store_key' together with 'customer.phone'"
+                telefone_invalido:
+                  summary: Telefone fora do formato E.164
+                  value:
+                    error:
+                      code: bad_request
+                      message: "'customer.phone' must be in international E.164 format with a leading '+', e.g. +5511999998888"
+                given_at_futuro:
+                  summary: Relógio do cardápio adiantado
+                  value:
+                    error:
+                      code: bad_request
+                      message: "'consent.given_at' is in the future (more than 5 minutes ahead of the server clock); check the clock of the sender"
+                pedido_desconhecido:
+                  summary: Status de um pedido cujo Purchase ainda não chegou
+                  value:
+                    error:
+                      code: order_not_found
+                      message: "No order 'PED-2026-104233' was found for this idtrack; send its Purchase first"
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: A chave é válida, mas não tem o escopo `events:write`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error:
+                  code: forbidden
+                  message: "This API key is missing the 'events:write' scope"
+        '404':
+          description: |
+            `idtrack_not_found`: o `idtrack` não corresponde a nenhum link
+            enviado pelo CRM. `store_not_found`: a `store_key` não existe no CRM.
+            **Não reenvie**: corrija o dado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                idtrack_not_found:
+                  value:
+                    {
+                      error:
+                        {
+                          code: idtrack_not_found,
+                          message: "'idtrack' does not match any link sent by this account",
+                        },
+                    }
+                store_not_found:
+                  value:
+                    {
+                      error:
+                        {
+                          code: store_not_found,
+                          message: "'store_key' does not match any store of this account; do not retry",
+                        },
+                    }
+        '410':
+          description: |
+            `idtrack_expired`: o `idtrack` passou dos 30 dias de validade. **Não
+            reenvie**; o cliente precisa de um novo link do CRM.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                {
+                  error:
+                    {
+                      code: idtrack_expired,
+                      message: "'idtrack' has expired; the customer needs a new link",
+                    },
+                }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500':
+          description: |
+            Erro do CRM (`internal`). Reenvie com o **mesmo** `event_id` e espera
+            crescente. Também é a resposta quando duas chamadas simultâneas com
+            o mesmo `event_id` disputam e a segunda desiste de esperar.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                { error: { code: internal, message: Internal server error } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Chave de API do CRM, no formato `wacrm_live_...`, criada em
+        **Configurações → Chaves de API** com o escopo `events:write`.
+        Envie como `Authorization: Bearer wacrm_live_...`. A chave é mostrada
+        uma única vez; guarde-a como segredo de servidor.
+
+  responses:
+    Unauthorized:
+      description: Chave ausente, malformada, desconhecida, revogada ou expirada.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error:
+              code: unauthorized
+              message: Missing or invalid API key
+    RateLimited:
+      description: |
+        Limite de **120 requisições por minuto por chave** excedido. Reenvie
+        depois de `Retry-After`, com o mesmo `event_id`.
+      headers:
+        Retry-After:
+          description: Segundos até a janela reiniciar.
+          schema: { type: integer }
+        X-RateLimit-Limit:
+          schema: { type: integer }
+        X-RateLimit-Remaining:
+          schema: { type: integer }
+        X-RateLimit-Reset:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error:
+              code: rate_limited
+              message: Rate limit exceeded for this API key
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Estável; ramifique por ele. A `message` é para leitura humana e pode mudar.
+              enum:
+                - unauthorized
+                - forbidden
+                - rate_limited
+                - bad_request
+                - order_not_found
+                - idtrack_not_found
+                - idtrack_expired
+                - store_not_found
+                - internal
+            message:
+              type: string
+
+    EventResult:
+      type: object
+      required: [event_id, journey_id, stage, duplicate]
+      properties:
+        event_id:
+          type: string
+        journey_id:
+          type: string
+          nullable: true
+        stage:
+          type: string
+          description: |
+            Etapa da jornada depois do evento. `link_sent` só existe para
+            jornadas que nasceram de um link do CRM. `lost` nunca vem de um
+            evento (o CRM marca a jornada como perdida sozinho).
+          enum: [link_sent, browsing, cart, checkout, won]
+        duplicate:
+          type: boolean
+          description: '`true` quando o `event_id` já tinha sido processado.'
+        messaging:
+          type: string
+          description: |
+            Se o cliente pode receber mensagens do CRM por este pedido (só
+            considera os avisos do pedido, `consent.notifications`).
+            `eligible`: há conexão de WhatsApp e consentimento (explícito ou
+            implícito, por já ter escrito à loja). `no_consent`: o evento foi
+            registrado, mas nenhuma mensagem será enviada. `no_connection`: a loja
+            não tem conexão de WhatsApp utilizável. Ausente na repetição de um
+            evento gravado antes de este campo existir.
+          enum: [eligible, no_consent, no_connection]
+
+    Customer:
+      type: object
+      description: Dados do cliente. Só `phone` é usado para identificar.
+      properties:
+        phone:
+          type: string
+          pattern: '^\+[1-9]\d{6,14}$'
+          description: |
+            Telefone internacional E.164, **com o `+`**, DDI e DDD
+            (`+5511999998888`). Qualquer outro formato é `400`. Normalize antes
+            de enviar.
+          example: '+5511999998888'
+        name:
+          type: string
+          maxLength: 200
+          description: |
+            Opcional. Só é usado quando o contato ainda não existe no CRM;
+            nunca sobrescreve um nome já cadastrado.
+
+    Consent:
+      type: object
+      description: |
+        Consentimento do cliente para receber mensagens, **por finalidade**.
+        O cardápio coleta e prova o consentimento; o CRM guarda o estado, a data
+        e a origem no contato.
+
+        - Uma finalidade só substitui o estado guardado se o `given_at` for
+          **estritamente mais novo** que a última decisão guardada. Igual ou
+          mais antigo não muda nada.
+        - `false` explícito **revoga só aquela finalidade**.
+        - **Omitir** `consent` ou uma finalidade não muda nada (omitir não é
+          revogar).
+        - `given_at` é **obrigatório** quando qualquer finalidade é enviada e não
+          pode estar mais de 5 minutos à frente do relógio do CRM.
+        - Quem já escreveu à loja pela conexão que envia tem consentimento
+          implícito para as duas finalidades; uma revogação explícita vale acima
+          dele.
+        - Se o cliente responder "PARAR" no WhatsApp, as duas finalidades são
+          revogadas; um `given_at` mais novo vindo do cardápio as reativa.
+      properties:
+        notifications:
+          type: boolean
+          description: Avisos do pedido (agradecimento e status).
+        marketing:
+          type: boolean
+          description: Ofertas e lembretes (por exemplo, carrinho abandonado).
+        given_at:
+          type: string
+          format: date-time
+          description: Quando o cliente aceitou ou revogou (ISO 8601 em UTC, `Z` ou `+00:00`).
+          example: '2026-10-02T21:10:00Z'
+
+    CartItem:
+      type: object
+      required: [id, quantity, unit_price]
+      properties:
+        id:
+          type: string
+          description: Identificador do produto no seu sistema.
+        name:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        unit_price:
+          type: number
+          minimum: 0
+
+    Cart:
+      type: object
+      required: [value, items]
+      properties:
+        value:
+          type: number
+          minimum: 0
+        items:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items: { $ref: '#/components/schemas/CartItem' }
+
+    EventBase:
+      type: object
+      required: [event_id, name, occurred_at]
+      description: |
+        Campos comuns. **Identificação:** envie `idtrack`, **ou** `store_key`
+        junto com `customer.phone`. Com os dois, o `idtrack` decide; se o
+        telefone resolver para outro contato, o evento é atribuído pelo
+        `idtrack` e `customer` e `consent` são ignorados.
+      properties:
+        event_id:
+          type: string
+          maxLength: 200
+          description: Único por conta. Gere do seu lado (UUID) e reuse em reenvios.
+        idtrack:
+          type: string
+          description: |
+            Valor opaco que chegou na URL do cardápio (`?idtrack=...`). Não
+            interprete, não decodifique e não use como identificador do cliente.
+            Vale 30 dias, renovado a cada novo link enviado pelo CRM. Opcional
+            quando `store_key` e `customer.phone` são enviados.
+        store_key:
+          type: string
+          maxLength: 200
+          description: |
+            Chave da loja em um campo só: `CÓDIGO/SIGLA DA LOJA/SIGLA DO NEGÓCIO`,
+            por exemplo `89/RPA/BLC`. Maiúsculas e espaços nas pontas não
+            importam. O operador do CRM informa a chave de cada loja. Chave
+            desconhecida é `404 store_not_found`.
+          example: 89/RPA/BLC
+        customer:
+          $ref: '#/components/schemas/Customer'
+        consent:
+          $ref: '#/components/schemas/Consent'
+        occurred_at:
+          type: string
+          format: date-time
+          description: |
+            Quando o evento aconteceu no cardápio (não quando você o envia).
+            ISO 8601 com designador UTC explícito (`Z` ou `+00:00`).
+          example: '2026-10-02T21:14:05Z'
+
+    ViewContentEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventBase'
+        - type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+              enum: [ViewContent]
+          description: |
+            O cliente abriu o cardápio ou um produto. Repetições são aceitas e
+            contadas, mas nunca mudam a etapa. Não tem `properties`.
+
+    CartEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventBase'
+        - type: object
+          required: [name, properties]
+          properties:
+            name:
+              type: string
+              enum: [AddToCart, InitiateCheckout]
+            properties:
+              type: object
+              required: [currency, cart]
+              properties:
+                currency:
+                  type: string
+                  pattern: '^[A-Za-z]{3}$'
+                  description: Código ISO 4217 de 3 letras.
+                  example: BRL
+                cart:
+                  $ref: '#/components/schemas/Cart'
+          description: |
+            Envie sempre o **carrinho inteiro** naquele momento, não só o item
+            novo: assim a perda de uma chamada intermediária não corrompe o
+            total. `AddToCart` pode repetir, cada vez com `event_id` novo.
+
+    PurchaseEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventBase'
+        - type: object
+          required: [name, properties]
+          properties:
+            name:
+              type: string
+              enum: [Purchase]
+            properties:
+              type: object
+              required: [order_id, currency, value, items]
+              properties:
+                order_id:
+                  type: string
+                  maxLength: 200
+                  description: |
+                    Identificador do pedido no **seu** sistema, estável para
+                    sempre e único por conta. Todos os `OrderStatusChanged`
+                    referenciam este valor. Um segundo `Purchase` com o mesmo
+                    `order_id` e outro `event_id` é tratado como duplicado.
+                currency:
+                  type: string
+                  pattern: '^[A-Za-z]{3}$'
+                  example: BRL
+                value:
+                  type: number
+                  minimum: 0
+                  description: Gravado como enviado (não é conferido contra os itens).
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items: { $ref: '#/components/schemas/CartItem' }
+          description: |
+            O pedido foi feito. **Encerra a jornada** como ganha, cria o pedido
+            no CRM e dispara o agradecimento. Depois dele, um novo evento com o
+            mesmo `idtrack` abre uma nova jornada.
+
+    OrderStatusChangedEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventBase'
+        - type: object
+          required: [name, properties]
+          properties:
+            name:
+              type: string
+              enum: [OrderStatusChanged]
+            properties:
+              type: object
+              required: [order_id, status]
+              properties:
+                order_id:
+                  type: string
+                  maxLength: 200
+                  description: O mesmo `order_id` enviado no `Purchase`.
+                status:
+                  type: string
+                  description: |
+                    Conjunto **fechado**; outro valor é `400`. O status só avança
+                    na ordem `received` → `preparing` → `finished` →
+                    `out_for_delivery` **ou** `ready_for_pickup` → `delivered`
+                    (etapas podem ser puladas; os dois últimos passos de entrega
+                    são do mesmo nível: vale o primeiro que chegar).
+                    `cancelled` vale a qualquer momento antes de `delivered`.
+                    `delivered` e `cancelled` são finais. Um status que não
+                    avança é aceito (`200`) e ignorado. O estado "pedido feito"
+                    é o próprio `Purchase`, não um status.
+                  enum:
+                    - received
+                    - preparing
+                    - finished
+                    - out_for_delivery
+                    - ready_for_pickup
+                    - delivered
+                    - cancelled
+          description: |
+            O pedido mudou de estado depois de feito. Use o `idtrack` gravado no
+            pedido (ou `store_key` e `customer.phone`). Nunca cria contato nem
+            jornada: pedido ou telefone desconhecido é `400 order_not_found`.
+            Estados internos sem mensagem ao cliente simplesmente não são
+            enviados.

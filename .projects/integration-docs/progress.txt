@@ -1,0 +1,241 @@
+# Ralph Progress Log — ralph/integration-docs
+Started: 2026-10-09
+PRD: .projects/integration-docs/prd.json (17 stories, priority order = id order, no gaps; source: prd-integration-docs.md).
+Base docs: SOLUTION.md, design.md, adr/ADR-001-manuais-como-arquivos-versionados-com-registro.md,
+adr/ADR-002-swagger-ui-empacotado-e-mesma-origem.md, adr/ADR-003-duas-arvores-de-rota-publica-estatica-e-operador-privada.md,
+prd-integration-docs.md. The design's "Ajustes ao SOLUTION.md" section corrects two premises of the SOLUTION
+(SettingsRail has NO `adminOnly` flag; next.config.ts applies a public s-maxage=300 Cache-Control to every route) — read it first.
+No test-scenarios.json (acceptanceCriteria are the bar).
+Largest stories (split on the spot if the context runs out): US-004 (loader + headings pipeline) and US-011 (Swagger UI + spike).
+US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and say why here — do not mark it passes.
+
+## Codebase Patterns
+- Run project commands from the repo root (cwd can drift into .projects/… or node_modules/…): `npm run typecheck`, `npm run lint`, `npm test`, `npm run format:check`.
+- This Next.js (16.3) is not the one you know: read the relevant guide in node_modules/next/dist/docs/ before writing Next code (AGENTS.md).
+- Manual/API content lives in `content/` (content/manuals/pt/*.md, content/api/openapi.yaml). NEVER read content from `.projects/`; it once held a committed API key.
+- Do not touch `.projects/**/adr/*`: accepting an ADR is a human decision, and an accepted ADR is never edited.
+- All UI text goes through `useTranslations` and every new key goes into ALL four catalogues (messages/{en,es,pt,ko}.json); src/i18n/*.test.ts enforces parity. The manuals' own content is Portuguese only and does not go through the catalogues.
+- Tests are colocated (`foo.ts` + `foo.test.ts`), vitest in the `node` environment; `.tsx` tests render with `react-dom/server`.
+- `src/middleware.ts` only protects a hardcoded prefix list (`/settings` is in it, `/developers` is not); `src/middleware.test.ts` has the mock pattern to extend.
+- `lib/auth/account.ts` has `requireRole`, `UnauthorizedError`, `ForbiddenError` for server code. The dashboard has no server page yet: US-013 sets the pattern.
+- Run the full suite as `TZ=UTC npm test`: src/lib/dashboard/date-utils.test.ts has 2 pre-existing failures when the machine is not on UTC (this one is at -03); they are unrelated to this feature and CI runs in UTC.
+- `next dev` REWRITES the tracked AGENTS.md on startup (and prints "Generated AGENTS.md"): run `git checkout AGENTS.md` before every commit so it does not ride along. To verify in a browser: `npx next dev -p 3100` (port 3000 is the Docker stack, built from main), then the dev-browser skill (`dev-browser <<'EOF' … EOF`; screenshots land in ~/.dev-browser/tmp/).
+- `npm run build` is the place where tracing problems show up. If it prints "Dynamic filesystem access causes tracing of the whole project", the path is not statically scoped: either keep it as `path.join(process.cwd(), 'content', ...)` or add `/*turbopackIgnore: true*/` as the first argument AND declare the files in `outputFileTracingIncludes` (US-012). Grep the build log for `warning|tracing`. Do not run `pkill -f "next dev …"` from the shell: it matches the shell's own command line and kills it; find the PID with `ps -eo pid,args | grep [n]ext`.
+- Do NOT run prettier on next.config.ts (or any file the repo does not keep formatted): it rewrote 29 unrelated lines. Check `git diff --stat <file>` after formatting; edit such files with a targeted replace.
+- Format ONLY the files you touch before committing (`npx prettier --write <files>`; `npm run format` rewrites the whole repo); commit style: imperative, terse first line, `feat: [Story ID] - [Story Title]`.
+
+## 2026-10-09 - US-001
+- Moved docs/integracao-cardapio/openapi.yaml to content/api/openapi.yaml (git mv); `servers` is now `- url: /`; removed the `contact` placeholder; the description points to /developers and says to ask the CRM team that sent the link.
+- Files changed: content/api/openapi.yaml (moved + edited)
+- **Learnings for future iterations:**
+  - `npm run format:check` already FAILS on the whole repo (446 files, before this feature). Do not chase it: check only the files you touch with `npx prettier --check <files>`.
+  - The root `.prettierrc` is applied to .projects/*.md and .yaml too; run `npx prettier --write <file>` on whatever you create.
+  - A helper that flips `passes` lives only in the session scratchpad; flip it by hand in .projects/integration-docs/prd.json if you do not have it.
+---
+
+## 2026-10-09 - US-002
+- Created content/manuals/pt/integracao-cardapio.md (public integration manual, 12 numbered sections + "Problemas comuns" + "Limitações conhecidas") from Part B + "Como funciona" of the old manual. Added section 2 "Antes de começar: o que pedir ao operador do CRM" (replaces the old A.9 hand-off table). No reference to the operator manual's sections; the only relative link is ./openapi.yaml.
+- Files changed: content/manuals/pt/integracao-cardapio.md
+- **Learnings for future iterations:**
+  - Headings are plain numbered ("## 6. Os eventos, um a um"), not "B.4": cross-references in the text say "seção N". Keep that if you edit.
+  - Tokens: only `{URL_BASE}` is substituted by the loader (US-004); `{{menu_link}}` is literal product text.
+  - The "Problemas comuns" table was split by audience: operator-only rows (menu_link, janela de 24 h, retomada, funil) live in the operator manual.
+---
+
+## 2026-10-09 - US-003
+- Created content/manuals/pt/configuracao-jornada-pedido.md (operator manual: "Como funciona" + sections 1-11 + operator "Problemas comuns") from Part A. Section 9 now hands the external team the link `{URL_BASE}/developers` plus URL base, API key, store_key list and a test idtrack. References to "B.x" became a link to ./integracao-cardapio.md (section 11).
+- Removed docs/integracao-cardapio/ entirely (git rm); content now lives only in content/.
+- Files changed: content/manuals/pt/configuracao-jornada-pedido.md; docs/integracao-cardapio/manual-integracao.md (deleted)
+- **Learnings for future iterations:**
+  - The only remaining mentions of docs/integracao-cardapio/ are in the planning docs (SOLUTION, PRD, ADR-001, prd.json) describing the previous state. Leave them: ADRs are never edited.
+  - The operator manual links to the PUBLIC manual (./integracao-cardapio.md): US-005's resolveManualHref must allow a link from an admin manual to a public one, never the reverse.
+---
+
+## 2026-10-09 - US-004
+- Installed react-markdown, remark-gfm, rehype-slug, unified, remark-parse, remark-rehype, hast-util-to-string, unist-util-visit (+ @types/hast as devDependency).
+- src/lib/manuals/registry.ts (MANUALS, RESERVED_SLUGS, validateRegistry run at module load), markdown.ts (pure: substituteTokens, extractHeadings), loader.ts (getPublicManual/getAdminManual/listPublicManuals/listAdminManuals; the only module that reads the disk). loader.test.ts: 16 tests.
+- Files changed: package.json, package-lock.json, src/lib/manuals/{registry,markdown,loader,loader.test}.ts
+- **Learnings for future iterations:**
+  - extractHeadings runs the same unified pipeline as the renderer (remarkParse, remarkGfm, remarkRehype, rehypeSlug): ids match by construction. The renderer (US-007) must use `remarkGfm` + `rehypeSlug` and no other plugin that changes headings.
+  - The loader takes an optional `{ locale, contentRoot, manuals }` so tests can use a temp folder; production code calls it with no options.
+  - Locale = NEXT_PUBLIC_APP_LOCALE (default 'en'); there is no content/manuals/en, so every current deployment reads content/manuals/pt via the fallback.
+  - `{URL_BASE}` is replaced at load time from NEXT_PUBLIC_SITE_URL; tests use vi.stubEnv.
+---
+
+## 2026-10-09 - US-005
+- src/lib/manuals/links.ts: `resolveManualHref(href, { visibility, manuals? })`. `./openapi.yaml` → /developers/openapi.yaml; `./<file>.md` of a registered manual → /developers/<slug> (public) or /settings/manuals/<slug> (admin, only from another admin manual, else null); `#anchor`, http(s) and mailto pass through; everything else (unknown relative, root-absolute like /developers/api-reference) → null. A `#hash` after a manual or openapi link is preserved. links.test.ts: 6 tests.
+- Files changed: src/lib/manuals/links.ts, src/lib/manuals/links.test.ts
+- **Learnings for future iterations:**
+  - A manual must NOT use root-absolute links (`/developers/...`): they resolve to null. Mention the API reference in prose instead of linking it.
+  - The link matches by `meta.file` (the file name), not by slug.
+---
+
+## 2026-10-09 - US-006
+- src/lib/manuals/content.test.ts (12 tests): M3 parity of content/api/openapi.yaml with src/lib/journeys/event-payload.ts (event names, order statuses, cart/Purchase item limits, 200-char limits, phone pattern, currency pattern, all compared against the REAL parsers); M5 no `wacrm_live_[A-Za-z0-9]{20,}` in any file under content/; every registered manual has its file and only links that resolve (anchors must exist as heading ids).
+- Added devDependencies js-yaml, @types/js-yaml, @types/mdast.
+- Files changed: package.json, package-lock.json, src/lib/manuals/content.test.ts
+- Verified the guards bite: removing a status / lowering maxItems in the YAML, and appending a fake key to a manual, each make the suite fail (then restored).
+- **Learnings for future iterations:**
+  - The OpenAPI schemas are `allOf: [EventBase, {own fields}]`: the helper `own(name)` in the test reads `allOf[1].properties`. If the YAML structure changes, update that helper.
+  - If you add a limit to event-payload.ts, document it in the YAML AND add the case here, or M3 stays blind to it.
+  - `visit(parser.parse(md), 'link', ...)` from unist-util-visit is the way to list links; do not regex Markdown.
+---
+
+## 2026-10-09 - US-007
+- src/components/manuals/manual-view.tsx (Server Component; react-markdown + remark-gfm + rehype-slug; components map for a/h1-h3/p/ul/ol/li/blockquote/hr/table/th/td/pre/code; tables wrapped in an overflow-x-auto container; links through resolveManualHref, unresolvable ones render as plain text; external links get target=_blank + rel=noopener noreferrer) and manual-toc.tsx (plain component; `label` is a prop; `print:hidden`). manual-view.test.tsx: 9 tests (every TOC id is a rendered id for BOTH real manuals, {{menu_link}} literal, table wrapper, link rules, no raw HTML).
+- Files changed: src/components/manuals/{manual-view,manual-toc}.tsx, manual-view.test.tsx
+- **Learnings for future iterations:**
+  - react-markdown v10 passes the hast `node` to every component; spreading it onto a DOM element is wrong. Use the local `withoutNode(props)` (an unused `_node` destructure trips @typescript-eslint/no-unused-vars).
+  - react-markdown ignores raw HTML unless rehype-raw is added: never add it.
+  - ManualToc takes the translated `label` as a prop (pages call getTranslations and pass it) so it stays a plain, testable component.
+  - These components are not routed yet: browser verification happens in US-008.
+  - The prettier tailwind plugin reorders class names; run prettier --write after editing classes.
+---
+
+## 2026-10-09 - US-008
+- src/app/developers/layout.tsx (minimal layout, `robots: noindex`, header with the site title and a link to the API reference), src/app/developers/[slug]/page.tsx (`dynamicParams = false`, `generateStaticParams` from listPublicManuals, getPublicManual → notFound), src/components/manuals/manual-page.tsx (shared body: ManualView + ManualToc; a collapsible TOC above the text on narrow screens, a sticky aside on lg), namespace `Developers` (siteTitle, tocLabel, apiReference) in the 4 catalogues, middleware tests for /developers (signed-out passes). Content tweak: the "URL base do CRM" row of the public manual now reads "O endereço deste CRM: `{URL_BASE}`".
+- Files changed: src/app/developers/{layout,[slug]/page}.tsx, src/components/manuals/manual-page.tsx, messages/{en,es,pt,ko}.json, src/middleware.test.ts, content/manuals/pt/integracao-cardapio.md
+- Browser (dev-browser, next dev :3100): /developers/integracao-cardapio → 200 without login; 11 tables render; TOC has 22 links and a click lands on the heading id; `<meta robots>` is "noindex, nofollow"; /developers/configuracao-jornada-pedido and /developers/nao-existe → 404; at 390px the page does not scroll sideways and the tables scroll inside their container; dark theme is legible; `{URL_BASE}` became NEXT_PUBLIC_SITE_URL.
+- **Learnings for future iterations:**
+  - /developers (the index) and /developers/api-reference do not exist yet: the header link 404s until US-009/US-011.
+  - Server Components get texts with `await getTranslations('Developers')` from next-intl/server (the first use in this repo); pass the string down as a prop to plain components.
+  - The app is dark by default; `document.documentElement.classList.add('dark')` is how to flip it in the browser.
+  - Because the replaced `{URL_BASE}` is shown as text, never write a sentence that talks about the token itself.
+---
+
+## 2026-10-09 - US-009
+- src/app/developers/page.tsx: index with one card per public manual (title and description from the registry) and a card for the API reference; `generateMetadata` uses Developers.indexTitle. New keys Developers.{indexTitle,indexIntro,manualsHeading,apiReferenceDesc} in the 4 catalogues.
+- Files changed: src/app/developers/page.tsx, messages/{en,es,pt,ko}.json
+- Browser: /developers → 200 signed-out; links are exactly /developers/integracao-cardapio and /developers/api-reference; the admin manual's title is nowhere in the HTML; clicking the manual card opens it.
+- **Learnings for future iterations:**
+  - Adding keys to a catalogue: edit the text to keep the diff minimal (the files are not re-serialisable byte for byte); `src/i18n/messages.test.ts` enforces parity.
+---
+
+## 2026-10-09 - US-010
+- src/app/developers/openapi.yaml/route.ts (`dynamic = 'force-static'`; `Content-Type: application/yaml; charset=utf-8`; `Access-Control-Allow-Origin: *`, this route only) + src/lib/manuals/openapi.ts (readOpenApi) + route.test.ts (2 tests).
+- Build: `npm run build` OK; `/developers/openapi.yaml` and `/developers` are "○ Static", `/developers/[slug]` is SSG with only integracao-cardapio.
+- The first build printed a Turbopack warning ("Dynamic filesystem access causes tracing of the whole project") for the injectable path in src/lib/manuals/loader.ts; fixed with `/*turbopackIgnore: true*/` on the dynamic path.join calls (see the pattern above).
+- Files changed: src/app/developers/openapi.yaml/route.ts, route.test.ts, src/lib/manuals/openapi.ts, src/lib/manuals/loader.ts
+- **Learnings for future iterations:**
+  - A folder named `openapi.yaml` under src/app is a valid route segment (like sitemap.xml).
+  - With the ignore comments, content/manuals is NOT auto-traced into standalone: the admin pages (read at runtime) need the explicit `outputFileTracingIncludes` of US-012, and US-017 must prove the files are in the image.
+---
+
+## 2026-10-09 - US-011
+- SPIKE RESULT (ADR-002 risk): swagger-ui-react 5.33.1 WORKS with React 19.2.4 and Next 16.3.5 (dev and prod build): no plan B needed (swagger-ui-dist not used).
+- src/components/manuals/swagger-viewer.tsx ('use client'; next/dynamic ssr:false; `swagger-ui-react/swagger-ui.css`; `persistAuthorization={false}`; light panel with colorScheme light) and src/app/developers/api-reference/page.tsx (Server Component; title from Developers.apiReference). Installed swagger-ui-react and @types/swagger-ui-react.
+- Browser: 2 operations (/api/v1/journey/events, /api/v1/me); the server dropdown shows `/ - A própria origem…`; Authorize accepts a Bearer; "Try it out" on GET /api/v1/me sent `GET http://localhost:3100/api/v1/me` with the Bearer (same origin, no CORS); the key is NOT in localStorage nor sessionStorage and Authorize is not "locked" after a reload; the only console error was the expected 401 of a fake key, no CSP violation.
+- Prod build: /developers loads 161 KB of JS (11 files), /developers/api-reference 514 KB (14 files): Swagger is loaded only on its route.
+- NOT verified: a 200 from "Try it out" with a real key (see the story's notes in prd.json); carry it to US-017.
+- Files changed: package.json, package-lock.json, src/components/manuals/swagger-viewer.tsx, src/app/developers/api-reference/page.tsx
+- **Learnings for future iterations:**
+  - The `react/jsx-no-literals` rule flags a literal like "…" in JSX, even in a loading fallback; use an empty element or a translated string.
+  - Prettier collapses multi-line arrow bodies: re-read a file after `prettier --write` before regex-editing it.
+  - `ps -eo pid,args | grep [n]ext` shows two next servers: one is the Docker container (wacrm-app-1, port 3000), do not kill it. Find yours with `ss -ltnp | grep :3100`.
+---
+
+## 2026-10-09 - US-012
+- next.config.ts (surgical, +21/-1): `outputFileTracingIncludes: { "/settings/manuals/*": ["content/manuals/**/*"] }`; the public Cache-Control rule's `source` now excludes `settings/manuals`; new rule `/settings/manuals/:path*` → `Cache-Control: private, no-store`. Nothing else changed (security headers still apply to those paths).
+- src/lib/manuals/next-config.test.ts (6 tests) imports the real config, calls `headers()` and matches sources with Next's own matcher (`next/dist/compiled/path-to-regexp`, loaded with createRequire because it ships without types): `/settings/manuals[/x]` gets ONLY `private, no-store`; `/developers/*` and `/settings` keep `s-maxage=300`; `/api/*` stays `no-store`; security headers still match; the tracing include is exact. Mutation check: removing the exclusion makes 2 tests fail.
+- `npm run build` OK, no tracing warning.
+- Files changed: next.config.ts, src/lib/manuals/next-config.test.ts
+- **Learnings for future iterations:**
+  - `pathToRegexp(source)` in this Next version returns a RegExp directly (not `{ regexp }`).
+  - The `source` negative lookahead `(?!…|settings/manuals)` also excludes e.g. `/settings/manualsX`; harmless, no such route.
+  - `/settings` itself (the client page) still gets the public s-maxage rule: pre-existing, out of scope (PRD Non-Goals).
+---
+
+## 2026-10-09 - US-013
+- src/lib/manuals/access.ts `requireManualsAccess()`: `requireRole('admin')`; UnauthorizedError → redirect('/login'); ForbiddenError → notFound(); anything else is rethrown. Pages: src/app/(dashboard)/settings/manuals/page.tsx (list of listAdminManuals, back link to /settings) and [slug]/page.tsx (role check FIRST, then getAdminManual → notFound; renders ManualPage with a "all manuals" back link). Namespace `Manuals` (title, intro, backToSettings, backToManuals, tocLabel) in the 4 catalogues.
+- Tests: access.test.ts (4 cases, REAL requireRole with a stubbed Supabase), manuals-pages.test.tsx (owner/admin render, agent/viewer 404, the role check runs before getAdminManual, a public slug and an unknown slug are 404 here), middleware.test.ts (signed-out → /login on /settings/manuals[/x]).
+- Prod build: both routes are dynamic (ƒ); `curl` signed-out → 307 /login with `Cache-Control: private, no-store`.
+- NOT verified in a browser: the logged-in owner view and the agent 404 (no credentials available); see the story's notes in prd.json. Carry to US-017.
+- Files changed: src/lib/manuals/access.ts, access.test.ts, src/app/(dashboard)/settings/manuals/{page,[slug]/page,manuals-pages.test}.tsx, messages/*.json, src/middleware.test.ts
+- **Learnings for future iterations:**
+  - Server pages can be unit-tested by calling the async component and `renderToStaticMarkup(await Page(props))` with `next/navigation` and `next-intl/server` mocked (redirect/notFound throw tagged errors).
+  - `vi.hoisted` is how a mock factory reads a mutable variable (the stubbed role).
+  - The dashboard layout is a client shell: a server page inside it is fine.
+---
+
+## 2026-10-09 - US-014
+- settings-sections.ts: new `RailLink` + `RAIL_LINKS` (`manuals` → /settings/manuals, BookOpen, group workspace, adminOnly true), kept OUT of SETTINGS_SECTIONS/SECTION_META (so resolveSection and the page's panel Record are untouched); fixed the stale comment that claimed `adminOnly` items were hidden (SectionMeta never had it). settings-rail.tsx: calls `useCan('edit-settings')` and renders the group's RAIL_LINKS as next/link items with the buttons' style, hiding `adminOnly` ones for non-admins. `Settings.sections.manuals` in the 4 catalogues (surgical edit: 3 lines each).
+- Tests: settings-rail.test.tsx (2: link shown to an admin, hidden from an agent while every real section stays) and 2 more in settings-sections.test.ts.
+- NOT verified in a browser (no credentials), see the story's notes in prd.json. Carry to US-017.
+- Files changed: src/components/settings/{settings-sections.ts,settings-rail.tsx,settings-sections.test.ts,settings-rail.test.tsx}, messages/*.json
+- **Learnings for future iterations:**
+  - Pre-existing lint WARNINGS in src/components/settings (ai-config, ai-knowledge, api-keys-settings, sessions-card, settings-overview) are not from this feature; `eslint <dir>` exits 0 with them.
+  - Client components using next-intl/useCan can be render-tested with `renderToStaticMarkup` by mocking `next-intl` (useTranslations → key) and `@/hooks/use-can`.
+---
+
+## 2026-10-09 - US-015
+- src/lib/manuals/contract-status.ts: ONE constant `CONTRACT_STATUS = 'pre-stable'` (+ message-key map). /developers layout shows a badge ("Contrato pré-estável") next to the site title and the support sentence in a footer ("Dúvidas? Fale com a equipe do CRM que enviou este link."), neither names a client; the API-reference page shows the Try-it-out notice above the Swagger. Keys Developers.{statusPreStable,statusStable,supportNote,tryItOutNotice} in the 4 catalogues. contract-status.test.ts (5): the status is known and starts pre-stable; every locale has the texts.
+- To flip to "estável" once the pilot (Bella Capri) integrates: change `CONTRACT_STATUS` to 'stable' in contract-status.ts, nothing else.
+- Browser (next dev :3100, signed out): badge, footer text and notice appear on /developers, the manual and /developers/api-reference; dark and light themes legible (light = `document.documentElement.setAttribute('data-mode','light')`).
+- Files changed: src/lib/manuals/contract-status.ts(+test), src/app/developers/layout.tsx, src/app/developers/api-reference/page.tsx, messages/*.json
+- **Learnings for future iterations:**
+  - Theme switch in this app is the `data-mode` attribute on <html> (dark by default), NOT a `dark` class.
+  - In dev-browser scripts do not use `waitUntil: 'networkidle'` on dev pages (the HMR socket can keep it busy) and do not select `main`: Swagger UI has its own `<main id="operations">`; use `main.mx-auto`.
+---
+
+## 2026-10-09 - US-016
+- CLAUDE.md (project): one Conventions bullet: the events contract lives in event-payload.ts AND content/api/openapi.yaml and changes together with content/manuals/pt/integracao-cardapio.md in the same PR (content.test.ts fails otherwise); manuals are registered with a visibility; `content/` never from `.projects/`; the route map (`/developers/**` public, `/settings/manuals/**` owner/admin); the manual cites UI labels and migration numbers; `{URL_BASE}` is the only replaced token.
+- docs/public-api.md (events endpoint) and docs/order-journey.md (what it is + step 4) point to `/developers`; order-journey also points the operator to Settings → Manuals.
+- ADR-001..003 untouched.
+- Files changed: CLAUDE.md, docs/public-api.md, docs/order-journey.md
+- **Learnings for future iterations:**
+  - docs/public-api.md and CLAUDE.md were already NOT prettier-formatted at HEAD: do not run prettier --write on them (check with `git show HEAD:<file> | npx prettier --check --stdin-filepath <file>`).
+---
+
+## 2026-10-09 - US-017 (NOT completed: passes stays false)
+- Built a Docker image of this branch (`docker build` with the .env.local build args, tag wacrm-docs-verify, 233 MB vs 228 MB for the user's wacrm-app:latest) and ran it as a SEPARATE container on :3200, leaving the user's running stack untouched (removed afterwards; the image is kept).
+- Signed-out `curl` against it: /developers, /developers/integracao-cardapio, /developers/api-reference, /developers/openapi.yaml → 200; /developers/configuracao-jornada-pedido and /developers/nao-existe → 404; /settings/manuals[/slug] → 307 /login with `Cache-Control: private, no-store`.
+- In the image: /app/content has api/openapi.yaml + both manuals; /app has only .next content node_modules package.json public server.js (no src/, .projects/, docs/): the standalone tracing works and did NOT pull the whole project. The loader's path read from the container cwd works. No `wacrm_live_…`-shaped value in /app/content. No Turbopack tracing warning in the image build.
+- NOT done (needs a human): owner/admin sees the manual; agent/viewer gets 404 and no rail item; "Try it out" on GET /api/v1/me returns 200 with a real key. Exact steps: verification.md section 3. verification.md written.
+- Files changed: .projects/integration-docs/verification.md
+- **Learnings for future iterations:**
+  - `.dockerignore` has `*.md`, which only matches at the ROOT of the build context: content/manuals/pt/*.md are NOT excluded. Don't "fix" it to `**/*.md`.
+  - Verify Docker changes with a separate image/container (`docker build -t <other-tag>`, another host port); the user's compose stack is running on :3000 and built from main.
+  - The dev-browser profile has a Supabase cookie for the LOCAL stack (`sb-supabase-…`, host supabase.localtest.me) but this app is configured for another Supabase host, so that session is useless here.
+---
+
+## 2026-10-09 - US-017 follow-up (still NOT completed: passes stays false)
+- The project owner supplied a test API key and two logins. Used ONLY for read-only checks on a separate container of the branch image (:3200, removed afterwards; sessions cleared; nothing written to files).
+- CLOSED: Try it out on GET /api/v1/me with the real key → HTTP 200 via the same origin (scopes ["events:write"]); owner session shows the Manuais rail item, the 1-manual list and the rendered manual (6 tables, 28 TOC links, {{menu_link}} literal, {URL_BASE} replaced, link to the public manual rewritten); the authenticated 200 carries `Cache-Control: private, no-store` plus the security headers.
+- FINDING: inside the dashboard `notFound()` answers HTTP 200 + the not-found UI + `noindex` (Next streaming: the status is already sent). The refused HTML contains none of the manual's text. This differs from the "404" wording in the PRD/design/ADR-003. Decision pending (verification.md section 3): accept the soft 404 or check the role in middleware.
+- STILL OPEN: a REAL agent/viewer of the owner's account. The second login (Catia) is the OWNER of her own account (1 member, 0 stores), so it correctly sees the manual; a first look misread "Agente" from the "Agentes de IA" menu item. To close it someone must invite her (or another user) as agent in the owner's account; the agent did not touch memberships.
+- Files changed: .projects/integration-docs/verification.md, prd.json (notes)
+- **Learnings for future iterations:**
+  - Never infer a user's role from page text: "Agentes de IA" is a menu item. The role badge on Settings → Overview ("Proprietário"…) is the reliable signal.
+  - Unit tests that call a Server Component directly cannot see the HTTP status; a status claim needs a real request.
+  - dev-browser `waitForURL` takes a predicate over a STRING url (not a URL object).
+---
+
+## 2026-10-09 - US-017 second follow-up (still NOT completed: passes stays false)
+- The project owner asked for a test agent. Created through the CRM's own invite flow, on the branch image (:3200, removed afterwards): as the owner, Settings → Team members → Invite (role Agente, valid 1 day, label agent-teste) → opened the /join link signed out → signed up a NEW user (`<owner's gmail>+agent-teste@…`, GoTrue autoconfirm is on, the "Verifique seu e-mail" screen is only the default message) → logged in and accepted the invite. DB check: same account as the owner, `account_role = agent`; the other test account (Catia) untouched, still owner of her own account. Total users 3. Temp invite-link file deleted; credentials were not written to any file.
+- CLOSED: a REAL agent sees no Manuais rail item; /settings/manuals and /settings/manuals/<slug> show the not-found screen; the refused HTML holds none of the manual's text; Cache-Control private, no-store; the public manual stays open to the agent.
+- STILL OPEN (a decision, not a check): the refusal is a soft 404 (HTTP 200). verification.md section 3: A accept + reword + new ADR, or B role check in the middleware.
+- Observation outside the scope: the app has NO not-found.tsx, so every 404 is Next's default page (dark text on the dark theme, barely readable).
+- Files changed: .projects/integration-docs/verification.md, prd.json (notes)
+- **Learnings for future iterations:**
+  - To create a test member without the invitee's inbox: the invite is a LINK (shown once, stored only as a hash), signup autoconfirms, and `/join/<token>` as a logged-in user has an "Aceitar convite" button. Accepting REMOVES the invitee's empty personal account: never use an account that holds data (or anyone else's login) for it.
+  - The role badge on Settings → Overview is the reliable role signal (Proprietário/Administrador/Agente/Visualizador); the footer of the sidebar also shows an AGENTE chip.
+---
+
+## 2026-10-09 - themed not-found page (requested by the project owner, outside the 17 stories)
+- Added src/app/not-found.tsx (async server page using `getTranslations('NotFound')`), src/components/not-found-view.tsx (presentational: tokens only: text-primary 404, text-foreground title, text-muted-foreground text; the action is passed as children), src/components/not-found-action.tsx (client: `usePathname()` picks the link: `/developers[/…]` → "Voltar à documentação" → /developers, anything else → "Voltar ao início" → /). Namespace `NotFound` (title, description, backHome, backToDocs) in the 4 catalogues. 12 tests in not-found-view.test.tsx (tokens only, no palette colour/hex; the action by path; the page composition).
+- WHY the client action: `/developers/<unknown>` has `dynamicParams = false`, so Next answers it as an UNMATCHED route with the ROOT not-found (a true 404, no /developers layout). A first version with `src/app/developers/not-found.tsx` was never used there and linked external developers to `/` (→ login); it was removed.
+- Next's default 404 follows the OS `prefers-color-scheme` and ignores the app's `data-mode`: dark text on the dark theme. Fixed for the whole app.
+- Browser (next dev): /nao-existe, /developers/nao-existe, /developers/a/b → HTTP 404 with the right link; both themes legible (dark: bg L≈2 / title L≈98; light: bg L≈99 / title L≈8); the REAL agent on /settings/manuals/<slug> sees it inside the dashboard shell in both themes.
+- `npm run build` OK; 2588 tests pass.
+- Files changed: src/app/not-found.tsx, src/components/not-found-{view,action}.tsx, not-found-view.test.tsx, messages/*.json
+- **Learnings for future iterations:**
+  - A `not-found.tsx` inside a segment is used only when `notFound()` is thrown in that segment. An unmatched URL (or a dynamic segment with `dynamicParams = false` and an ungenerated param) gets the ROOT one: pick content with `usePathname()` in a client child if it must depend on the area.
+---
+
+## 2026-10-09 - US-017 closed (decision A)
+- The project owner chose option A: accept the soft 404. Recorded as ADR-004 (Aceito, 2026-10-09; refines ADR-003 on this point only). PRD, prd.json (US-013/US-017 criteria) and design.md reworded: a refused role "shows the not-found screen with no manual text (soft 404: HTTP 200)"; the public tree still has a real 404. ADR-001..003 untouched (Proposto).
+- US-017 passes: every item verified with real sessions on an image of this branch (see verification.md). With it, all 17 stories pass.
+- Files changed: .projects/integration-docs/adr/ADR-004-recusa-de-papel-e-soft-404.md, prd.json, prd-integration-docs.md, design.md, verification.md
+- **Learnings for future iterations:**
+  - If the HTTP status of the refusal ever matters (a monitor, a scanner), supersede ADR-004 with option B: check the role in src/middleware.ts for /settings/manuals/** only (one profile query per request on those routes).
+---
