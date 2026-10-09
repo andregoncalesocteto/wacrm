@@ -260,7 +260,7 @@ function InboxPageInner() {
     const { data } = await supabase
       .from("channel_connections")
       .select(
-        "id, channel_type, display_name, status, disabled_at, store:stores(name)"
+        "id, channel_type, display_name, status, disabled_at, store:stores!channel_connections_store_id_fkey(name)"
       )
       .eq("account_id", accountIdRef.current);
     const rows = ((data ?? []) as unknown[]).map((r) => {
