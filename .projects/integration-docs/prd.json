@@ -314,7 +314,7 @@
       ],
       "priority": 17,
       "passes": false,
-      "notes": ""
+      "notes": "INCOMPLETE on purpose. Docker was available and 5 of 8 checks pass on an image built from this branch (see verification.md), but three need things the agent does not have: an owner/admin login (/settings/manuals shows the manual), an agent/viewer login (404 and no rail item) and a real API key (Try it out → 200). Steps to close them are in verification.md section 3. Flip passes to true only after a human runs them."
     }
   ]
 }

@@ -185,3 +185,15 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
 - **Learnings for future iterations:**
   - docs/public-api.md and CLAUDE.md were already NOT prettier-formatted at HEAD: do not run prettier --write on them (check with `git show HEAD:<file> | npx prettier --check --stdin-filepath <file>`).
 ---
+
+## 2026-10-09 - US-017 (NOT completed: passes stays false)
+- Built a Docker image of this branch (`docker build` with the .env.local build args, tag wacrm-docs-verify, 233 MB vs 228 MB for the user's wacrm-app:latest) and ran it as a SEPARATE container on :3200, leaving the user's running stack untouched (removed afterwards; the image is kept).
+- Signed-out `curl` against it: /developers, /developers/integracao-cardapio, /developers/api-reference, /developers/openapi.yaml → 200; /developers/configuracao-jornada-pedido and /developers/nao-existe → 404; /settings/manuals[/slug] → 307 /login with `Cache-Control: private, no-store`.
+- In the image: /app/content has api/openapi.yaml + both manuals; /app has only .next content node_modules package.json public server.js (no src/, .projects/, docs/): the standalone tracing works and did NOT pull the whole project. The loader's path read from the container cwd works. No `wacrm_live_…`-shaped value in /app/content. No Turbopack tracing warning in the image build.
+- NOT done (needs a human): owner/admin sees the manual; agent/viewer gets 404 and no rail item; "Try it out" on GET /api/v1/me returns 200 with a real key. Exact steps: verification.md section 3. verification.md written.
+- Files changed: .projects/integration-docs/verification.md
+- **Learnings for future iterations:**
+  - `.dockerignore` has `*.md`, which only matches at the ROOT of the build context: content/manuals/pt/*.md are NOT excluded. Don't "fix" it to `**/*.md`.
+  - Verify Docker changes with a separate image/container (`docker build -t <other-tag>`, another host port); the user's compose stack is running on :3000 and built from main.
+  - The dev-browser profile has a Supabase cookie for the LOCAL stack (`sb-supabase-…`, host supabase.localtest.me) but this app is configured for another Supabase host, so that session is useless here.
+---
