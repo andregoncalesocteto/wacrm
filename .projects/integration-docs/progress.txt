@@ -197,3 +197,15 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - Verify Docker changes with a separate image/container (`docker build -t <other-tag>`, another host port); the user's compose stack is running on :3000 and built from main.
   - The dev-browser profile has a Supabase cookie for the LOCAL stack (`sb-supabase-…`, host supabase.localtest.me) but this app is configured for another Supabase host, so that session is useless here.
 ---
+
+## 2026-10-09 - US-017 follow-up (still NOT completed: passes stays false)
+- The project owner supplied a test API key and two logins. Used ONLY for read-only checks on a separate container of the branch image (:3200, removed afterwards; sessions cleared; nothing written to files).
+- CLOSED: Try it out on GET /api/v1/me with the real key → HTTP 200 via the same origin (scopes ["events:write"]); owner session shows the Manuais rail item, the 1-manual list and the rendered manual (6 tables, 28 TOC links, {{menu_link}} literal, {URL_BASE} replaced, link to the public manual rewritten); the authenticated 200 carries `Cache-Control: private, no-store` plus the security headers.
+- FINDING: inside the dashboard `notFound()` answers HTTP 200 + the not-found UI + `noindex` (Next streaming: the status is already sent). The refused HTML contains none of the manual's text. This differs from the "404" wording in the PRD/design/ADR-003. Decision pending (verification.md section 3): accept the soft 404 or check the role in middleware.
+- STILL OPEN: a REAL agent/viewer of the owner's account. The second login (Catia) is the OWNER of her own account (1 member, 0 stores), so it correctly sees the manual; a first look misread "Agente" from the "Agentes de IA" menu item. To close it someone must invite her (or another user) as agent in the owner's account; the agent did not touch memberships.
+- Files changed: .projects/integration-docs/verification.md, prd.json (notes)
+- **Learnings for future iterations:**
+  - Never infer a user's role from page text: "Agentes de IA" is a menu item. The role badge on Settings → Overview ("Proprietário"…) is the reliable signal.
+  - Unit tests that call a Server Component directly cannot see the HTTP status; a status claim needs a real request.
+  - dev-browser `waitForURL` takes a predicate over a STRING url (not a URL object).
+---

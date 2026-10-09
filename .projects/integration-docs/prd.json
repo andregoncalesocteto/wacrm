@@ -205,7 +205,7 @@
       ],
       "priority": 11,
       "passes": true,
-      "notes": "Verified in the browser except one point: \"Try it out\" on GET /api/v1/me returning 200 needs a real events/test API key (none available to the agent; creating one means logging in to the dashboard or writing to the shared dev database). With a fake key the request reached the SAME origin and answered 401, which proves the wiring. Re-check with a real key in US-017 (verification.md)."
+      "notes": "Fully verified. Earlier gap closed: in the Docker image, Authorize with a real test key + Try it out on GET /api/v1/me returned HTTP 200 through the same origin; the key was not stored in local/sessionStorage."
     },
     {
       "id": "US-012",
@@ -244,7 +244,7 @@
       ],
       "priority": 13,
       "passes": true,
-      "notes": "Browser check done only for the signed-out path (prod build: /settings/manuals and /settings/manuals/<slug> redirect to /login with Cache-Control private, no-store). NOT seen in a browser: the manual rendered for a logged-in owner, and the 404 for an agent/viewer: the agent had no credentials (the dev-browser profile has no session). Both are covered by tests that run the REAL requireRole with a stubbed session (access.test.ts, manuals-pages.test.tsx). Re-check with an owner and an agent login in US-017."
+      "notes": "Verified with a real owner session in the Docker image (list + manual render, Cache-Control private, no-store on the 200). Still not seen with a REAL agent/viewer (none available: the second test account owns its own account). Finding: a refusal inside the dashboard is a SOFT 404 (HTTP 200 + not-found UI + noindex, no manual text in the HTML), a documented Next streaming behaviour: see verification.md section 3 for the decision (accept it, or move the role check to the middleware)."
     },
     {
       "id": "US-014",
@@ -263,7 +263,7 @@
       ],
       "priority": 14,
       "passes": true,
-      "notes": "Not seen in a browser: both the owner view (item visible, leads to /settings/manuals) and the agent/viewer view (item absent) need a logged-in session and no credentials were available. Covered by settings-rail.test.tsx (renders SettingsRail with useCan true/false) and settings-sections.test.ts. Re-check with owner and agent logins in US-017."
+      "notes": "Verified with a real owner session: the Manuais item shows at the end of the workspace group and leads to /settings/manuals. The hidden-for-agent/viewer case is covered by settings-rail.test.tsx but not yet seen with a real agent/viewer account (see verification.md section 3)."
     },
     {
       "id": "US-015",
@@ -314,7 +314,7 @@
       ],
       "priority": 17,
       "passes": false,
-      "notes": "INCOMPLETE on purpose. Docker was available and 5 of 8 checks pass on an image built from this branch (see verification.md), but three need things the agent does not have: an owner/admin login (/settings/manuals shows the manual), an agent/viewer login (404 and no rail item) and a real API key (Try it out → 200). Steps to close them are in verification.md section 3. Flip passes to true only after a human runs them."
+      "notes": "INCOMPLETE. Done on a Docker image of this branch with real sessions: public pages 200 signed-out; owner sees the manual; Cache-Control private, no-store on the authenticated 200; Try it out 200 with a real key; content in the image and tracing not pulling the project. Open: (1) a REAL agent/viewer of the same account (the second test login owns its own account, so it correctly sees the manual); (2) the decision on the soft 404 vs a real 404 status (verification.md section 3). Flip passes to true after a human closes both."
     }
   ]
 }
