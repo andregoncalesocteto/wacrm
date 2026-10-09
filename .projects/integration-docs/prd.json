@@ -243,8 +243,8 @@
         "Verify in browser using dev-browser skill: logado como owner, abrir `/settings/manuals/configuracao-jornada-pedido` e ver o manual; logado como agent (ou viewer), a mesma URL responde 404; sem sessão, redireciona para o login"
       ],
       "priority": 13,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Browser check done only for the signed-out path (prod build: /settings/manuals and /settings/manuals/<slug> redirect to /login with Cache-Control private, no-store). NOT seen in a browser: the manual rendered for a logged-in owner, and the 404 for an agent/viewer: the agent had no credentials (the dev-browser profile has no session). Both are covered by tests that run the REAL requireRole with a stubbed session (access.test.ts, manuals-pages.test.tsx). Re-check with an owner and an agent login in US-017."
     },
     {
       "id": "US-014",

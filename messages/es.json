@@ -2766,5 +2766,12 @@
     "indexIntro": "Manuales y referencia de la API para conectar un menú digital a este CRM.",
     "manualsHeading": "Manuales",
     "apiReferenceDesc": "Todos los endpoints, campos y ejemplos, con la opción de probar una llamada."
+  },
+  "Manuals": {
+    "title": "Manuales",
+    "intro": "Guías del operador para configurar y usar el CRM.",
+    "backToSettings": "Volver a configuración",
+    "backToManuals": "Todos los manuales",
+    "tocLabel": "En esta página"
   }
 }

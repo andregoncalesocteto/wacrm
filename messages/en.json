@@ -2778,5 +2778,12 @@
     "indexIntro": "Manuals and the API reference for connecting a digital menu to this CRM.",
     "manualsHeading": "Manuals",
     "apiReferenceDesc": "Every endpoint, field and example, with the option to try a call."
+  },
+  "Manuals": {
+    "title": "Manuals",
+    "intro": "Operator guides for setting up and using the CRM.",
+    "backToSettings": "Back to settings",
+    "backToManuals": "All manuals",
+    "tocLabel": "On this page"
   }
 }

@@ -144,3 +144,15 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - The `source` negative lookahead `(?!…|settings/manuals)` also excludes e.g. `/settings/manualsX`; harmless, no such route.
   - `/settings` itself (the client page) still gets the public s-maxage rule: pre-existing, out of scope (PRD Non-Goals).
 ---
+
+## 2026-10-09 - US-013
+- src/lib/manuals/access.ts `requireManualsAccess()`: `requireRole('admin')`; UnauthorizedError → redirect('/login'); ForbiddenError → notFound(); anything else is rethrown. Pages: src/app/(dashboard)/settings/manuals/page.tsx (list of listAdminManuals, back link to /settings) and [slug]/page.tsx (role check FIRST, then getAdminManual → notFound; renders ManualPage with a "all manuals" back link). Namespace `Manuals` (title, intro, backToSettings, backToManuals, tocLabel) in the 4 catalogues.
+- Tests: access.test.ts (4 cases, REAL requireRole with a stubbed Supabase), manuals-pages.test.tsx (owner/admin render, agent/viewer 404, the role check runs before getAdminManual, a public slug and an unknown slug are 404 here), middleware.test.ts (signed-out → /login on /settings/manuals[/x]).
+- Prod build: both routes are dynamic (ƒ); `curl` signed-out → 307 /login with `Cache-Control: private, no-store`.
+- NOT verified in a browser: the logged-in owner view and the agent 404 (no credentials available); see the story's notes in prd.json. Carry to US-017.
+- Files changed: src/lib/manuals/access.ts, access.test.ts, src/app/(dashboard)/settings/manuals/{page,[slug]/page,manuals-pages.test}.tsx, messages/*.json, src/middleware.test.ts
+- **Learnings for future iterations:**
+  - Server pages can be unit-tested by calling the async component and `renderToStaticMarkup(await Page(props))` with `next/navigation` and `next-intl/server` mocked (redirect/notFound throw tagged errors).
+  - `vi.hoisted` is how a mock factory reads a mutable variable (the stubbed role).
+  - The dashboard layout is a client shell: a server page inside it is fine.
+---
