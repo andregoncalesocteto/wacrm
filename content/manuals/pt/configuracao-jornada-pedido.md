@@ -57,15 +57,16 @@ Tenha em mãos:
 
 ## 2. Aplicar as migrations
 
-A funcionalidade precisa das migrations **055 a 068** de `supabase/migrations/`. Elas **não são aplicadas sozinhas** em uma instalação existente.
+A funcionalidade precisa das migrations **055 a 069** de `supabase/migrations/`. Elas **não são aplicadas sozinhas** em uma instalação existente.
 
 - **Stack Docker com Supabase:** o serviço `migrate` aplica tudo ao subir (`docker compose … up --build -d`).
-- **Supabase externo:** aplique os arquivos de 055 a 068, em ordem.
+- **Supabase externo:** aplique os arquivos de 055 a 069, em ordem.
 
-| Migrations | Para quê                                                                                                                                                                    |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 055 a 062  | Jornada com link do CRM (endereço do cardápio, jornadas, pedidos, histórico de status).                                                                                     |
-| 063 a 068  | Eventos diretos (chave da loja, consentimento, jornadas sem link). Só são necessárias se o cardápio enviar eventos sem `idtrack`. São aditivas: nada do que já existe muda. |
+| Migrations | Para quê                                                                                                                                                                      |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 055 a 062  | Jornada com link do CRM (endereço do cardápio, jornadas, pedidos, histórico de status).                                                                                       |
+| 063 a 068  | Eventos diretos (chave da loja, consentimento, jornadas sem link). Só são necessárias se o cardápio enviar eventos sem `idtrack`. São aditivas: nada do que já existe muda.   |
+| 069        | Marcar o negócio como ganho ou perdido à mão (ou arrastá-lo para Comprou ou Perdido) encerra também a jornada. Veja a seção 11. Necessária para quem usa a jornada de pedido. |
 
 Aplique primeiro num ambiente de teste ou faça backup. Para conferir: as lojas ganham o campo **Endereço do cardápio digital** (seção 3) e a tela de Pipelines abre sem erro.
 
@@ -204,6 +205,7 @@ Antes de liberar para clientes, com um número seu:
 ## 11. Como ler o resultado
 
 - **Pipelines → Jornada de Pedido:** negócios por etapa, com itens e valor do carrinho; filtros de canal, loja e origem.
+- **Fechar o negócio à mão encerra a jornada.** Em **Pipelines**, ao marcar o negócio como ganho ou perdido, ou ao arrastar o cartão para **Comprou** ou **Perdido**, a jornada é encerrada com o mesmo resultado. Os lembretes e o carrinho abandonado que estavam agendados deixam de sair, e o **próximo link ou evento desse cliente abre uma jornada nova, com um negócio novo**. Uma jornada encerrada nunca é reaberta: reabrir o negócio não reabre a jornada. Por isso, se você marcar um negócio de teste como perdido, os eventos seguintes aparecem em um **novo** cartão, em "Navegando" ou "Carrinho", e não no cartão antigo.
 - **Conversão da jornada:** quantas jornadas chegaram a cada etapa (nela ou além), quantas foram perdidas e a taxa de "link enviado" a "comprou", no geral, por canal e por loja, separando **Link do CRM** de **Direto do cardápio**. Jornada direta nunca passa por "link enviado", então a taxa de link até compra só existe para as jornadas com link.
 - **Contato → Consentimento de mensagens:** estado, data e origem (Cardápio ou Chat) de cada finalidade. "Sem registro" também aparece para quem já escreveu à loja, que tem consentimento implícito.
 

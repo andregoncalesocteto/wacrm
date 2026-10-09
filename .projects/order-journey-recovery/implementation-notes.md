@@ -178,3 +178,19 @@ Sete achados de code review. Todos eram reais; um commit por achado. Nenhum cont
 7. **Espera em ramo aninhado** (`engine.ts`): `nested === 'partial'` propaga `partial` ao escopo pai; o log não termina em `success` com espera viva.
 
 Testes: `journey.integration.test.ts` (1, 4, 5), `journeys.test.ts` (2), `lost.test.ts` (3), `engine.characterization.test.ts` (6, 7). O fake `fakeAdmin` ganhou `failInsert` (falha de insert simulada).
+
+## Correção posterior: negócio fechado à mão encerra a Jornada (migration `069`)
+
+**Achado (teste em ambiente de desenvolvimento, 2026-10-09).** Os eventos chegavam e eram gravados, mas não apareciam no pipeline. O negócio da Jornada tinha sido marcado como perdido à mão (botão "Marcar como perdido", que só altera `deals.status`, e/ou arrastando o cartão para "Perdido"), e a **Jornada continuou `open`**. Os links e os eventos seguintes caíam nessa Jornada aberta (`findOpenJourney`), e o negócio não saía mais de "Perdido": `advanceJourneyStage` só move o negócio quando ele está numa etapa **anterior** ao alvo (compare-and-swap de `journeys.ts`). Resultado: atividade invisível e nenhuma Jornada nova.
+
+**Correção.** `supabase/migrations/069_close_journey_when_deal_closed.sql`:
+
+- função `close_journey_when_deal_closed()` e gatilho `trg_close_journey_when_deal_closed` (`AFTER UPDATE OF status, stage_id ON deals`, só quando algum dos dois muda e o negócio tem `journey_id`): se o negócio vira `won`/`lost` (status) ou vai para a etapa `won`/`lost` do pipeline, a Jornada **aberta** fecha com o mesmo resultado (`state`, `stage`, `closed_at`);
+- `SECURITY DEFINER`, porque `journeys` só tem política de SELECT: o agent altera negócios, mas não Jornadas;
+- os fechamentos do próprio app (Purchase, varredura de Perdido) atualizam a Jornada **antes** do negócio, então o gatilho os encontra já fechados e não faz nada (o `closed_at` do app é mantido);
+- backfill idempotente: fecha as Jornadas que já estavam abertas com o negócio fechado à mão;
+- as mensagens agendadas (lembretes, carrinho abandonado) conferem `state = 'open'` quando disparam (`isJourneyOpen`), então fechar a Jornada as cancela sem código extra; o próximo link/evento abre uma Jornada e um negócio **novos** (`findOpenJourney(...) ?? openOrRenewJourney(...)`). Uma Jornada fechada nunca é reaberta, nem reabrindo o negócio.
+
+**Como foi provado.** Num Postgres real, dentro de uma transação revertida (`ROLLBACK`): botão perdido e ganho, arrastar para Perdido e para Comprou, arrastar entre etapas abertas e editar campos (não fecha), fechamento do app (Jornada primeiro, depois o negócio; `closed_at` preservado) e um usuário autenticado (RLS) que atualiza só o negócio (a Jornada fecha; um `UPDATE` direto em `journeys` por ele afeta 0 linhas). A migration foi aplicada duas vezes na mesma transação (idempotente), e `supabase/ci/verify-schema.sql` (com as duas checagens novas: gatilho e `SECURITY DEFINER`) falha sem a migration e passa com ela. O banco real não foi alterado pelo teste. Como o fake em memória dos testes unitários não tem gatilhos, `close-journey-migration.test.ts` fixa as peças do SQL e o CI cobre o resto.
+
+**Limites.** Um negócio fechado à mão como ganho conta no funil como "Comprou" (a etapa `won` é lida como "chegou à compra") mesmo sem pedido nem `purchased_at`. Fechar a Jornada à mão não envia nada ao cliente.

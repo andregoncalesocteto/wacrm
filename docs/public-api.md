@@ -288,7 +288,7 @@ itself, **without login**, at `/developers` (the raw contract is
 
 > **Pre-stable until the first client.** This contract is frozen when the
 > first client integrates; after that a breaking change needs `v2`.
-> **Migrations required:** `055` to `068` (`055` to `062` for the order Journey, `063` to `068` for events without `idtrack`; see [order-journey.md](./order-journey.md#what-to-apply-and-configure)).
+> **Migrations required:** `055` to `069` (`055` to `062` for the order Journey, `063` to `068` for events without `idtrack`, `069` so a deal closed by hand closes its Journey; see [order-journey.md](./order-journey.md#what-to-apply-and-configure)).
 
 **One event per call**, JSON body, no batching. Common fields:
 
