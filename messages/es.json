@@ -2778,5 +2778,11 @@
     "backToSettings": "Volver a configuración",
     "backToManuals": "Todos los manuales",
     "tocLabel": "En esta página"
+  },
+  "NotFound": {
+    "title": "Página no encontrada",
+    "description": "La dirección no existe o no tienes acceso a ella.",
+    "backHome": "Volver al inicio",
+    "backToDocs": "Volver a la documentación"
   }
 }

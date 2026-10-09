@@ -2790,5 +2790,11 @@
     "backToSettings": "Back to settings",
     "backToManuals": "All manuals",
     "tocLabel": "On this page"
+  },
+  "NotFound": {
+    "title": "Page not found",
+    "description": "This address does not exist or you do not have access to it.",
+    "backHome": "Back to home",
+    "backToDocs": "Back to the documentation"
   }
 }

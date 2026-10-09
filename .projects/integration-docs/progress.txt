@@ -220,3 +220,14 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - To create a test member without the invitee's inbox: the invite is a LINK (shown once, stored only as a hash), signup autoconfirms, and `/join/<token>` as a logged-in user has an "Aceitar convite" button. Accepting REMOVES the invitee's empty personal account: never use an account that holds data (or anyone else's login) for it.
   - The role badge on Settings → Overview is the reliable role signal (Proprietário/Administrador/Agente/Visualizador); the footer of the sidebar also shows an AGENTE chip.
 ---
+
+## 2026-10-09 - themed not-found page (requested by the project owner, outside the 17 stories)
+- Added src/app/not-found.tsx (async server page using `getTranslations('NotFound')`), src/components/not-found-view.tsx (presentational: tokens only: text-primary 404, text-foreground title, text-muted-foreground text; the action is passed as children), src/components/not-found-action.tsx (client: `usePathname()` picks the link: `/developers[/…]` → "Voltar à documentação" → /developers, anything else → "Voltar ao início" → /). Namespace `NotFound` (title, description, backHome, backToDocs) in the 4 catalogues. 12 tests in not-found-view.test.tsx (tokens only, no palette colour/hex; the action by path; the page composition).
+- WHY the client action: `/developers/<unknown>` has `dynamicParams = false`, so Next answers it as an UNMATCHED route with the ROOT not-found (a true 404, no /developers layout). A first version with `src/app/developers/not-found.tsx` was never used there and linked external developers to `/` (→ login); it was removed.
+- Next's default 404 follows the OS `prefers-color-scheme` and ignores the app's `data-mode`: dark text on the dark theme. Fixed for the whole app.
+- Browser (next dev): /nao-existe, /developers/nao-existe, /developers/a/b → HTTP 404 with the right link; both themes legible (dark: bg L≈2 / title L≈98; light: bg L≈99 / title L≈8); the REAL agent on /settings/manuals/<slug> sees it inside the dashboard shell in both themes.
+- `npm run build` OK; 2588 tests pass.
+- Files changed: src/app/not-found.tsx, src/components/not-found-{view,action}.tsx, not-found-view.test.tsx, messages/*.json
+- **Learnings for future iterations:**
+  - A `not-found.tsx` inside a segment is used only when `notFound()` is thrown in that segment. An unmatched URL (or a dynamic segment with `dynamicParams = false` and an ungenerated param) gets the ROOT one: pick content with `usePathname()` in a client child if it must depend on the area.
+---
