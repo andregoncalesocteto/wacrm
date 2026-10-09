@@ -21,6 +21,7 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
 - Run the full suite as `TZ=UTC npm test`: src/lib/dashboard/date-utils.test.ts has 2 pre-existing failures when the machine is not on UTC (this one is at -03); they are unrelated to this feature and CI runs in UTC.
 - `next dev` REWRITES the tracked AGENTS.md on startup (and prints "Generated AGENTS.md"): run `git checkout AGENTS.md` before every commit so it does not ride along. To verify in a browser: `npx next dev -p 3100` (port 3000 is the Docker stack, built from main), then the dev-browser skill (`dev-browser <<'EOF' … EOF`; screenshots land in ~/.dev-browser/tmp/).
 - `npm run build` is the place where tracing problems show up. If it prints "Dynamic filesystem access causes tracing of the whole project", the path is not statically scoped: either keep it as `path.join(process.cwd(), 'content', ...)` or add `/*turbopackIgnore: true*/` as the first argument AND declare the files in `outputFileTracingIncludes` (US-012). Grep the build log for `warning|tracing`. Do not run `pkill -f "next dev …"` from the shell: it matches the shell's own command line and kills it; find the PID with `ps -eo pid,args | grep [n]ext`.
+- Do NOT run prettier on next.config.ts (or any file the repo does not keep formatted): it rewrote 29 unrelated lines. Check `git diff --stat <file>` after formatting; edit such files with a targeted replace.
 - Format ONLY the files you touch before committing (`npx prettier --write <files>`; `npm run format` rewrites the whole repo); commit style: imperative, terse first line, `feat: [Story ID] - [Story Title]`.
 
 ## 2026-10-09 - US-001
@@ -131,4 +132,15 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - The `react/jsx-no-literals` rule flags a literal like "…" in JSX, even in a loading fallback; use an empty element or a translated string.
   - Prettier collapses multi-line arrow bodies: re-read a file after `prettier --write` before regex-editing it.
   - `ps -eo pid,args | grep [n]ext` shows two next servers: one is the Docker container (wacrm-app-1, port 3000), do not kill it. Find yours with `ss -ltnp | grep :3100`.
+---
+
+## 2026-10-09 - US-012
+- next.config.ts (surgical, +21/-1): `outputFileTracingIncludes: { "/settings/manuals/*": ["content/manuals/**/*"] }`; the public Cache-Control rule's `source` now excludes `settings/manuals`; new rule `/settings/manuals/:path*` → `Cache-Control: private, no-store`. Nothing else changed (security headers still apply to those paths).
+- src/lib/manuals/next-config.test.ts (6 tests) imports the real config, calls `headers()` and matches sources with Next's own matcher (`next/dist/compiled/path-to-regexp`, loaded with createRequire because it ships without types): `/settings/manuals[/x]` gets ONLY `private, no-store`; `/developers/*` and `/settings` keep `s-maxage=300`; `/api/*` stays `no-store`; security headers still match; the tracing include is exact. Mutation check: removing the exclusion makes 2 tests fail.
+- `npm run build` OK, no tracing warning.
+- Files changed: next.config.ts, src/lib/manuals/next-config.test.ts
+- **Learnings for future iterations:**
+  - `pathToRegexp(source)` in this Next version returns a RegExp directly (not `{ regexp }`).
+  - The `source` negative lookahead `(?!…|settings/manuals)` also excludes e.g. `/settings/manualsX`; harmless, no such route.
+  - `/settings` itself (the client page) still gets the public s-maxage rule: pre-existing, out of scope (PRD Non-Goals).
 ---

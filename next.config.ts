@@ -70,6 +70,19 @@ const nextConfig: NextConfig = {
   output: "standalone",
 
   /**
+   * The operator manuals (`/settings/manuals/[slug]`) read Markdown from
+   * `content/manuals` at request time (they depend on the session cookie, so
+   * they cannot be prerendered). `output: "standalone"` only copies what the
+   * file tracer can see, and `src/lib/manuals/loader.ts` opts out of automatic
+   * tracing on purpose (its path is injectable), so the folder is declared here.
+   * The public `/developers/**` pages are rendered at build time and need
+   * nothing at runtime. See ADR-003 of integration-docs.
+   */
+  outputFileTracingIncludes: {
+    "/settings/manuals/*": ["content/manuals/**/*"],
+  },
+
+  /**
    * Cross-origin dev access (Next.js 16).
    *
    * Next 16 blocks requests to dev-only resources (`/_next/*` internals,
@@ -173,7 +186,9 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Cache-Control", value: "no-store" }],
       },
       {
-        source: "/:path((?!_next/static|_next/image|api).*)",
+        // `settings/manuals` is excluded: those pages depend on the session and
+        // role, so they get `private, no-store` below instead of a shared cache.
+        source: "/:path((?!_next/static|_next/image|api|settings/manuals).*)",
         headers: [
           {
             key: "Cache-Control",
@@ -181,6 +196,11 @@ const nextConfig: NextConfig = {
               "public, max-age=0, s-maxage=300, stale-while-revalidate=86400",
           },
         ],
+      },
+      {
+        // Operator manuals: role-gated, never stored by a CDN or proxy.
+        source: "/settings/manuals/:path*",
+        headers: [{ key: "Cache-Control", value: "private, no-store" }],
       },
       {
         // Security headers on every response, including /_next/static
