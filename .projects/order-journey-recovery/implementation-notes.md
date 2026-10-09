@@ -194,3 +194,18 @@ Testes: `journey.integration.test.ts` (1, 4, 5), `journeys.test.ts` (2), `lost.t
 **Como foi provado.** Num Postgres real, dentro de uma transação revertida (`ROLLBACK`): botão perdido e ganho, arrastar para Perdido e para Comprou, arrastar entre etapas abertas e editar campos (não fecha), fechamento do app (Jornada primeiro, depois o negócio; `closed_at` preservado) e um usuário autenticado (RLS) que atualiza só o negócio (a Jornada fecha; um `UPDATE` direto em `journeys` por ele afeta 0 linhas). A migration foi aplicada duas vezes na mesma transação (idempotente), e `supabase/ci/verify-schema.sql` (com as duas checagens novas: gatilho e `SECURITY DEFINER`) falha sem a migration e passa com ela. O banco real não foi alterado pelo teste. Como o fake em memória dos testes unitários não tem gatilhos, `close-journey-migration.test.ts` fixa as peças do SQL e o CI cobre o resto.
 
 **Limites.** Um negócio fechado à mão como ganho conta no funil como "Comprou" (a etapa `won` é lida como "chegou à compra") mesmo sem pedido nem `purchased_at`. Fechar a Jornada à mão não envia nada ao cliente.
+
+## Decisão posterior: pedido cancelado marca o negócio como perdido
+
+**Pergunta (teste em desenvolvimento, 2026-10-09).** Um `Purchase` seguido de `OrderStatusChanged → cancelled` é ganho ou perda? Até aqui o CRM o tratava como **ganho**: o `cancelled` só mudava o pedido (`orders.status`, `status_history`) e disparava a mensagem do status; a Jornada (já `won`) e o negócio (`Comprou`, status ganho) não eram tocados. Efeito colateral: "Ganhos" e o valor do pipeline contavam pedidos cancelados como venda.
+
+**Decisão do responsável do projeto: marcar o negócio como perdido ao cancelar.** `markDealLostForCancelledOrder` (`orders.ts`), chamada por `orderStatusChanged` (`events.ts`):
+
+- o negócio do pedido passa a `status = 'lost'` e vai para a etapa `lost` ("Perdido") do próprio pipeline (sem essa etapa, só o status muda); o valor do negócio (o do pedido) é mantido;
+- **a Jornada não é tocada**: continua `won`, então a conversão do funil ("o cliente chegou a comprar") não muda. O gatilho da migration `069` só fecha Jornadas **abertas**, então a atualização do negócio não a afeta;
+- é **idempotente e refeita no reenvio**: roda sempre que o pedido está cancelado, não só quando esta chamada o cancelou. Se a atualização do negócio falhar depois da do pedido, o reenvio encontra o pedido já cancelado (a mudança de status vira no-op) e ainda termina o negócio;
+- um `cancelled` **recusado** (pedido já `delivered`, final) não altera pedido nem negócio; um pedido sem negócio é cancelado sem erro; um negócio já perdido não é reescrito; os outros status nunca marcam o negócio.
+
+**Testes** (`journey.integration.test.ts`, em WhatsApp e Telegram, 12 casos): cancelar leva o negócio a Perdido com o valor intacto, a Jornada continua `won` e a mensagem de cancelamento sai uma vez; cancelar após `delivered` é recusado; repetir o cancelamento (outro `event_id`) não reenvia nada; um reenvio repara um negócio que ficou ganho com o pedido cancelado; pedido sem negócio; os demais status deixam o negócio ganho. Sem a correção, os três casos de efeito falham nos dois canais.
+
+**Limite.** O que já estava cancelado antes desta mudança **não** é corrigido retroativamente (não há migration de backfill): só os cancelamentos novos, ou um reenvio do `cancelled` de um pedido antigo, marcam o negócio.
