@@ -27,6 +27,15 @@ specific to a channel.
   Navegando → Carrinho → Checkout → Comprou / Perdido. It only moves forward.
   The pipeline is created by the CRM the first time a Journey opens; you can
   rename it and its stages (the CRM finds it by an internal key, not by name).
+- **Closing the deal by hand closes the Journey.** In **Pipelines**, marking a
+  Journey's deal as won or lost, or dragging its card into **Comprou** or
+  **Perdido**, closes the Journey with the same outcome (migration `069`). The
+  pending reminders and the abandoned-cart message are cancelled (they check
+  that the Journey is still open when they are due), and the next link or event
+  of that customer opens a **new** Journey and deal. A closed Journey is never
+  reopened: reopening the deal does not reopen it. Before `069`, the Journey
+  stayed open, kept receiving the customer's events, and its deal stayed stuck
+  in Perdido, so the activity never showed up in the pipeline.
 - A `Purchase` creates the **order** (shown in the conversation's side panel and
   on the deal, with the status and its history) and stores the customer's
   last-purchase date.
@@ -53,9 +62,10 @@ Docker stack's `migrate` service applies them for you, see
 | `066`     | Parked automation runs without a conversation (abandoned cart of a direct order)                                                                |
 | `067`     | One open direct Journey per contact and store (cleans up duplicates first)                                                                      |
 | `068`     | `merge_contacts` keeps the proof of consent (`given_at`) of both contacts                                                                       |
+| `069`     | Closing a Journey's deal by hand (won / lost, or dragging it to the Comprou / Perdido column) closes the Journey too                            |
 
-The original Journey needs `055` to `062`; the direct events add `063` to `068`.
-**Both together require `055` to `068`.** `063` to `068` are needed for events
+The original Journey needs `055` to `062`; the direct events add `063` to `068`; `069` fixes manual closes of a deal (below).
+**Both together require `055` to `069`.** `063` to `068` are needed for events
 without `idtrack` (they are additive: existing Journeys, stores and automations
 keep working).
 

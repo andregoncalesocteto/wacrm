@@ -459,6 +459,26 @@ BEGIN
     RAISE EXCEPTION 'uq_journeys_open_direct_contact_store index is missing (migration 067)';
   END IF;
 
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'trg_close_journey_when_deal_closed'
+      AND tgrelid = 'public.deals'::regclass
+      AND NOT tgisinternal
+  ) THEN
+    RAISE EXCEPTION 'trg_close_journey_when_deal_closed trigger is missing on public.deals (migration 069)';
+  END IF;
+
+  -- SECURITY DEFINER is what lets a deal update close the Journey: agents have
+  -- no UPDATE policy on journeys.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc
+    WHERE proname = 'close_journey_when_deal_closed'
+      AND pronamespace = 'public'::regnamespace
+      AND prosecdef
+  ) THEN
+    RAISE EXCEPTION 'close_journey_when_deal_closed must exist and be SECURITY DEFINER (migration 069)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

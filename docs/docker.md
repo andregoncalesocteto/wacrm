@@ -140,8 +140,9 @@ docker run -d --env-file .env.local -e PORT=3000 -p 3000:3000 wacrm
   the events without `idtrack` (direct orders with consent) add `063` (store
   key fields and notice connection), `064` (direct Journeys), `065` (consent per
   purpose), `066` (automation runs without a conversation), `067` (one open
-  direct Journey per store) and `068` (consent proof on contact merge), so **the
-  two features together need `055` to `068`**. It uses this same scheduler; nothing
+  direct Journey per store) `068` (consent proof on contact merge) and `069` (closing a Journey when
+  its deal is closed by hand), so **the two features together need `055` to
+  `069`**. It uses this same scheduler; nothing
   else has to be scheduled.
 - Order-Journey Resumptions (the messages sent 10 and 30 minutes after
   the menu link if the customer went quiet) are Wait steps too, so they
