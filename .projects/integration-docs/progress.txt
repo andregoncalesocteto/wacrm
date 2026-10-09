@@ -18,7 +18,7 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
 - Tests are colocated (`foo.ts` + `foo.test.ts`), vitest in the `node` environment; `.tsx` tests render with `react-dom/server`.
 - `src/middleware.ts` only protects a hardcoded prefix list (`/settings` is in it, `/developers` is not); `src/middleware.test.ts` has the mock pattern to extend.
 - `lib/auth/account.ts` has `requireRole`, `UnauthorizedError`, `ForbiddenError` for server code. The dashboard has no server page yet: US-013 sets the pattern.
-- Format with prettier before committing (`npm run format`); commit style: imperative, terse first line, `feat: [Story ID] - [Story Title]`.
+- Format ONLY the files you touch before committing (`npx prettier --write <files>`; `npm run format` rewrites the whole repo); commit style: imperative, terse first line, `feat: [Story ID] - [Story Title]`.
 
 ## 2026-10-09 - US-001
 - Moved docs/integracao-cardapio/openapi.yaml to content/api/openapi.yaml (git mv); `servers` is now `- url: /`; removed the `contact` placeholder; the description points to /developers and says to ask the CRM team that sent the link.
@@ -27,4 +27,13 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - `npm run format:check` already FAILS on the whole repo (446 files, before this feature). Do not chase it: check only the files you touch with `npx prettier --check <files>`.
   - The root `.prettierrc` is applied to .projects/*.md and .yaml too; run `npx prettier --write <file>` on whatever you create.
   - A helper that flips `passes` lives only in the session scratchpad; flip it by hand in .projects/integration-docs/prd.json if you do not have it.
+---
+
+## 2026-10-09 - US-002
+- Created content/manuals/pt/integracao-cardapio.md (public integration manual, 12 numbered sections + "Problemas comuns" + "Limitações conhecidas") from Part B + "Como funciona" of the old manual. Added section 2 "Antes de começar: o que pedir ao operador do CRM" (replaces the old A.9 hand-off table). No reference to the operator manual's sections; the only relative link is ./openapi.yaml.
+- Files changed: content/manuals/pt/integracao-cardapio.md
+- **Learnings for future iterations:**
+  - Headings are plain numbered ("## 6. Os eventos, um a um"), not "B.4": cross-references in the text say "seção N". Keep that if you edit.
+  - Tokens: only `{URL_BASE}` is substituted by the loader (US-004); `{{menu_link}}` is literal product text.
+  - The "Problemas comuns" table was split by audience: operator-only rows (menu_link, janela de 24 h, retomada, funil) live in the operator manual.
 ---
