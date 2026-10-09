@@ -58,3 +58,11 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - Locale = NEXT_PUBLIC_APP_LOCALE (default 'en'); there is no content/manuals/en, so every current deployment reads content/manuals/pt via the fallback.
   - `{URL_BASE}` is replaced at load time from NEXT_PUBLIC_SITE_URL; tests use vi.stubEnv.
 ---
+
+## 2026-10-09 - US-005
+- src/lib/manuals/links.ts: `resolveManualHref(href, { visibility, manuals? })`. `./openapi.yaml` → /developers/openapi.yaml; `./<file>.md` of a registered manual → /developers/<slug> (public) or /settings/manuals/<slug> (admin, only from another admin manual, else null); `#anchor`, http(s) and mailto pass through; everything else (unknown relative, root-absolute like /developers/api-reference) → null. A `#hash` after a manual or openapi link is preserved. links.test.ts: 6 tests.
+- Files changed: src/lib/manuals/links.ts, src/lib/manuals/links.test.ts
+- **Learnings for future iterations:**
+  - A manual must NOT use root-absolute links (`/developers/...`): they resolve to null. Mention the API reference in prose instead of linking it.
+  - The link matches by `meta.file` (the file name), not by slug.
+---
