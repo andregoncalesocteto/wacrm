@@ -11,9 +11,14 @@ import type {
  * `contact_tags(tags(*))` returns the join rows; {@link normalizeConversation}
  * flattens them onto `contact.tags`. It also embeds the conversation's
  * connection with its store, for the store / connection / channel filters.
+ *
+ * The store embed names its foreign key on purpose: since migration 063
+ * `stores.notification_connection_id` also points at `channel_connections`, so a
+ * bare `stores(…)` is ambiguous and PostgREST answers 300 (PGRST201), which
+ * left the Inbox empty.
  */
 export const CONVERSATION_SELECT =
-  '*, contact:contacts(*, contact_tags(tags(*)), contact_identities(kind, external_id, handle)), connection:channel_connections(id, channel_type, display_name, status, disabled_at, store_id, store:stores(id, name))';
+  '*, contact:contacts(*, contact_tags(tags(*)), contact_identities(kind, external_id, handle)), connection:channel_connections(id, channel_type, display_name, status, disabled_at, store_id, store:stores!channel_connections_store_id_fkey(id, name))';
 
 /** Raw shape returned by {@link CONVERSATION_SELECT} before flattening. */
 type RawContact = Contact & {
