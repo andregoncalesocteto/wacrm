@@ -244,7 +244,7 @@
       ],
       "priority": 13,
       "passes": true,
-      "notes": "Verified with a real owner session in the Docker image (list + manual render, Cache-Control private, no-store on the 200). Still not seen with a REAL agent/viewer (none available: the second test account owns its own account). Finding: a refusal inside the dashboard is a SOFT 404 (HTTP 200 + not-found UI + noindex, no manual text in the HTML), a documented Next streaming behaviour: see verification.md section 3 for the decision (accept it, or move the role check to the middleware)."
+      "notes": "Verified with real sessions in the Docker image: owner sees the list and the manual; a REAL agent (created for the test in the owner's account) gets the not-found screen with no manual text in the HTML. Finding: the refusal is a SOFT 404 (HTTP 200 + not-found UI + noindex), a documented Next streaming behaviour; see verification.md section 3 for the decision (accept it, or move the role check to the middleware)."
     },
     {
       "id": "US-014",
@@ -263,7 +263,7 @@
       ],
       "priority": 14,
       "passes": true,
-      "notes": "Verified with a real owner session: the Manuais item shows at the end of the workspace group and leads to /settings/manuals. The hidden-for-agent/viewer case is covered by settings-rail.test.tsx but not yet seen with a real agent/viewer account (see verification.md section 3)."
+      "notes": "Verified with real sessions: the owner sees the Manuais rail item and it leads to /settings/manuals; a REAL agent does not see the item."
     },
     {
       "id": "US-015",
@@ -314,7 +314,7 @@
       ],
       "priority": 17,
       "passes": false,
-      "notes": "INCOMPLETE. Done on a Docker image of this branch with real sessions: public pages 200 signed-out; owner sees the manual; Cache-Control private, no-store on the authenticated 200; Try it out 200 with a real key; content in the image and tracing not pulling the project. Open: (1) a REAL agent/viewer of the same account (the second test login owns its own account, so it correctly sees the manual); (2) the decision on the soft 404 vs a real 404 status (verification.md section 3). Flip passes to true after a human closes both."
+      "notes": "INCOMPLETE only because of one open DECISION, not a missing check: every item was verified with real sessions on an image of this branch (public pages, owner view, real agent refused with no manual text, Cache-Control private, no-store, Try it out 200 with a real key, content in the image). The literal criterion says the agent gets a 404, but the response is a soft 404 (HTTP 200 + not-found UI): decide A (accept it and reword the PRD/design plus a new ADR) or B (role check in the middleware for a real 404); see verification.md section 3. Flip passes to true after that."
     }
   ]
 }

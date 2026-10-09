@@ -209,3 +209,14 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - Unit tests that call a Server Component directly cannot see the HTTP status; a status claim needs a real request.
   - dev-browser `waitForURL` takes a predicate over a STRING url (not a URL object).
 ---
+
+## 2026-10-09 - US-017 second follow-up (still NOT completed: passes stays false)
+- The project owner asked for a test agent. Created through the CRM's own invite flow, on the branch image (:3200, removed afterwards): as the owner, Settings → Team members → Invite (role Agente, valid 1 day, label agent-teste) → opened the /join link signed out → signed up a NEW user (`<owner's gmail>+agent-teste@…`, GoTrue autoconfirm is on, the "Verifique seu e-mail" screen is only the default message) → logged in and accepted the invite. DB check: same account as the owner, `account_role = agent`; the other test account (Catia) untouched, still owner of her own account. Total users 3. Temp invite-link file deleted; credentials were not written to any file.
+- CLOSED: a REAL agent sees no Manuais rail item; /settings/manuals and /settings/manuals/<slug> show the not-found screen; the refused HTML holds none of the manual's text; Cache-Control private, no-store; the public manual stays open to the agent.
+- STILL OPEN (a decision, not a check): the refusal is a soft 404 (HTTP 200). verification.md section 3: A accept + reword + new ADR, or B role check in the middleware.
+- Observation outside the scope: the app has NO not-found.tsx, so every 404 is Next's default page (dark text on the dark theme, barely readable).
+- Files changed: .projects/integration-docs/verification.md, prd.json (notes)
+- **Learnings for future iterations:**
+  - To create a test member without the invitee's inbox: the invite is a LINK (shown once, stored only as a hash), signup autoconfirms, and `/join/<token>` as a logged-in user has an "Aceitar convite" button. Accepting REMOVES the invitee's empty personal account: never use an account that holds data (or anyone else's login) for it.
+  - The role badge on Settings → Overview is the reliable role signal (Proprietário/Administrador/Agente/Visualizador); the footer of the sidebar also shows an AGENTE chip.
+---
