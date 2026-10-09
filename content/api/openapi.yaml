@@ -712,7 +712,9 @@ components:
                     `cancelled` vale a qualquer momento antes de `delivered`.
                     `delivered` e `cancelled` são finais. Um status que não
                     avança é aceito (`200`) e ignorado. O estado "pedido feito"
-                    é o próprio `Purchase`, não um status.
+                    é o próprio `Purchase`, não um status. Um `cancelled`
+                    aceito também marca o negócio do pedido como perdido no
+                    pipeline do CRM; a jornada continua ganha.
                   enum:
                     - received
                     - preparing

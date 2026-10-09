@@ -495,6 +495,11 @@ the valid values):
 | `delivered`        | Delivered, or picked up             |
 | `cancelled`        | Cancelled (at any moment)           |
 
+An accepted `cancelled` also marks the order's deal **lost** in the CRM pipeline
+("Perdido"; the deal keeps the order's value), so a cancelled order stops counting as
+a won sale. The Journey stays won: the funnel's conversion is not undone. A
+`cancelled` refused because the order is already `delivered` changes nothing.
+
 The `placed` state is the `Purchase` itself and is not accepted as a status.
 Translate your internal states on your side; an internal state with no message
 for the customer (such as a "ready to produce" step) is simply not sent.

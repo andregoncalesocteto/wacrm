@@ -231,6 +231,8 @@ O estado "pedido feito" é o próprio `Purchase`: não existe um status `placed`
 
 **Regras de avanço.** O status só avança, na ordem `received` → `preparing` → `finished` → `out_for_delivery` **ou** `ready_for_pickup` → `delivered`; etapas podem ser puladas. `out_for_delivery` e `ready_for_pickup` são do mesmo nível: vale o primeiro que chegar. `delivered` e `cancelled` são finais. Um status que não avança (mais antigo, igual ou posterior a um estado final) é aceito com `200`, mas **ignorado**: nada é gravado e nenhuma mensagem sai.
 
+**Cancelamento.** Um `cancelled` aceito também marca o **negócio** do pedido como **perdido** no pipeline do CRM (etapa Perdido), para o pedido cancelado deixar de contar como venda ganha. O negócio mantém o valor do pedido. A jornada continua **ganha**: a conversão do funil (o cliente chegou a comprar) não é desfeita. Um `cancelled` recusado, por exemplo depois de `delivered`, não altera o pedido nem o negócio.
+
 **Traduza os estados internos do cardápio no seu lado.** Estado interno sem mensagem ao cliente simplesmente **não é enviado**. Exemplo de mapa:
 
 | Estado interno (exemplo) | Enviar ao CRM                    |

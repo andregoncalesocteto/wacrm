@@ -364,6 +364,126 @@ describe.each(CHANNELS)('order journey on $label', (channel) => {
     expect(channel.sent()).toHaveLength(total);
   });
 
+  describe('a cancelled order is not revenue: its deal is marked lost', () => {
+    const buy = async (id = 'PED-1') => {
+      const idtrack = await sendMenuLink();
+      await post('ViewContent', idtrack);
+      await post('AddToCart', idtrack, cart);
+      await post('InitiateCheckout', idtrack, cart);
+      await post('Purchase', idtrack, purchase(id));
+      return idtrack;
+    };
+
+    it('cancelled -> the deal goes to Perdido with status lost; the Journey stays won; the customer is told', async () => {
+      const idtrack = await buy();
+      expect(deal()).toMatchObject({ status: 'won' });
+      expect(stageOf(deal())).toBe('won');
+      const value = deal().value;
+
+      const before = channel.sent().length;
+      const r = await post(
+        'OrderStatusChanged',
+        idtrack,
+        status('PED-1', 'cancelled')
+      );
+      expect(r.status).toBe(200);
+
+      expect(order('PED-1').status).toBe('cancelled');
+      expect(deal()).toMatchObject({ status: 'lost' });
+      expect(stageOf(deal())).toBe('lost');
+      // The deal keeps the order's value; only its outcome changes.
+      expect(deal().value).toBe(value);
+      // The conversion is untouched: the customer did buy.
+      expect(journeys()[0]).toMatchObject({ state: 'won', stage: 'won' });
+      // The cancelled notice still goes out, exactly once.
+      expect(channel.sent().slice(before)).toEqual([
+        catalog.texts.status_cancelled.replace('{{order_id}}', 'PED-1'),
+      ]);
+    });
+
+    it('a cancel that arrives after delivered is refused: order and deal stay as they were', async () => {
+      const idtrack = await buy();
+      for (const s of [
+        'received',
+        'preparing',
+        'finished',
+        'out_for_delivery',
+        'delivered',
+      ]) {
+        await post('OrderStatusChanged', idtrack, status('PED-1', s));
+      }
+      const sent = channel.sent().length;
+      const r = await post(
+        'OrderStatusChanged',
+        idtrack,
+        status('PED-1', 'cancelled')
+      );
+      expect(r.status).toBe(200);
+      expect(order('PED-1').status).toBe('delivered');
+      expect(deal()).toMatchObject({ status: 'won' });
+      expect(stageOf(deal())).toBe('won');
+      expect(channel.sent()).toHaveLength(sent);
+    });
+
+    it('repeating the cancel (another event_id) sends nothing more and keeps the deal lost', async () => {
+      const idtrack = await buy();
+      await post('OrderStatusChanged', idtrack, status('PED-1', 'cancelled'));
+      const sent = channel.sent().length;
+      const again = await post(
+        'OrderStatusChanged',
+        idtrack,
+        status('PED-1', 'cancelled')
+      );
+      expect(again.status).toBe(200);
+      expect(channel.sent()).toHaveLength(sent);
+      expect(deal()).toMatchObject({ status: 'lost' });
+    });
+
+    it('a retry finishes the deal when the order was cancelled but the deal update never happened', async () => {
+      const idtrack = await buy();
+      await post('OrderStatusChanged', idtrack, status('PED-1', 'cancelled'));
+      // Simulate the failure between the two writes: the order is cancelled,
+      // the deal is back to won.
+      const d = deal();
+      d.status = 'won';
+      d.stage_id = t('pipeline_stages').find(
+        (st) => st.pipeline_id === d.pipeline_id && st.system_key === 'won'
+      )!.id;
+      expect(order('PED-1').status).toBe('cancelled');
+
+      await post('OrderStatusChanged', idtrack, status('PED-1', 'cancelled'));
+      expect(deal()).toMatchObject({ status: 'lost' });
+      expect(stageOf(deal())).toBe('lost');
+    });
+
+    it('an order without a deal is cancelled without error', async () => {
+      const idtrack = await buy();
+      order('PED-1').deal_id = null;
+      const r = await post(
+        'OrderStatusChanged',
+        idtrack,
+        status('PED-1', 'cancelled')
+      );
+      expect(r.status).toBe(200);
+      expect(order('PED-1').status).toBe('cancelled');
+      expect(deal()).toMatchObject({ status: 'won' });
+    });
+
+    it('only cancelled marks the deal: every other status leaves it won', async () => {
+      const idtrack = await buy();
+      for (const s of [
+        'received',
+        'preparing',
+        'finished',
+        'out_for_delivery',
+      ]) {
+        await post('OrderStatusChanged', idtrack, status('PED-1', s));
+        expect(deal()).toMatchObject({ status: 'won' });
+        expect(stageOf(deal())).toBe('won');
+      }
+    });
+  });
+
   it('repeating an event_id answers Idempotent-Replayed and sends nothing twice', async () => {
     const idtrack = await sendMenuLink();
     const first = await post('Purchase', idtrack, purchase('PED-2'), 'evt-p');

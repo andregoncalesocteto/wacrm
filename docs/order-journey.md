@@ -36,6 +36,12 @@ specific to a channel.
   reopened: reopening the deal does not reopen it. Before `069`, the Journey
   stayed open, kept receiving the customer's events, and its deal stayed stuck
   in Perdido, so the activity never showed up in the pipeline.
+- **A cancelled order is not a sale.** An accepted `OrderStatusChanged` with
+  `cancelled` marks the order's deal **lost** (status `lost`, stage **Perdido**), so
+  "Ganhos" and the pipeline value stop counting it. The deal keeps the order's value
+  and the Journey is **not** touched: it stays won, so the funnel's conversion (the
+  customer did buy) is unchanged. The customer still gets the `cancelled` message.
+  A `cancelled` that arrives after `delivered` is refused and changes nothing.
 - A `Purchase` creates the **order** (shown in the conversation's side panel and
   on the deal, with the status and its history) and stores the customer's
   last-purchase date.

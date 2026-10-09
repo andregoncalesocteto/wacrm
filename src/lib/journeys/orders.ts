@@ -313,6 +313,62 @@ export async function recordPurchase(
 }
 
 /**
+ * A cancelled order is not revenue: mark the order's deal LOST and move it to
+ * the pipeline's `lost` stage ("Perdido"), so "Ganhos" and the pipeline value
+ * stop counting it. The deal keeps its value (it was the order's) and the
+ * Journey is NOT touched: it closed as won with the Purchase and stays won, so
+ * the funnel's conversion (the customer did buy) is unchanged.
+ *
+ * Idempotent on purpose, and called whenever the order IS cancelled, not only
+ * when this call cancelled it: if the deal update failed after the order
+ * update, the retry finds the order already cancelled and finishes the job here.
+ * A deal already lost, or an order without a deal, is left alone. A pipeline
+ * with no `lost` stage still gets the status. Returns whether it changed the deal.
+ */
+export async function markDealLostForCancelledOrder(
+  db: SupabaseClient,
+  args: { accountId: string; dealId: string | null }
+): Promise<boolean> {
+  if (!args.dealId) return false;
+  const { data: deal, error } = await db
+    .from('deals')
+    .select('id, status, pipeline_id')
+    .eq('account_id', args.accountId)
+    .eq('id', args.dealId)
+    .maybeSingle();
+  if (error) throw new Error(`deal lookup failed: ${error.message}`);
+  const row = deal as {
+    id: string;
+    status: string;
+    pipeline_id: string;
+  } | null;
+  if (!row || row.status === 'lost') return false;
+
+  const { data: lostStage, error: stageErr } = await db
+    .from('pipeline_stages')
+    .select('id')
+    .eq('pipeline_id', row.pipeline_id)
+    .eq('system_key', 'lost')
+    .maybeSingle();
+  if (stageErr)
+    throw new Error(`lost stage lookup failed: ${stageErr.message}`);
+
+  const { error: upErr } = await db
+    .from('deals')
+    .update({
+      status: 'lost',
+      ...((lostStage as { id: string } | null)
+        ? { stage_id: (lostStage as { id: string }).id }
+        : {}),
+    })
+    .eq('account_id', args.accountId)
+    .eq('id', row.id);
+  if (upErr)
+    throw new Error(`cancelled order deal update failed: ${upErr.message}`);
+  return true;
+}
+
+/**
  * The single check every scheduled Journey message (resumptions, abandoned
  * cart: tickets #9/#10) MUST make right before sending: a Journey that is no
  * longer `open` (won, lost) sends nothing. Checking at fire time, not at

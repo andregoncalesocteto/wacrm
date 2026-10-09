@@ -45,6 +45,7 @@ import {
 import {
   cancelPendingForJourney,
   changeOrderStatus,
+  markDealLostForCancelledOrder,
   findCompletedPurchase,
   findOrderByExternalId,
   recordPurchase,
@@ -343,7 +344,8 @@ const purchase: EventHandler = {
  * without saying whether another contact owns it. The status only moves
  * forward (`changeOrderStatus`); an older / equal one is accepted, answered
  * 200 and ignored: no write, no hook. The Journey is not touched (it closed
- * with the Purchase) and never opened.
+ * with the Purchase) and never opened. A `cancelled` order also marks its DEAL
+ * lost (it is not revenue); see `markDealLostForCancelledOrder`.
  */
 const orderStatusChanged: EventHandler = {
   parseProperties: parseOrderStatusProperties,
@@ -365,6 +367,19 @@ const orderStatusChanged: EventHandler = {
       eventId: ctx.event.eventId,
       now: ctx.now,
     });
+    // Whenever the order IS cancelled, not only when this call cancelled it:
+    // a retry after a failed deal update finds it already cancelled and still
+    // has to finish the deal. A `cancelled` that was refused because the order
+    // is already delivered leaves the order, and the deal, as they are.
+    if (
+      props.status === 'cancelled' &&
+      (change || order.status === 'cancelled')
+    ) {
+      await markDealLostForCancelledOrder(ctx.db, {
+        accountId: ctx.accountId,
+        dealId: order.deal_id,
+      });
+    }
     return { journeyId: order.journey_id, change };
   },
 };
