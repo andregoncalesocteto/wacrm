@@ -66,3 +66,14 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - A manual must NOT use root-absolute links (`/developers/...`): they resolve to null. Mention the API reference in prose instead of linking it.
   - The link matches by `meta.file` (the file name), not by slug.
 ---
+
+## 2026-10-09 - US-006
+- src/lib/manuals/content.test.ts (12 tests): M3 parity of content/api/openapi.yaml with src/lib/journeys/event-payload.ts (event names, order statuses, cart/Purchase item limits, 200-char limits, phone pattern, currency pattern, all compared against the REAL parsers); M5 no `wacrm_live_[A-Za-z0-9]{20,}` in any file under content/; every registered manual has its file and only links that resolve (anchors must exist as heading ids).
+- Added devDependencies js-yaml, @types/js-yaml, @types/mdast.
+- Files changed: package.json, package-lock.json, src/lib/manuals/content.test.ts
+- Verified the guards bite: removing a status / lowering maxItems in the YAML, and appending a fake key to a manual, each make the suite fail (then restored).
+- **Learnings for future iterations:**
+  - The OpenAPI schemas are `allOf: [EventBase, {own fields}]`: the helper `own(name)` in the test reads `allOf[1].properties`. If the YAML structure changes, update that helper.
+  - If you add a limit to event-payload.ts, document it in the YAML AND add the case here, or M3 stays blind to it.
+  - `visit(parser.parse(md), 'link', ...)` from unist-util-visit is the way to list links; do not regex Markdown.
+---
