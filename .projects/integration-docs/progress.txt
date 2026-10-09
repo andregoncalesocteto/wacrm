@@ -100,3 +100,11 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - The app is dark by default; `document.documentElement.classList.add('dark')` is how to flip it in the browser.
   - Because the replaced `{URL_BASE}` is shown as text, never write a sentence that talks about the token itself.
 ---
+
+## 2026-10-09 - US-009
+- src/app/developers/page.tsx: index with one card per public manual (title and description from the registry) and a card for the API reference; `generateMetadata` uses Developers.indexTitle. New keys Developers.{indexTitle,indexIntro,manualsHeading,apiReferenceDesc} in the 4 catalogues.
+- Files changed: src/app/developers/page.tsx, messages/{en,es,pt,ko}.json
+- Browser: /developers → 200 signed-out; links are exactly /developers/integracao-cardapio and /developers/api-reference; the admin manual's title is nowhere in the HTML; clicking the manual card opens it.
+- **Learnings for future iterations:**
+  - Adding keys to a catalogue: edit the text to keep the diff minimal (the files are not re-serialisable byte for byte); `src/i18n/messages.test.ts` enforces parity.
+---

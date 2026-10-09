@@ -2761,6 +2761,10 @@
   "Developers": {
     "siteTitle": "Documentação para desenvolvedores",
     "tocLabel": "Nesta página",
-    "apiReference": "Referência da API"
+    "apiReference": "Referência da API",
+    "indexTitle": "Documentação de integração",
+    "indexIntro": "Manuais e referência da API para conectar um cardápio digital a este CRM.",
+    "manualsHeading": "Manuais",
+    "apiReferenceDesc": "Todos os endpoints, campos e exemplos, com a opção de testar uma chamada."
   }
 }

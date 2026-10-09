@@ -2761,6 +2761,10 @@
   "Developers": {
     "siteTitle": "Documentación para desarrolladores",
     "tocLabel": "En esta página",
-    "apiReference": "Referencia de la API"
+    "apiReference": "Referencia de la API",
+    "indexTitle": "Documentación de integración",
+    "indexIntro": "Manuales y referencia de la API para conectar un menú digital a este CRM.",
+    "manualsHeading": "Manuales",
+    "apiReferenceDesc": "Todos los endpoints, campos y ejemplos, con la opción de probar una llamada."
   }
 }

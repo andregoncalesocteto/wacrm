@@ -2773,6 +2773,10 @@
   "Developers": {
     "siteTitle": "Developer docs",
     "tocLabel": "On this page",
-    "apiReference": "API reference"
+    "apiReference": "API reference",
+    "indexTitle": "Integration documentation",
+    "indexIntro": "Manuals and the API reference for connecting a digital menu to this CRM.",
+    "manualsHeading": "Manuals",
+    "apiReferenceDesc": "Every endpoint, field and example, with the option to try a call."
   }
 }

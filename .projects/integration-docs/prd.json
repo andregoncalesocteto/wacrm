@@ -169,7 +169,7 @@
         "Verify in browser using dev-browser skill: abrir `/developers` sem login; a lista mostra só o manual de integração; os links funcionam"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
