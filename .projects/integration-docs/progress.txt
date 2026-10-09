@@ -176,3 +176,12 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - Theme switch in this app is the `data-mode` attribute on <html> (dark by default), NOT a `dark` class.
   - In dev-browser scripts do not use `waitUntil: 'networkidle'` on dev pages (the HMR socket can keep it busy) and do not select `main`: Swagger UI has its own `<main id="operations">`; use `main.mx-auto`.
 ---
+
+## 2026-10-09 - US-016
+- CLAUDE.md (project): one Conventions bullet: the events contract lives in event-payload.ts AND content/api/openapi.yaml and changes together with content/manuals/pt/integracao-cardapio.md in the same PR (content.test.ts fails otherwise); manuals are registered with a visibility; `content/` never from `.projects/`; the route map (`/developers/**` public, `/settings/manuals/**` owner/admin); the manual cites UI labels and migration numbers; `{URL_BASE}` is the only replaced token.
+- docs/public-api.md (events endpoint) and docs/order-journey.md (what it is + step 4) point to `/developers`; order-journey also points the operator to Settings → Manuals.
+- ADR-001..003 untouched.
+- Files changed: CLAUDE.md, docs/public-api.md, docs/order-journey.md
+- **Learnings for future iterations:**
+  - docs/public-api.md and CLAUDE.md were already NOT prettier-formatted at HEAD: do not run prettier --write on them (check with `git show HEAD:<file> | npx prettier --check --stdin-filepath <file>`).
+---

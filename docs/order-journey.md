@@ -21,7 +21,8 @@ specific to a channel.
 - The **digital menu's backend** reports what happens (`ViewContent`,
   `AddToCart`, `InitiateCheckout`, `Purchase`, then the order statuses) to
   `POST /api/v1/journey/events`. The contract for that team is in
-  [public-api.md](./public-api.md#post-apiv1journeyevents).
+  [public-api.md](./public-api.md#post-apiv1journeyevents) and, written for
+  them, at `/developers` of your CRM (manual and Swagger, no login).
 - The deal moves through the pipeline **Jornada de Pedido**: Link enviado →
   Navegando → Carrinho → Checkout → Comprou / Perdido. It only moves forward.
   The pipeline is created by the CRM the first time a Journey opens; you can
@@ -74,7 +75,10 @@ message and then opens the Journey.
 only the scope `events:write`. That key can send events and nothing else (it
 reads no contacts, conversations or messages). Give it to the menu team as a
 server secret; it must never reach the browser. If it leaks, revoke it: the
-revocation applies on the next request.
+revocation applies on the next request. Send them, with the key, the link
+`<your CRM>/developers` (the integration manual and the API reference). The
+step-by-step for you, the operator, is the manual under **Settings → Manuals**
+(owners and admins).
 
 **5. The preset.** **Automations → Order Journey → Add the Order Journey
 preset** creates ten automations, all **off**:

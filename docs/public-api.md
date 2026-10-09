@@ -281,7 +281,10 @@ the browser: the key must stay a server secret, because whoever holds it
 can forge a `Purchase`). It reports what a customer does after receiving the
 menu link and how their order progresses, so the CRM can move the deal,
 recover abandoned carts and notify the customer. The operator-side setup is in
-[order-journey.md](./order-journey.md).
+[order-journey.md](./order-journey.md). The integration manual and an interactive
+reference (Swagger UI) for the team that builds the menu are served by the CRM
+itself, **without login**, at `/developers` (the raw contract is
+`/developers/openapi.yaml`); send them that link.
 
 > **Pre-stable until the first client.** This contract is frozen when the
 > first client integrates; after that a breaking change needs `v2`.
