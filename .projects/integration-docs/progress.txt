@@ -18,6 +18,7 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
 - Tests are colocated (`foo.ts` + `foo.test.ts`), vitest in the `node` environment; `.tsx` tests render with `react-dom/server`.
 - `src/middleware.ts` only protects a hardcoded prefix list (`/settings` is in it, `/developers` is not); `src/middleware.test.ts` has the mock pattern to extend.
 - `lib/auth/account.ts` has `requireRole`, `UnauthorizedError`, `ForbiddenError` for server code. The dashboard has no server page yet: US-013 sets the pattern.
+- Run the full suite as `TZ=UTC npm test`: src/lib/dashboard/date-utils.test.ts has 2 pre-existing failures when the machine is not on UTC (this one is at -03); they are unrelated to this feature and CI runs in UTC.
 - Format ONLY the files you touch before committing (`npx prettier --write <files>`; `npm run format` rewrites the whole repo); commit style: imperative, terse first line, `feat: [Story ID] - [Story Title]`.
 
 ## 2026-10-09 - US-001
@@ -45,4 +46,15 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
 - **Learnings for future iterations:**
   - The only remaining mentions of docs/integracao-cardapio/ are in the planning docs (SOLUTION, PRD, ADR-001, prd.json) describing the previous state. Leave them: ADRs are never edited.
   - The operator manual links to the PUBLIC manual (./integracao-cardapio.md): US-005's resolveManualHref must allow a link from an admin manual to a public one, never the reverse.
+---
+
+## 2026-10-09 - US-004
+- Installed react-markdown, remark-gfm, rehype-slug, unified, remark-parse, remark-rehype, hast-util-to-string, unist-util-visit (+ @types/hast as devDependency).
+- src/lib/manuals/registry.ts (MANUALS, RESERVED_SLUGS, validateRegistry run at module load), markdown.ts (pure: substituteTokens, extractHeadings), loader.ts (getPublicManual/getAdminManual/listPublicManuals/listAdminManuals; the only module that reads the disk). loader.test.ts: 16 tests.
+- Files changed: package.json, package-lock.json, src/lib/manuals/{registry,markdown,loader,loader.test}.ts
+- **Learnings for future iterations:**
+  - extractHeadings runs the same unified pipeline as the renderer (remarkParse, remarkGfm, remarkRehype, rehypeSlug): ids match by construction. The renderer (US-007) must use `remarkGfm` + `rehypeSlug` and no other plugin that changes headings.
+  - The loader takes an optional `{ locale, contentRoot, manuals }` so tests can use a temp folder; production code calls it with no options.
+  - Locale = NEXT_PUBLIC_APP_LOCALE (default 'en'); there is no content/manuals/en, so every current deployment reads content/manuals/pt via the fallback.
+  - `{URL_BASE}` is replaced at load time from NEXT_PUBLIC_SITE_URL; tests use vi.stubEnv.
 ---
