@@ -233,18 +233,18 @@
         "Helper `requireManualsAccess()` (em `src/lib/manuals/access.ts`) chama `requireRole('admin')`, converte `UnauthorizedError` em `redirect('/login')` e `ForbiddenError` em `notFound()`, e relança qualquer outro erro",
         "`src/app/(dashboard)/settings/manuals/page.tsx` lista `listAdminManuals()` com link para `/settings/manuals/<slug>` e um link de volta para `/settings`",
         "`src/app/(dashboard)/settings/manuals/[slug]/page.tsx` chama `requireManualsAccess()` primeiro, depois `getAdminManual(slug)` (`notFound()` se `null`) e renderiza `<ManualView/>` e `<ManualToc/>`",
-        "`/settings/manuals/integracao-cardapio` (manual público) responde 404 nessa árvore",
+        "`/settings/manuals/integracao-cardapio` (manual público) mostra a tela de \"não encontrado\" nessa árvore, sem o texto do manual (soft 404, ADR-004)",
         "Testes (`access.test.ts`, com `requireRole` simulado) cobrem: owner e admin passam; agent e viewer resultam em `notFound`; sem sessão resulta em redirecionamento para `/login`; erro inesperado é relançado",
         "Teste em `src/middleware.test.ts`: sem sessão, `/settings/manuals` redireciona para `/login`",
         "Textos de interface em `useTranslations` nos quatro catálogos",
         "Typecheck passes",
         "Lint passes",
         "Tests pass",
-        "Verify in browser using dev-browser skill: logado como owner, abrir `/settings/manuals/configuracao-jornada-pedido` e ver o manual; logado como agent (ou viewer), a mesma URL responde 404; sem sessão, redireciona para o login"
+        "Verify in browser using dev-browser skill: logado como owner, abrir `/settings/manuals/configuracao-jornada-pedido` e ver o manual; logado como agent (ou viewer), a mesma URL mostra a tela de \"não encontrado\", sem o texto do manual (soft 404, ADR-004); sem sessão, redireciona para o login"
       ],
       "priority": 13,
       "passes": true,
-      "notes": "Verified with real sessions in the Docker image: owner sees the list and the manual; a REAL agent (created for the test in the owner's account) gets the not-found screen with no manual text in the HTML. Finding: the refusal is a SOFT 404 (HTTP 200 + not-found UI + noindex), a documented Next streaming behaviour; see verification.md section 3 for the decision (accept it, or move the role check to the middleware)."
+      "notes": "Verified with real sessions in the Docker image: owner sees the list and the manual; a REAL agent gets the not-found screen with no manual text in the HTML. The refusal is a soft 404 (HTTP 200 + not-found UI + noindex), accepted by the project owner: ADR-004."
     },
     {
       "id": "US-014",
@@ -306,15 +306,15 @@
         "Subir a stack Docker (skill `wacrm-stack`) com `--build` e abrir `/developers`, `/developers/integracao-cardapio`, `/developers/api-reference` e `/developers/openapi.yaml` sem cookie: todas respondem 200",
         "Como owner, `/settings/manuals` e `/settings/manuals/configuracao-jornada-pedido` respondem 200 e mostram o manual (prova de que `content/` está na imagem)",
         "`curl -I` em `/settings/manuals/configuracao-jornada-pedido` mostra `Cache-Control: private, no-store`",
-        "Como agent ou viewer, `/settings/manuals` responde 404; sem sessão, redireciona para `/login`",
+        "Como agent ou viewer, `/settings/manuals` mostra a tela de \"não encontrado\", sem nenhum texto do manual (soft 404: HTTP 200, ADR-004); sem sessão, redireciona para `/login`",
         "No Swagger, \"Try it out\" em `GET /api/v1/me` com uma chave de teste devolve 200 na stack Docker",
         "O resultado de cada item acima é registrado em `.projects/integration-docs/verification.md`",
         "Se o Docker não estiver disponível no ambiente, a história fica incompleta e o motivo é registrado em `progress.txt`; ela não é marcada como concluída",
         "Typecheck passes"
       ],
       "priority": 17,
-      "passes": false,
-      "notes": "INCOMPLETE only because of one open DECISION, not a missing check: every item was verified with real sessions on an image of this branch (public pages, owner view, real agent refused with no manual text, Cache-Control private, no-store, Try it out 200 with a real key, content in the image). The literal criterion says the agent gets a 404, but the response is a soft 404 (HTTP 200 + not-found UI): decide A (accept it and reword the PRD/design plus a new ADR) or B (role check in the middleware for a real 404); see verification.md section 3. Flip passes to true after that."
+      "passes": true,
+      "notes": "Closed. Every item verified with real sessions on an image of this branch (public pages 200 signed-out; owner sees the manual; a REAL agent created for the test gets the not-found screen with no manual text; Cache-Control private, no-store on the authenticated 200; Try it out 200 with a real key; content in the image and tracing not pulling the project). The soft 404 of the refusal was accepted by the project owner (option A): ADR-004. See verification.md."
     }
   ]
 }

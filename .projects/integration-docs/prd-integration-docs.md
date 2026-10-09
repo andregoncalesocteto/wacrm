@@ -204,12 +204,12 @@ Documentos de referência (leia antes de implementar):
 - [ ] Helper `requireManualsAccess()` (em `src/lib/manuals/access.ts`) chama `requireRole('admin')`, converte `UnauthorizedError` em `redirect('/login')` e `ForbiddenError` em `notFound()`, e relança qualquer outro erro
 - [ ] `src/app/(dashboard)/settings/manuals/page.tsx` lista `listAdminManuals()` com link para `/settings/manuals/<slug>` e um link de volta para `/settings`
 - [ ] `src/app/(dashboard)/settings/manuals/[slug]/page.tsx` chama `requireManualsAccess()` primeiro, depois `getAdminManual(slug)` (`notFound()` se `null`) e renderiza `<ManualView/>` e `<ManualToc/>`
-- [ ] `/settings/manuals/integracao-cardapio` (manual público) responde 404 nessa árvore
+- [ ] `/settings/manuals/integracao-cardapio` (manual público) mostra a tela de "não encontrado" nessa árvore, sem o texto do manual (soft 404, ADR-004)
 - [ ] Testes (`access.test.ts`, com `requireRole` simulado) cobrem: owner e admin passam; agent e viewer resultam em `notFound`; sem sessão resulta em redirecionamento para `/login`; erro inesperado é relançado
 - [ ] Teste em `src/middleware.test.ts`: sem sessão, `/settings/manuals` redireciona para `/login`
 - [ ] Textos de interface em `useTranslations` nos quatro catálogos
 - [ ] Typecheck, lint e `npm test` passam
-- [ ] **Verify in browser using dev-browser skill:** logado como owner, abrir `/settings/manuals/configuracao-jornada-pedido` e ver o manual; logado como agent (ou viewer), a mesma URL responde 404; sem sessão, redireciona para o login
+- [ ] **Verify in browser using dev-browser skill:** logado como owner, abrir `/settings/manuals/configuracao-jornada-pedido` e ver o manual; logado como agent (ou viewer), a mesma URL mostra a tela de "não encontrado", sem o texto do manual (soft 404, ADR-004); sem sessão, redireciona para o login
 
 ### US-014: Item "Manuais" na barra lateral de Configurações
 
@@ -258,7 +258,7 @@ Documentos de referência (leia antes de implementar):
 - [ ] Subir a stack Docker (skill `wacrm-stack`) com `--build` e abrir `/developers`, `/developers/integracao-cardapio`, `/developers/api-reference` e `/developers/openapi.yaml` **sem cookie**: todas respondem 200
 - [ ] Como owner, `/settings/manuals` e `/settings/manuals/configuracao-jornada-pedido` respondem 200 e mostram o manual (prova de que `content/` está na imagem)
 - [ ] `curl -I` em `/settings/manuals/configuracao-jornada-pedido` mostra `Cache-Control: private, no-store`
-- [ ] Como agent ou viewer, `/settings/manuals` responde 404; sem sessão, redireciona para `/login`
+- [ ] Como agent ou viewer, `/settings/manuals` mostra a tela de "não encontrado", sem nenhum texto do manual (soft 404: HTTP 200, ADR-004); sem sessão, redireciona para `/login`
 - [ ] No Swagger, "Try it out" em `GET /api/v1/me` com uma chave de teste devolve 200 na stack Docker
 - [ ] O resultado de cada item acima é registrado em `.projects/integration-docs/verification.md`
 - [ ] Se o Docker não estiver disponível no ambiente, a história fica **incompleta** e o motivo é registrado em `progress.txt`; ela não é marcada como concluída
@@ -269,7 +269,7 @@ Documentos de referência (leia antes de implementar):
 - FR-2: O sistema deve servir a referência da API (Swagger UI) em uma rota pública, com botão Authorize para o Bearer e "Try it out" (`/developers/api-reference`).
 - FR-3: O sistema deve servir o `openapi.yaml` bruto em `/developers/openapi.yaml`, importável por URL, com `Content-Type: application/yaml` e CORS aberto somente nessa rota.
 - FR-4: O sistema deve ter um índice público em `/developers`, listando os manuais públicos e levando à referência da API.
-- FR-5: O sistema deve servir o manual do operador sob `/settings/manuals`, exigindo sessão e papel owner ou admin; papel insuficiente resulta em 404.
+- FR-5: O sistema deve servir o manual do operador sob `/settings/manuals`, exigindo sessão e papel owner ou admin; papel insuficiente mostra a tela de "não encontrado", sem o conteúdo do manual (HTTP 200: soft 404, ADR-004).
 - FR-6: A barra lateral de Configurações deve ter o item "Manuais", visível só para owner e admin, levando a `/settings/manuals`.
 - FR-7: Cada manual deve ser registrado com `slug`, `title`, `description`, `visibility` (`public` ou `admin`) e `file`; só manuais `public` podem ser servidos por `/developers/**`, e o slug `api-reference` é reservado.
 - FR-8: O manual deve exibir um índice lateral com os títulos `##` e `###`, cujos links coincidam com os `id` dos títulos renderizados.

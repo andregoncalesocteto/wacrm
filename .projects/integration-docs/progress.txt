@@ -231,3 +231,11 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
 - **Learnings for future iterations:**
   - A `not-found.tsx` inside a segment is used only when `notFound()` is thrown in that segment. An unmatched URL (or a dynamic segment with `dynamicParams = false` and an ungenerated param) gets the ROOT one: pick content with `usePathname()` in a client child if it must depend on the area.
 ---
+
+## 2026-10-09 - US-017 closed (decision A)
+- The project owner chose option A: accept the soft 404. Recorded as ADR-004 (Aceito, 2026-10-09; refines ADR-003 on this point only). PRD, prd.json (US-013/US-017 criteria) and design.md reworded: a refused role "shows the not-found screen with no manual text (soft 404: HTTP 200)"; the public tree still has a real 404. ADR-001..003 untouched (Proposto).
+- US-017 passes: every item verified with real sessions on an image of this branch (see verification.md). With it, all 17 stories pass.
+- Files changed: .projects/integration-docs/adr/ADR-004-recusa-de-papel-e-soft-404.md, prd.json, prd-integration-docs.md, design.md, verification.md
+- **Learnings for future iterations:**
+  - If the HTTP status of the refusal ever matters (a monitor, a scanner), supersede ADR-004 with option B: check the role in src/middleware.ts for /settings/manuals/** only (one profile query per request on those routes).
+---

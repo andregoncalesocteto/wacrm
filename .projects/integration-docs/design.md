@@ -206,14 +206,14 @@ Regras de dados do conteúdo:
 
 Nenhuma rota nova da API pública (`/api/v1`). As rotas de página:
 
-| Rota                        | Método | Acesso               | Resposta                                                                                      |
-| --------------------------- | ------ | -------------------- | --------------------------------------------------------------------------------------------- |
-| `/developers`               | GET    | Público              | HTML estático: lista de manuais públicos e link para a referência da API                      |
-| `/developers/[slug]`        | GET    | Público              | HTML estático do manual; `404` para slug não público ou inexistente (`dynamicParams = false`) |
-| `/developers/api-reference` | GET    | Público              | HTML com o Swagger UI                                                                         |
-| `/developers/openapi.yaml`  | GET    | Público              | `200 application/yaml`; `Access-Control-Allow-Origin: *`; corpo = `content/api/openapi.yaml`  |
-| `/settings/manuals`         | GET    | Sessão + owner/admin | HTML dinâmico; sem sessão `307 → /login` (middleware); papel insuficiente `404`               |
-| `/settings/manuals/[slug]`  | GET    | Sessão + owner/admin | HTML dinâmico do manual; `404` se o slug não for `admin`                                      |
+| Rota                        | Método | Acesso               | Resposta                                                                                                                      |
+| --------------------------- | ------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `/developers`               | GET    | Público              | HTML estático: lista de manuais públicos e link para a referência da API                                                      |
+| `/developers/[slug]`        | GET    | Público              | HTML estático do manual; `404` para slug não público ou inexistente (`dynamicParams = false`)                                 |
+| `/developers/api-reference` | GET    | Público              | HTML com o Swagger UI                                                                                                         |
+| `/developers/openapi.yaml`  | GET    | Público              | `200 application/yaml`; `Access-Control-Allow-Origin: *`; corpo = `content/api/openapi.yaml`                                  |
+| `/settings/manuals`         | GET    | Sessão + owner/admin | HTML dinâmico; sem sessão `307 → /login` (middleware); papel insuficiente mostra a tela de não encontrado (soft 404, ADR-004) |
+| `/settings/manuals/[slug]`  | GET    | Sessão + owner/admin | HTML dinâmico do manual; tela de não encontrado (soft 404) se o slug não for `admin`                                          |
 
 Exemplo da rota do YAML:
 
@@ -277,6 +277,10 @@ marcou viraram três, porque o primeiro reunia mais de uma decisão):
 - [ADR-003](./adr/ADR-003-duas-arvores-de-rota-publica-estatica-e-operador-privada.md):
   `/developers` pública e estática, `/settings/manuals` dinâmica com
   `requireRole`, `outputFileTracingIncludes` e `private, no-store`.
+- [ADR-004](./adr/ADR-004-recusa-de-papel-e-soft-404.md) (Aceito, 2026-10-09,
+  surgiu da verificação): a recusa de papel em `/settings/manuals/**` é um
+  _soft 404_ (HTTP 200 com a tela de "não encontrado", sem o texto do manual).
+  Refina o ADR-003 nesse ponto.
 
 ## 6. Alternativas Consideradas
 
@@ -307,14 +311,14 @@ marcou viraram três, porque o primeiro reunia mais de uma decisão):
 
 ## 8. Plano de Implementação
 
-| Fase                                 | Entregas                                                                                                                                                                                                                                                                                             | Verificação                                                                                              |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| **0. Spike (descartável)**           | Página mínima com `swagger-ui-react` carregando um YAML local; um `.md` lido em runtime numa rota logada; `outputFileTracingIncludes` mínimo; build da imagem Docker                                                                                                                                 | Swagger renderiza no React 19.2; o arquivo está na imagem; `curl -I` mostra o `Cache-Control` esperado   |
-| **1. Conteúdo e carregador**         | `git mv` para `content/`; divisão do manual em dois, reescrevendo referências cruzadas; `servers: /` no YAML; `registry.ts` e `loader.ts`; devDependency `js-yaml`; testes M3, M5, links e "público não serve admin"                                                                                 | `npm test` verde; os dois `.md` não têm referência morta                                                 |
-| **2. Renderização e rotas públicas** | `ManualView`, `ManualToc`, reescrita de links, `/developers` (layout `noindex`, índice, `[slug]`), `generateStaticParams` + `dynamicParams = false`                                                                                                                                                  | Teste de paridade índice×âncoras; abrir `/developers/integracao-cardapio` sem login                      |
-| **3. Swagger e YAML**                | `swagger-viewer.tsx`, `/developers/api-reference`, `/developers/openapi.yaml`                                                                                                                                                                                                                        | Importar a URL do YAML no editor.swagger.io; "Try it out" contra `GET /api/v1/me` com uma chave de teste |
-| **4. Área logada**                   | `RAIL_LINKS` + `adminOnly` na rail; `/settings/manuals` e `[slug]` com `requireRole`; regra de cache; chaves de i18n nos 4 catálogos; testes de middleware (`/developers` passa sem sessão; `/settings/manuals` redireciona)                                                                         | Owner/admin veem o item e a página; agent/viewer recebem 404; sem sessão vai a `/login`                  |
-| **5. Verificação e documentação**    | Subir a stack Docker e percorrer `/developers/*` e `/settings/manuals`; atualizar `CLAUDE.md` (regra de manter manuais e contrato juntos, mapa de rotas), `docs/public-api.md` (link para `/developers`), `docs/order-journey.md`; aceitar os ADR-001 a ADR-003; remover `docs/integracao-cardapio/` | Checklist de aceite abaixo                                                                               |
+| Fase                                 | Entregas                                                                                                                                                                                                                                                                                             | Verificação                                                                                                                   |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **0. Spike (descartável)**           | Página mínima com `swagger-ui-react` carregando um YAML local; um `.md` lido em runtime numa rota logada; `outputFileTracingIncludes` mínimo; build da imagem Docker                                                                                                                                 | Swagger renderiza no React 19.2; o arquivo está na imagem; `curl -I` mostra o `Cache-Control` esperado                        |
+| **1. Conteúdo e carregador**         | `git mv` para `content/`; divisão do manual em dois, reescrevendo referências cruzadas; `servers: /` no YAML; `registry.ts` e `loader.ts`; devDependency `js-yaml`; testes M3, M5, links e "público não serve admin"                                                                                 | `npm test` verde; os dois `.md` não têm referência morta                                                                      |
+| **2. Renderização e rotas públicas** | `ManualView`, `ManualToc`, reescrita de links, `/developers` (layout `noindex`, índice, `[slug]`), `generateStaticParams` + `dynamicParams = false`                                                                                                                                                  | Teste de paridade índice×âncoras; abrir `/developers/integracao-cardapio` sem login                                           |
+| **3. Swagger e YAML**                | `swagger-viewer.tsx`, `/developers/api-reference`, `/developers/openapi.yaml`                                                                                                                                                                                                                        | Importar a URL do YAML no editor.swagger.io; "Try it out" contra `GET /api/v1/me` com uma chave de teste                      |
+| **4. Área logada**                   | `RAIL_LINKS` + `adminOnly` na rail; `/settings/manuals` e `[slug]` com `requireRole`; regra de cache; chaves de i18n nos 4 catálogos; testes de middleware (`/developers` passa sem sessão; `/settings/manuals` redireciona)                                                                         | Owner/admin veem o item e a página; agent/viewer veem a tela de não encontrado (soft 404, ADR-004); sem sessão vai a `/login` |
+| **5. Verificação e documentação**    | Subir a stack Docker e percorrer `/developers/*` e `/settings/manuals`; atualizar `CLAUDE.md` (regra de manter manuais e contrato juntos, mapa de rotas), `docs/public-api.md` (link para `/developers`), `docs/order-journey.md`; aceitar os ADR-001 a ADR-003; remover `docs/integracao-cardapio/` | Checklist de aceite abaixo                                                                                                    |
 
 Dependências novas: `react-markdown`, `remark-gfm`, `rehype-slug`, `swagger-ui-react`
 (produção); `js-yaml` e `@types/js-yaml` (desenvolvimento). Os pacotes do
