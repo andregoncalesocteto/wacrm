@@ -186,7 +186,7 @@
         "`npm run build` termina sem erro e `/developers/openapi.yaml` aparece como estática na saída do build"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

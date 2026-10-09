@@ -47,10 +47,15 @@ async function isDirectory(dir: string): Promise<boolean> {
 async function resolveLocaleDir(options: LoaderOptions): Promise<string> {
   const root = options.contentRoot ?? defaultContentRoot();
   const locale = options.locale ?? (process.env.NEXT_PUBLIC_APP_LOCALE || 'en');
-  const wanted = path.join(root, locale);
+  // `root` can be injected (tests), so Turbopack cannot scope these joins to a
+  // folder and would trace the WHOLE project into the standalone output. The
+  // ignore comments opt out on purpose: the files the admin pages read at
+  // runtime are declared in next.config.ts (`outputFileTracingIncludes`), and
+  // the public pages are rendered at build time.
+  const wanted = path.join(/*turbopackIgnore: true*/ root, locale);
   return (await isDirectory(wanted))
     ? wanted
-    : path.join(root, FALLBACK_LOCALE);
+    : path.join(/*turbopackIgnore: true*/ root, FALLBACK_LOCALE);
 }
 
 /** Never returns empty content: a missing file is an error, not a blank page. */
@@ -58,7 +63,10 @@ async function loadManual(
   meta: ManualMeta,
   options: LoaderOptions
 ): Promise<Manual> {
-  const file = path.join(await resolveLocaleDir(options), meta.file);
+  const file = path.join(
+    /*turbopackIgnore: true*/ await resolveLocaleDir(options),
+    meta.file
+  );
   let raw: string;
   try {
     raw = await readFile(file, 'utf8');

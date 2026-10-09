@@ -20,6 +20,7 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
 - `lib/auth/account.ts` has `requireRole`, `UnauthorizedError`, `ForbiddenError` for server code. The dashboard has no server page yet: US-013 sets the pattern.
 - Run the full suite as `TZ=UTC npm test`: src/lib/dashboard/date-utils.test.ts has 2 pre-existing failures when the machine is not on UTC (this one is at -03); they are unrelated to this feature and CI runs in UTC.
 - `next dev` REWRITES the tracked AGENTS.md on startup (and prints "Generated AGENTS.md"): run `git checkout AGENTS.md` before every commit so it does not ride along. To verify in a browser: `npx next dev -p 3100` (port 3000 is the Docker stack, built from main), then the dev-browser skill (`dev-browser <<'EOF' … EOF`; screenshots land in ~/.dev-browser/tmp/).
+- `npm run build` is the place where tracing problems show up. If it prints "Dynamic filesystem access causes tracing of the whole project", the path is not statically scoped: either keep it as `path.join(process.cwd(), 'content', ...)` or add `/*turbopackIgnore: true*/` as the first argument AND declare the files in `outputFileTracingIncludes` (US-012). Grep the build log for `warning|tracing`. Do not run `pkill -f "next dev …"` from the shell: it matches the shell's own command line and kills it; find the PID with `ps -eo pid,args | grep [n]ext`.
 - Format ONLY the files you touch before committing (`npx prettier --write <files>`; `npm run format` rewrites the whole repo); commit style: imperative, terse first line, `feat: [Story ID] - [Story Title]`.
 
 ## 2026-10-09 - US-001
@@ -107,4 +108,14 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
 - Browser: /developers → 200 signed-out; links are exactly /developers/integracao-cardapio and /developers/api-reference; the admin manual's title is nowhere in the HTML; clicking the manual card opens it.
 - **Learnings for future iterations:**
   - Adding keys to a catalogue: edit the text to keep the diff minimal (the files are not re-serialisable byte for byte); `src/i18n/messages.test.ts` enforces parity.
+---
+
+## 2026-10-09 - US-010
+- src/app/developers/openapi.yaml/route.ts (`dynamic = 'force-static'`; `Content-Type: application/yaml; charset=utf-8`; `Access-Control-Allow-Origin: *`, this route only) + src/lib/manuals/openapi.ts (readOpenApi) + route.test.ts (2 tests).
+- Build: `npm run build` OK; `/developers/openapi.yaml` and `/developers` are "○ Static", `/developers/[slug]` is SSG with only integracao-cardapio.
+- The first build printed a Turbopack warning ("Dynamic filesystem access causes tracing of the whole project") for the injectable path in src/lib/manuals/loader.ts; fixed with `/*turbopackIgnore: true*/` on the dynamic path.join calls (see the pattern above).
+- Files changed: src/app/developers/openapi.yaml/route.ts, route.test.ts, src/lib/manuals/openapi.ts, src/lib/manuals/loader.ts
+- **Learnings for future iterations:**
+  - A folder named `openapi.yaml` under src/app is a valid route segment (like sitemap.xml).
+  - With the ignore comments, content/manuals is NOT auto-traced into standalone: the admin pages (read at runtime) need the explicit `outputFileTracingIncludes` of US-012, and US-017 must prove the files are in the image.
 ---
