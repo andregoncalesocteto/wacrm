@@ -37,3 +37,12 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - Tokens: only `{URL_BASE}` is substituted by the loader (US-004); `{{menu_link}}` is literal product text.
   - The "Problemas comuns" table was split by audience: operator-only rows (menu_link, janela de 24 h, retomada, funil) live in the operator manual.
 ---
+
+## 2026-10-09 - US-003
+- Created content/manuals/pt/configuracao-jornada-pedido.md (operator manual: "Como funciona" + sections 1-11 + operator "Problemas comuns") from Part A. Section 9 now hands the external team the link `{URL_BASE}/developers` plus URL base, API key, store_key list and a test idtrack. References to "B.x" became a link to ./integracao-cardapio.md (section 11).
+- Removed docs/integracao-cardapio/ entirely (git rm); content now lives only in content/.
+- Files changed: content/manuals/pt/configuracao-jornada-pedido.md; docs/integracao-cardapio/manual-integracao.md (deleted)
+- **Learnings for future iterations:**
+  - The only remaining mentions of docs/integracao-cardapio/ are in the planning docs (SOLUTION, PRD, ADR-001, prd.json) describing the previous state. Leave them: ADRs are never edited.
+  - The operator manual links to the PUBLIC manual (./integracao-cardapio.md): US-005's resolveManualHref must allow a link from an admin manual to a public one, never the reverse.
+---
