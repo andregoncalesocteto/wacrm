@@ -77,3 +77,14 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - If you add a limit to event-payload.ts, document it in the YAML AND add the case here, or M3 stays blind to it.
   - `visit(parser.parse(md), 'link', ...)` from unist-util-visit is the way to list links; do not regex Markdown.
 ---
+
+## 2026-10-09 - US-007
+- src/components/manuals/manual-view.tsx (Server Component; react-markdown + remark-gfm + rehype-slug; components map for a/h1-h3/p/ul/ol/li/blockquote/hr/table/th/td/pre/code; tables wrapped in an overflow-x-auto container; links through resolveManualHref, unresolvable ones render as plain text; external links get target=_blank + rel=noopener noreferrer) and manual-toc.tsx (plain component; `label` is a prop; `print:hidden`). manual-view.test.tsx: 9 tests (every TOC id is a rendered id for BOTH real manuals, {{menu_link}} literal, table wrapper, link rules, no raw HTML).
+- Files changed: src/components/manuals/{manual-view,manual-toc}.tsx, manual-view.test.tsx
+- **Learnings for future iterations:**
+  - react-markdown v10 passes the hast `node` to every component; spreading it onto a DOM element is wrong. Use the local `withoutNode(props)` (an unused `_node` destructure trips @typescript-eslint/no-unused-vars).
+  - react-markdown ignores raw HTML unless rehype-raw is added: never add it.
+  - ManualToc takes the translated `label` as a prop (pages call getTranslations and pass it) so it stays a plain, testable component.
+  - These components are not routed yet: browser verification happens in US-008.
+  - The prettier tailwind plugin reorders class names; run prettier --write after editing classes.
+---
