@@ -54,7 +54,7 @@ A configuração do CRM (lojas, mensagens, chave de API, agendador) é feita por
 
 | Item                                                          | Para que serve                                                                                                                          |
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| **URL base do CRM**                                           | Por exemplo, `https://crm.suaempresa.com.br`, sem barra no final. É o `{URL_BASE}` dos exemplos abaixo.                                 |
+| **URL base do CRM**                                           | O endereço deste CRM: `{URL_BASE}`. Os exemplos abaixo usam esse valor.                                                                 |
 | **Chave de API** (`wacrm_live_…`) com o escopo `events:write` | Autentica os eventos. Segredo de servidor: nunca no navegador nem no repositório.                                                       |
 | **A `store_key` de cada loja**                                | Só para eventos diretos (sem link do CRM). Formato `CÓDIGO/SIGLA DA LOJA/SIGLA DO NEGÓCIO`, por exemplo `89/RPA/BLC`.                   |
 | **Um `idtrack` de teste**                                     | O operador envia o link do cardápio a um número de teste e lhe entrega o token que vem depois de `?idtrack=` (só para o modo com link). |

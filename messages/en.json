@@ -2769,5 +2769,10 @@
       "delivered": "Delivered",
       "cancelled": "Cancelled"
     }
+  },
+  "Developers": {
+    "siteTitle": "Developer docs",
+    "tocLabel": "On this page",
+    "apiReference": "API reference"
   }
 }

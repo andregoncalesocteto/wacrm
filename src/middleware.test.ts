@@ -111,3 +111,17 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
     expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
   });
 });
+
+describe("middleware — public documentation (/developers)", () => {
+  it.each(["/developers", "/developers/integracao-cardapio"])(
+    "lets a signed-out visitor through on %s (no redirect to /login)",
+    async (path) => {
+      mockUser = null;
+
+      const res = await middleware(new NextRequest(`https://app.test${path}`));
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("location")).toBeNull();
+    },
+  );
+});

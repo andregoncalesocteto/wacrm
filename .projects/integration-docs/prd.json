@@ -151,7 +151,7 @@
         "Verify in browser using dev-browser skill: abrir `/developers/integracao-cardapio` sem estar logado; tabelas rolam no celular; o índice leva às seções; o tema escuro fica legível"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

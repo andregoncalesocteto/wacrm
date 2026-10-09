@@ -2757,5 +2757,10 @@
       "delivered": "Entregado",
       "cancelled": "Cancelado"
     }
+  },
+  "Developers": {
+    "siteTitle": "Documentación para desarrolladores",
+    "tocLabel": "En esta página",
+    "apiReference": "Referencia de la API"
   }
 }

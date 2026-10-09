@@ -19,6 +19,7 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
 - `src/middleware.ts` only protects a hardcoded prefix list (`/settings` is in it, `/developers` is not); `src/middleware.test.ts` has the mock pattern to extend.
 - `lib/auth/account.ts` has `requireRole`, `UnauthorizedError`, `ForbiddenError` for server code. The dashboard has no server page yet: US-013 sets the pattern.
 - Run the full suite as `TZ=UTC npm test`: src/lib/dashboard/date-utils.test.ts has 2 pre-existing failures when the machine is not on UTC (this one is at -03); they are unrelated to this feature and CI runs in UTC.
+- `next dev` REWRITES the tracked AGENTS.md on startup (and prints "Generated AGENTS.md"): run `git checkout AGENTS.md` before every commit so it does not ride along. To verify in a browser: `npx next dev -p 3100` (port 3000 is the Docker stack, built from main), then the dev-browser skill (`dev-browser <<'EOF' … EOF`; screenshots land in ~/.dev-browser/tmp/).
 - Format ONLY the files you touch before committing (`npx prettier --write <files>`; `npm run format` rewrites the whole repo); commit style: imperative, terse first line, `feat: [Story ID] - [Story Title]`.
 
 ## 2026-10-09 - US-001
@@ -87,4 +88,15 @@ US-017 needs Docker (wacrm-stack skill); if unavailable, leave it incomplete and
   - ManualToc takes the translated `label` as a prop (pages call getTranslations and pass it) so it stays a plain, testable component.
   - These components are not routed yet: browser verification happens in US-008.
   - The prettier tailwind plugin reorders class names; run prettier --write after editing classes.
+---
+
+## 2026-10-09 - US-008
+- src/app/developers/layout.tsx (minimal layout, `robots: noindex`, header with the site title and a link to the API reference), src/app/developers/[slug]/page.tsx (`dynamicParams = false`, `generateStaticParams` from listPublicManuals, getPublicManual → notFound), src/components/manuals/manual-page.tsx (shared body: ManualView + ManualToc; a collapsible TOC above the text on narrow screens, a sticky aside on lg), namespace `Developers` (siteTitle, tocLabel, apiReference) in the 4 catalogues, middleware tests for /developers (signed-out passes). Content tweak: the "URL base do CRM" row of the public manual now reads "O endereço deste CRM: `{URL_BASE}`".
+- Files changed: src/app/developers/{layout,[slug]/page}.tsx, src/components/manuals/manual-page.tsx, messages/{en,es,pt,ko}.json, src/middleware.test.ts, content/manuals/pt/integracao-cardapio.md
+- Browser (dev-browser, next dev :3100): /developers/integracao-cardapio → 200 without login; 11 tables render; TOC has 22 links and a click lands on the heading id; `<meta robots>` is "noindex, nofollow"; /developers/configuracao-jornada-pedido and /developers/nao-existe → 404; at 390px the page does not scroll sideways and the tables scroll inside their container; dark theme is legible; `{URL_BASE}` became NEXT_PUBLIC_SITE_URL.
+- **Learnings for future iterations:**
+  - /developers (the index) and /developers/api-reference do not exist yet: the header link 404s until US-009/US-011.
+  - Server Components get texts with `await getTranslations('Developers')` from next-intl/server (the first use in this repo); pass the string down as a prop to plain components.
+  - The app is dark by default; `document.documentElement.classList.add('dark')` is how to flip it in the browser.
+  - Because the replaced `{URL_BASE}` is shown as text, never write a sentence that talks about the token itself.
 ---
